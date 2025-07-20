@@ -1,7 +1,5 @@
 package packet
 
-import "fmt"
-
 // Code represents a RADIUS packet code as defined in RFC 2865
 type Code uint8
 
@@ -29,12 +27,12 @@ const (
 	CodeDisconnectACK Code = 41
 	// Disconnect-NAK packets (RFC 3576 - CoA)
 	CodeDisconnectNAK Code = 42
-	// CoA-Request packets (RFC 3576)
+	// Change-of-Authorization-Request packets (RFC 3576 - CoA)
 	CodeCoARequest Code = 43
-	// CoA-ACK packets (RFC 3576)
-	CodeCoAAck Code = 44
-	// CoA-NAK packets (RFC 3576)
-	CodeCoANak Code = 45
+	// Change-of-Authorization-ACK packets (RFC 3576 - CoA)
+	CodeCoAACK Code = 44
+	// Change-of-Authorization-NAK packets (RFC 3576 - CoA)
+	CodeCoANAK Code = 45
 )
 
 // String returns the string representation of the packet code
@@ -64,98 +62,25 @@ func (c Code) String() string {
 		return "Disconnect-NAK"
 	case CodeCoARequest:
 		return "CoA-Request"
-	case CodeCoAAck:
+	case CodeCoAACK:
 		return "CoA-ACK"
-	case CodeCoANak:
+	case CodeCoANAK:
 		return "CoA-NAK"
 	default:
-		return fmt.Sprintf("Unknown(%d)", c)
+		return "Unknown"
 	}
 }
 
-// IsValid checks if the packet code is valid
+// IsValid returns true if the code is a valid RADIUS packet code
 func (c Code) IsValid() bool {
 	switch c {
 	case CodeAccessRequest, CodeAccessAccept, CodeAccessReject,
-		CodeAccountingRequest, CodeAccountingResponse,
-		CodeAccessChallenge, CodeStatusServer, CodeStatusClient,
+		CodeAccountingRequest, CodeAccountingResponse, CodeAccessChallenge,
+		CodeStatusServer, CodeStatusClient,
 		CodeDisconnectRequest, CodeDisconnectACK, CodeDisconnectNAK,
-		CodeCoARequest, CodeCoAAck, CodeCoANak:
+		CodeCoARequest, CodeCoAACK, CodeCoANAK:
 		return true
 	default:
 		return false
-	}
-}
-
-// IsRequest returns true if the code represents a request packet
-func (c Code) IsRequest() bool {
-	switch c {
-	case CodeAccessRequest, CodeAccountingRequest, CodeStatusServer,
-		CodeDisconnectRequest, CodeCoARequest:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsResponse returns true if the code represents a response packet
-func (c Code) IsResponse() bool {
-	switch c {
-	case CodeAccessAccept, CodeAccessReject, CodeAccessChallenge,
-		CodeAccountingResponse, CodeStatusClient,
-		CodeDisconnectACK, CodeDisconnectNAK,
-		CodeCoAAck, CodeCoANak:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsAccounting returns true if the code is related to accounting
-func (c Code) IsAccounting() bool {
-	switch c {
-	case CodeAccountingRequest, CodeAccountingResponse:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsAuthentication returns true if the code is related to authentication
-func (c Code) IsAuthentication() bool {
-	switch c {
-	case CodeAccessRequest, CodeAccessAccept, CodeAccessReject, CodeAccessChallenge:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsCoA returns true if the code is related to Change of Authorization
-func (c Code) IsCoA() bool {
-	switch c {
-	case CodeDisconnectRequest, CodeDisconnectACK, CodeDisconnectNAK,
-		CodeCoARequest, CodeCoAAck, CodeCoANak:
-		return true
-	default:
-		return false
-	}
-}
-
-// ExpectedResponseCode returns the expected response code for a request
-func (c Code) ExpectedResponseCode() []Code {
-	switch c {
-	case CodeAccessRequest:
-		return []Code{CodeAccessAccept, CodeAccessReject, CodeAccessChallenge}
-	case CodeAccountingRequest:
-		return []Code{CodeAccountingResponse}
-	case CodeStatusServer:
-		return []Code{CodeStatusClient}
-	case CodeDisconnectRequest:
-		return []Code{CodeDisconnectACK, CodeDisconnectNAK}
-	case CodeCoARequest:
-		return []Code{CodeCoAAck, CodeCoANak}
-	default:
-		return nil
 	}
 }

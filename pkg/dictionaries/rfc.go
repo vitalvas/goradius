@@ -2,16 +2,15 @@ package dictionaries
 
 import "github.com/vitalvas/goradius/pkg/dictionary"
 
-// RFCDictionary contains all RFC attributes in slice format
-// Updated from FreeRADIUS v3.2.x RFC dictionary files
-var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDefinition{
-	{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},                                                    // RFC2865
+// StandardRFCAttributes contains all RFC standard attributes
+var StandardRFCAttributes = []*dictionary.AttributeDefinition{
+	{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString}, // RFC2865
 	{ID: 2, Name: "User-Password", DataType: dictionary.DataTypeString, Encryption: dictionary.EncryptionUserPassword}, // RFC2865
-	{ID: 3, Name: "CHAP-Password", DataType: dictionary.DataTypeOctets},                                                // RFC2865
-	{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr},                                               // RFC2865
-	{ID: 5, Name: "NAS-Port", DataType: dictionary.DataTypeInteger},                                                    // RFC2865
+	{ID: 3, Name: "CHAP-Password", DataType: dictionary.DataTypeOctets}, // RFC2865
+	{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr}, // RFC2865
+	{ID: 5, Name: "NAS-Port", DataType: dictionary.DataTypeInteger}, // RFC2865
 	{ // RFC2865
-		ID:     6,
+		ID:       6,
 		Name:     "Service-Type",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -31,7 +30,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC2865
-		ID:     7,
+		ID:       7,
 		Name:     "Framed-Protocol",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -46,7 +45,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 8, Name: "Framed-IP-Address", DataType: dictionary.DataTypeIPAddr}, // RFC2865
 	{ID: 9, Name: "Framed-IP-Netmask", DataType: dictionary.DataTypeIPAddr}, // RFC2865
 	{ // RFC2865
-		ID:     10,
+		ID:       10,
 		Name:     "Framed-Routing",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -59,7 +58,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 11, Name: "Filter-Id", DataType: dictionary.DataTypeString},   // RFC2865
 	{ID: 12, Name: "Framed-MTU", DataType: dictionary.DataTypeInteger}, // RFC2865
 	{ // RFC2865
-		ID:     13,
+		ID:       13,
 		Name:     "Framed-Compression",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -71,7 +70,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	},
 	{ID: 14, Name: "Login-IP-Host", DataType: dictionary.DataTypeIPAddr}, // RFC2865
 	{ // RFC2865
-		ID:     15,
+		ID:       15,
 		Name:     "Login-Service",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -86,7 +85,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC2865
-		ID:     16,
+		ID:       16,
 		Name:     "Login-TCP-Port",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -106,7 +105,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 27, Name: "Session-Timeout", DataType: dictionary.DataTypeInteger},   // RFC2865
 	{ID: 28, Name: "Idle-Timeout", DataType: dictionary.DataTypeInteger},      // RFC2865
 	{ // RFC2865
-		ID:     29,
+		ID:       29,
 		Name:     "Termination-Action",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -125,7 +124,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 38, Name: "Framed-AppleTalk-Network", DataType: dictionary.DataTypeInteger}, // RFC2865
 	{ID: 39, Name: "Framed-AppleTalk-Zone", DataType: dictionary.DataTypeString},     // RFC2865
 	{ // RFC2866
-		ID:     40,
+		ID:       40,
 		Name:     "Acct-Status-Type",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -149,7 +148,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 43, Name: "Acct-Output-Octets", DataType: dictionary.DataTypeInteger}, // RFC2866
 	{ID: 44, Name: "Acct-Session-Id", DataType: dictionary.DataTypeString},     // RFC2866
 	{ // RFC2866
-		ID:     45,
+		ID:       45,
 		Name:     "Acct-Authentic",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -163,7 +162,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 47, Name: "Acct-Input-Packets", DataType: dictionary.DataTypeInteger},  // RFC2866
 	{ID: 48, Name: "Acct-Output-Packets", DataType: dictionary.DataTypeInteger}, // RFC2866
 	{ // RFC2866
-		ID:     49,
+		ID:       49,
 		Name:     "Acct-Terminate-Cause",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -198,7 +197,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 55, Name: "Event-Timestamp", DataType: dictionary.DataTypeDate},          // RFC2869
 	{ID: 56, Name: "Egress-VLANID", DataType: dictionary.DataTypeInteger},         // RFC4675
 	{ // RFC4675
-		ID:     57,
+		ID:       57,
 		Name:     "Ingress-Filters",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -210,7 +209,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 59, Name: "User-Priority-Table", DataType: dictionary.DataTypeOctets}, // RFC4675
 	{ID: 60, Name: "CHAP-Challenge", DataType: dictionary.DataTypeOctets},      // RFC2865
 	{ // RFC2865
-		ID:     61,
+		ID:       61,
 		Name:     "NAS-Port-Type",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -246,7 +245,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 62, Name: "Port-Limit", DataType: dictionary.DataTypeInteger},    // RFC2865
 	{ID: 63, Name: "Login-LAT-Port", DataType: dictionary.DataTypeString}, // RFC2865
 	{ // RFC2868
-		ID:     64,
+		ID:       64,
 		Name:     "Tunnel-Type",
 		DataType: dictionary.DataTypeInteger,
 		HasTag:   true,
@@ -267,7 +266,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC2868
-		ID:     65,
+		ID:       65,
 		Name:     "Tunnel-Medium-Type",
 		DataType: dictionary.DataTypeInteger,
 		HasTag:   true,
@@ -297,7 +296,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 70, Name: "ARAP-Password", DataType: dictionary.DataTypeOctets},                                                                  // RFC2869
 	{ID: 71, Name: "ARAP-Features", DataType: dictionary.DataTypeOctets},                                                                  // RFC2869
 	{ // RFC2869
-		ID:     72,
+		ID:       72,
 		Name:     "ARAP-Zone-Access",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -310,7 +309,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 74, Name: "ARAP-Security-Data", DataType: dictionary.DataTypeString}, // RFC2869
 	{ID: 75, Name: "Password-Retry", DataType: dictionary.DataTypeInteger},    // RFC2869
 	{ // RFC2869
-		ID:     76,
+		ID:       76,
 		Name:     "Prompt",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -342,7 +341,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 99, Name: "Framed-IPv6-Route", DataType: dictionary.DataTypeString},                     // RFC3162
 	{ID: 100, Name: "Framed-IPv6-Pool", DataType: dictionary.DataTypeString},                     // RFC3162
 	{ // RFC3576
-		ID:     101,
+		ID:       101,
 		Name:     "Error-Cause",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -395,7 +394,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 129, Name: "Basic-Location-Policy-Rules", DataType: dictionary.DataTypeOctets},    // RFC5580
 	{ID: 130, Name: "Extended-Location-Policy-Rules", DataType: dictionary.DataTypeString}, // RFC5580
 	{ // RFC5580
-		ID:     131,
+		ID:       131,
 		Name:     "Location-Capable",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -406,7 +405,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC5580
-		ID:     132,
+		ID:       132,
 		Name:     "Requested-Location-Info",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -419,7 +418,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC5607
-		ID:     133,
+		ID:       133,
 		Name:     "Framed-Management",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -434,7 +433,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 		},
 	},
 	{ // RFC5607
-		ID:     134,
+		ID:       134,
 		Name:     "Management-Transport-Protection",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -472,7 +471,7 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 161, Name: "PMIP6-Home-IPv4-Gateway", DataType: dictionary.DataTypeIPAddr},              // RFC6572
 	{ID: 162, Name: "PMIP6-Visited-IPv4-Gateway", DataType: dictionary.DataTypeIPAddr},           // RFC6572
 	{ // RFC6677
-		ID:     163,
+		ID:       163,
 		Name:     "EAP-Lower-Layer",
 		DataType: dictionary.DataTypeInteger,
 		Values: map[string]uint32{
@@ -522,11 +521,3 @@ var RFCDictionary []*dictionary.AttributeDefinition = []*dictionary.AttributeDef
 	{ID: 246, Name: "Extended-Attribute-6", DataType: dictionary.DataTypeOctets},           // RFC6929
 }
 
-// NewStandardDictionary creates a new dictionary with standard RFC attributes
-func NewStandardDictionary() *dictionary.Dictionary {
-	dict := dictionary.NewDictionary()
-	for _, attr := range RFCDictionary {
-		dict.AddAttribute(attr)
-	}
-	return dict
-}
