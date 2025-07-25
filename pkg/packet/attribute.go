@@ -35,7 +35,7 @@ func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
 	taggedValue := make([]byte, len(value)+1)
 	taggedValue[0] = tag
 	copy(taggedValue[1:], value)
-	
+
 	return &Attribute{
 		Type:   attrType,
 		Length: uint8(len(taggedValue) + AttributeHeaderLength),
@@ -59,7 +59,7 @@ func NewTaggedVendorAttribute(vendorID uint32, vendorType uint8, tag uint8, valu
 	taggedValue := make([]byte, len(value)+1)
 	taggedValue[0] = tag
 	copy(taggedValue[1:], value)
-	
+
 	return &VendorAttribute{
 		VendorID:   vendorID,
 		VendorType: vendorType,
@@ -105,24 +105,24 @@ func (va *VendorAttribute) String() string {
 // ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific)
 func (va *VendorAttribute) ToVSA() *Attribute {
 	// VSA format: Type(1) + Length(1) + Vendor-ID(4) + Vendor-Type(1) + Vendor-Length(1) + Vendor-Data
-	vendorLength := uint8(len(va.Value) + 2) // +2 for Vendor-Type and Vendor-Length
+	vendorLength := uint8(len(va.Value) + 2)  // +2 for Vendor-Type and Vendor-Length
 	vsaValue := make([]byte, 6+len(va.Value)) // 4 bytes Vendor-ID + 2 bytes header + data
-	
+
 	// Vendor-ID (4 bytes, big-endian)
 	vsaValue[0] = uint8(va.VendorID >> 24)
 	vsaValue[1] = uint8(va.VendorID >> 16)
 	vsaValue[2] = uint8(va.VendorID >> 8)
 	vsaValue[3] = uint8(va.VendorID)
-	
+
 	// Vendor-Type (1 byte)
 	vsaValue[4] = va.VendorType
-	
+
 	// Vendor-Length (1 byte)
 	vsaValue[5] = vendorLength
-	
+
 	// Vendor-Data
 	copy(vsaValue[6:], va.Value)
-	
+
 	return &Attribute{
 		Type:   26, // Vendor-Specific attribute type
 		Length: uint8(len(vsaValue) + AttributeHeaderLength),
@@ -135,39 +135,39 @@ func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
 	if attr.Type != 26 {
 		return nil, fmt.Errorf("not a vendor-specific attribute (type %d)", attr.Type)
 	}
-	
+
 	if len(attr.Value) < 6 {
 		return nil, fmt.Errorf("invalid VSA length: %d", len(attr.Value))
 	}
-	
+
 	// Extract Vendor-ID (4 bytes, big-endian)
 	vendorID := uint32(attr.Value[0])<<24 | uint32(attr.Value[1])<<16 | uint32(attr.Value[2])<<8 | uint32(attr.Value[3])
-	
+
 	// Extract Vendor-Type (1 byte)
 	vendorType := attr.Value[4]
-	
+
 	// Extract Vendor-Length (1 byte)
 	vendorLength := attr.Value[5]
-	
+
 	// Validate vendor length
 	if int(vendorLength) != len(attr.Value)-4 {
 		return nil, fmt.Errorf("invalid vendor length: %d, expected %d", vendorLength, len(attr.Value)-4)
 	}
-	
+
 	// Extract vendor data
 	vendorData := attr.Value[6:]
-	
+
 	va := &VendorAttribute{
 		VendorID:   vendorID,
 		VendorType: vendorType,
 		Value:      vendorData,
 	}
-	
+
 	// Check if this is a tagged vendor attribute
 	if len(vendorData) > 0 && vendorData[0] <= 31 && vendorData[0] != 0 {
 		// Potential tag (tags are 1-31, 0 means no tag)
 		va.Tag = vendorData[0]
 	}
-	
+
 	return va, nil
 }

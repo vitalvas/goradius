@@ -101,7 +101,7 @@ func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error
 			return EncodeString(s), nil
 		}
 		return nil, fmt.Errorf("expected string for string data type")
-		
+
 	case dictionary.DataTypeInteger:
 		switch v := value.(type) {
 		case uint32:
@@ -113,7 +113,7 @@ func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error
 		default:
 			return nil, fmt.Errorf("expected integer for integer data type")
 		}
-		
+
 	case dictionary.DataTypeIPAddr:
 		if ip, ok := value.(net.IP); ok {
 			return EncodeIPAddr(ip)
@@ -126,7 +126,7 @@ func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error
 			return EncodeIPAddr(ip)
 		}
 		return nil, fmt.Errorf("expected net.IP or string for ipaddr data type")
-		
+
 	case dictionary.DataTypeIPv6Addr:
 		if ip, ok := value.(net.IP); ok {
 			return EncodeIPv6Addr(ip)
@@ -139,19 +139,19 @@ func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error
 			return EncodeIPv6Addr(ip)
 		}
 		return nil, fmt.Errorf("expected net.IP or string for ipv6addr data type")
-		
+
 	case dictionary.DataTypeDate:
 		if t, ok := value.(time.Time); ok {
 			return EncodeDate(t), nil
 		}
 		return nil, fmt.Errorf("expected time.Time for date data type")
-		
+
 	case dictionary.DataTypeOctets, dictionary.DataTypeABinary:
 		if data, ok := value.([]byte); ok {
 			return EncodeOctets(data), nil
 		}
 		return nil, fmt.Errorf("expected []byte for octets/abinary data type")
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported data type: %s", dataType)
 	}
@@ -162,22 +162,22 @@ func DecodeValue(data []byte, dataType dictionary.DataType) (interface{}, error)
 	switch dataType {
 	case dictionary.DataTypeString:
 		return DecodeString(data), nil
-		
+
 	case dictionary.DataTypeInteger:
 		return DecodeInteger(data)
-		
+
 	case dictionary.DataTypeIPAddr:
 		return DecodeIPAddr(data)
-		
+
 	case dictionary.DataTypeIPv6Addr:
 		return DecodeIPv6Addr(data)
-		
+
 	case dictionary.DataTypeDate:
 		return DecodeDate(data)
-		
+
 	case dictionary.DataTypeOctets, dictionary.DataTypeABinary:
 		return DecodeOctets(data), nil
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported data type: %s", dataType)
 	}

@@ -4,11 +4,11 @@ import "github.com/vitalvas/goradius/pkg/dictionary"
 
 // StandardRFCAttributes contains all RFC standard attributes
 var StandardRFCAttributes = []*dictionary.AttributeDefinition{
-	{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString}, // RFC2865
+	{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},                                                    // RFC2865
 	{ID: 2, Name: "User-Password", DataType: dictionary.DataTypeString, Encryption: dictionary.EncryptionUserPassword}, // RFC2865
-	{ID: 3, Name: "CHAP-Password", DataType: dictionary.DataTypeOctets}, // RFC2865
-	{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr}, // RFC2865
-	{ID: 5, Name: "NAS-Port", DataType: dictionary.DataTypeInteger}, // RFC2865
+	{ID: 3, Name: "CHAP-Password", DataType: dictionary.DataTypeOctets},                                                // RFC2865
+	{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr},                                               // RFC2865
+	{ID: 5, Name: "NAS-Port", DataType: dictionary.DataTypeInteger},                                                    // RFC2865
 	{ // RFC2865
 		ID:       6,
 		Name:     "Service-Type",
@@ -520,4 +520,3 @@ var StandardRFCAttributes = []*dictionary.AttributeDefinition{
 	{ID: 245, Name: "Extended-Attribute-5", DataType: dictionary.DataTypeOctets},           // RFC6929
 	{ID: 246, Name: "Extended-Attribute-6", DataType: dictionary.DataTypeOctets},           // RFC6929
 }
-

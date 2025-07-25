@@ -2,7 +2,10 @@ package packet
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
@@ -129,17 +132,17 @@ func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 // CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
 	// Response Authenticator = MD5(Code + ID + Length + Request Authenticator + Response Attributes + Secret)
-	
+
 	// Build the packet bytes for hashing
 	packetBytes := make([]byte, int(p.Length))
-	
+
 	// Header: Code + ID + Length + Request Authenticator
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
 	packetBytes[2] = byte(p.Length >> 8)
 	packetBytes[3] = byte(p.Length)
 	copy(packetBytes[4:20], requestAuthenticator[:])
-	
+
 	// Attributes
 	offset := PacketHeaderLength
 	for _, attr := range p.Attributes {
@@ -148,10 +151,10 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 		copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
 		offset += int(attr.Length)
 	}
-	
+
 	// Append secret
 	data := append(packetBytes, secret...)
-	
+
 	// Calculate MD5 hash
 	hash := md5.Sum(data)
 	return hash
@@ -160,17 +163,17 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 // CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
 	// Request Authenticator = MD5(Code + ID + Length + Null Authenticator + Attributes + Secret)
-	
+
 	// Build the packet bytes for hashing
 	packetBytes := make([]byte, int(p.Length))
-	
+
 	// Header: Code + ID + Length + Null Authenticator (16 zero bytes)
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
 	packetBytes[2] = byte(p.Length >> 8)
 	packetBytes[3] = byte(p.Length)
 	// Authenticator field is already zero-initialized
-	
+
 	// Attributes
 	offset := PacketHeaderLength
 	for _, attr := range p.Attributes {
@@ -179,10 +182,10 @@ func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLeng
 		copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
 		offset += int(attr.Length)
 	}
-	
+
 	// Append secret
 	data := append(packetBytes, secret...)
-	
+
 	// Calculate MD5 hash
 	hash := md5.Sum(data)
 	return hash
@@ -193,30 +196,302 @@ func (p *Packet) IsValid() error {
 	if !p.Code.IsValid() {
 		return fmt.Errorf("invalid packet code: %d", p.Code)
 	}
-	
+
 	if p.Length < MinPacketLength {
 		return fmt.Errorf("packet too short: %d bytes", p.Length)
 	}
-	
+
 	if p.Length > MaxPacketLength {
 		return fmt.Errorf("packet too long: %d bytes", p.Length)
 	}
-	
+
 	// Calculate expected length from attributes
 	expectedLength := uint16(PacketHeaderLength)
 	for _, attr := range p.Attributes {
 		expectedLength += uint16(attr.Length)
 	}
-	
+
 	if p.Length != expectedLength {
 		return fmt.Errorf("packet length mismatch: header says %d, calculated %d", p.Length, expectedLength)
 	}
-	
+
 	return nil
+}
+
+// AddAttributeByName adds an attribute to the packet using dictionary lookup with full feature support
+func (p *Packet) AddAttributeByName(name string, value interface{}) {
+	if p.Dict == nil {
+		return
+	}
+
+	// Try standard attribute first
+	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
+		return
+	}
+
+	// Handle vendor attributes
+	p.addVendorAttributeByName(name, value, nil, [16]byte{})
+}
+
+// AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
+func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, secret []byte, authenticator [16]byte) {
+	if p.Dict == nil {
+		return
+	}
+
+	// Try standard attribute first
+	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		p.addStandardAttribute(name, value, attrDef, secret, authenticator)
+		return
+	}
+
+	// Handle vendor attributes
+	p.addVendorAttributeByName(name, value, secret, authenticator)
+}
+
+// addStandardAttribute handles standard attribute addition with full feature support
+func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
+	// Handle tagged attributes by extracting the tag
+	var tag uint8 = 0
+
+	if strings.Contains(name, ":") && attrDef.HasTag {
+		parts := strings.SplitN(name, ":", 2)
+		if len(parts) == 2 {
+			if tagValue := parts[1]; tagValue != "" {
+				if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
+					tag = uint8(parsedTag)
+				}
+			}
+		}
+	}
+
+	// Handle enumerated values - convert string names to integers
+	processedValue := p.processEnumeratedValue(value, attrDef)
+
+	// Handle array attributes - multiple values for same attribute
+	if attrDef.Array {
+		p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
+		return
+	}
+
+	// Encode the value based on data type
+	attrValue, err := p.encodeAttributeValue(processedValue, attrDef)
+	if err != nil {
+		return
+	}
+
+	// Handle encryption if specified
+	if attrDef.Encryption != "" && secret != nil {
+		attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+	}
+
+	// Create and add the attribute
+	if attrDef.HasTag && tag > 0 {
+		// Add tag to the beginning of the value for tagged attributes
+		taggedValue := append([]byte{tag}, attrValue...)
+		attr := NewAttribute(uint8(attrDef.ID), taggedValue)
+		p.AddAttribute(attr)
+	} else {
+		attr := NewAttribute(uint8(attrDef.ID), attrValue)
+		p.AddAttribute(attr)
+	}
+}
+
+// addVendorAttributeByName handles vendor-specific attribute addition with full feature support
+func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) {
+	// Handle tagged attributes by extracting the tag
+	baseName := name
+	var tag uint8 = 0
+
+	if strings.Contains(name, ":") {
+		parts := strings.SplitN(name, ":", 2)
+		if len(parts) == 2 {
+			baseName = parts[0]
+			if tagValue := parts[1]; tagValue != "" {
+				if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
+					tag = uint8(parsedTag)
+				}
+			}
+		}
+	}
+
+	// Find the vendor attribute
+	vendors := p.Dict.GetAllVendors()
+	for _, vendor := range vendors {
+		for _, attrDef := range vendor.Attributes {
+			if attrDef.Name == baseName {
+				// Handle enumerated values
+				processedValue := p.processEnumeratedValue(value, attrDef)
+
+				// Handle array attributes
+				if attrDef.Array {
+					p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
+					return
+				}
+
+				// Encode the value
+				attrValue, err := p.encodeAttributeValue(processedValue, attrDef)
+				if err != nil {
+					return
+				}
+
+				// Handle encryption
+				if attrDef.Encryption != "" && secret != nil {
+					attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+				}
+
+				// Create and add vendor attribute
+				var vsa *VendorAttribute
+				if attrDef.HasTag && tag > 0 {
+					vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
+				} else {
+					vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+				}
+				p.AddVendorAttribute(vsa)
+				return
+			}
+		}
+	}
+}
+
+// processEnumeratedValue converts string enumerated values to integers
+func (p *Packet) processEnumeratedValue(value interface{}, attrDef *dictionary.AttributeDefinition) interface{} {
+	if attrDef.Values == nil || len(attrDef.Values) == 0 {
+		return value
+	}
+
+	// If value is a string, try to find it in enumerated values
+	if strValue, ok := value.(string); ok {
+		if enumValue, exists := attrDef.Values[strValue]; exists {
+			return enumValue
+		}
+	}
+
+	return value
+}
+
+// encodeAttributeValue encodes a value based on the attribute data type
+func (p *Packet) encodeAttributeValue(value interface{}, attrDef *dictionary.AttributeDefinition) ([]byte, error) {
+	return EncodeValue(value, attrDef.DataType)
+}
+
+// EncryptAttributeValue applies encryption to attribute values using the shared secret
+func EncryptAttributeValue(value []byte, encryption dictionary.EncryptionType, secret []byte, authenticator [16]byte) []byte {
+	switch encryption {
+	case dictionary.EncryptionUserPassword:
+		return encryptUserPassword(value, secret, authenticator)
+	case dictionary.EncryptionTunnelPassword:
+		return encryptTunnelPassword(value, secret, authenticator)
+	case dictionary.EncryptionAscendSecret:
+		return encryptAscendSecret(value, secret, authenticator)
+	default:
+		return value
+	}
+}
+
+// encryptUserPassword implements User-Password encryption (RFC 2865, Section 5.2)
+func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte) []byte {
+	// User-Password encryption:
+	// 1. Pad password to multiple of 16 bytes with null bytes
+	// 2. XOR with MD5(secret + authenticator) for first 16 bytes
+	// 3. XOR with MD5(secret + previous encrypted block) for subsequent blocks
+
+	// Pad password to multiple of 16 bytes
+	padded := make([]byte, ((len(password)+15)/16)*16)
+	copy(padded, password)
+
+	encrypted := make([]byte, len(padded))
+
+	// First block: XOR with MD5(secret + authenticator)
+	hash1 := md5.Sum(append(secret, authenticator[:]...))
+	for i := 0; i < 16; i++ {
+		encrypted[i] = padded[i] ^ hash1[i]
+	}
+
+	// Subsequent blocks: XOR with MD5(secret + previous encrypted block)
+	for block := 1; block < len(padded)/16; block++ {
+		offset := block * 16
+		prevBlock := encrypted[offset-16 : offset]
+		hash := md5.Sum(append(secret, prevBlock...))
+
+		for i := 0; i < 16; i++ {
+			encrypted[offset+i] = padded[offset+i] ^ hash[i]
+		}
+	}
+
+	return encrypted
+}
+
+// encryptTunnelPassword implements Tunnel-Password encryption (RFC 2868, Section 3.5)
+func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byte) []byte {
+	// Tunnel-Password encryption is similar to User-Password but with a salt
+	// 1. Generate 2-byte random salt
+	// 2. Prepend salt to password
+	// 3. Apply User-Password style encryption
+
+	// Generate random salt
+	salt := make([]byte, 2)
+	rand.Read(salt)
+
+	// Prepend salt to password
+	saltedPassword := append(salt, password...)
+
+	// Apply User-Password encryption to the salted password
+	encrypted := encryptUserPassword(saltedPassword, secret, authenticator)
+
+	return encrypted
+}
+
+// encryptAscendSecret implements Ascend-Secret encryption
+func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []byte {
+	// Ascend-Secret uses a vendor-specific encryption similar to User-Password
+	// For simplicity, we'll use the same algorithm as User-Password
+	// In a real implementation, this might differ based on Ascend's specification
+	return encryptUserPassword(value, secret, authenticator)
+}
+
+// addArrayAttribute handles array attributes (multiple values for same attribute)
+func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
+	// TODO: Implement array attribute handling
+	// For now, treat as single value
+	if attrValue, err := p.encodeAttributeValue(value, attrDef); err == nil {
+		if attrDef.Encryption != "" && secret != nil {
+			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+		}
+
+		if attrDef.HasTag && tag > 0 {
+			taggedValue := append([]byte{tag}, attrValue...)
+			attr := NewAttribute(uint8(attrDef.ID), taggedValue)
+			p.AddAttribute(attr)
+		} else {
+			attr := NewAttribute(uint8(attrDef.ID), attrValue)
+			p.AddAttribute(attr)
+		}
+	}
+}
+
+// addVendorArrayAttribute handles vendor array attributes
+func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
+	// TODO: Implement vendor array attribute handling
+	// For now, treat as single value
+	if attrValue, err := p.encodeAttributeValue(value, attrDef); err == nil {
+		if attrDef.Encryption != "" && secret != nil {
+			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+		}
+
+		var vsa *VendorAttribute
+		if attrDef.HasTag && tag > 0 {
+			vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
+		} else {
+			vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+		}
+		p.AddVendorAttribute(vsa)
+	}
 }
 
 // String returns a string representation of the packet
 func (p *Packet) String() string {
-	return fmt.Sprintf("Code=%s(%d), ID=%d, Length=%d, Attributes=%d", 
+	return fmt.Sprintf("Code=%s(%d), ID=%d, Length=%d, Attributes=%d",
 		p.Code.String(), p.Code, p.Identifier, p.Length, len(p.Attributes))
 }

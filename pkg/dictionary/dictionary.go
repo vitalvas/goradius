@@ -9,7 +9,7 @@ type Dictionary struct {
 	// Fast lookup maps for standard attributes
 	standardByID   map[uint32]*AttributeDefinition
 	standardByName map[string]*AttributeDefinition
-	
+
 	// Fast lookup maps for vendor attributes
 	// vendorByID maps vendor ID to vendor definition
 	vendorByID map[uint32]*VendorDefinition
@@ -41,12 +41,12 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) {
 // AddVendor adds a vendor and its attributes to the dictionary
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) {
 	d.vendorByID[vendor.ID] = vendor
-	
+
 	for _, attr := range vendor.Attributes {
 		// Create composite keys for fast lookup
 		idKey := fmt.Sprintf("%d:%d", vendor.ID, attr.ID)
 		nameKey := fmt.Sprintf("%s:%s", vendor.Name, attr.Name)
-		
+
 		d.vendorAttrByID[idKey] = attr
 		d.vendorAttrByName[nameKey] = attr
 	}
@@ -82,4 +82,13 @@ func (d *Dictionary) LookupVendorAttributeByName(vendorName, attrName string) (*
 	key := fmt.Sprintf("%s:%s", vendorName, attrName)
 	attr, exists := d.vendorAttrByName[key]
 	return attr, exists
+}
+
+// GetAllVendors returns all vendors in the dictionary
+func (d *Dictionary) GetAllVendors() []*VendorDefinition {
+	vendors := make([]*VendorDefinition, 0, len(d.vendorByID))
+	for _, vendor := range d.vendorByID {
+		vendors = append(vendors, vendor)
+	}
+	return vendors
 }

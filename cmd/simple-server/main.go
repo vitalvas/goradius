@@ -29,16 +29,7 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 
 	resp := server.NewResponse(req)
 
-	attrs := map[string]interface{}{
-		"Reply-Message":          "Hello, RADIUS client!",
-		"ERX-Service-Activate:1": "ipoe-parking",
-		"ERX-Service-Activate:3": "svc-ipoe-policer(52428800, 52428800)",
-	}
-
-	resp.SetAttributes(attrs)
-
-	resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat")
-
+	// Set appropriate response code based on request type
 	switch req.Packet.Code {
 	case packet.CodeAccessRequest:
 		resp.SetCode(packet.CodeAccessAccept)
@@ -46,6 +37,20 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 		resp.SetCode(packet.CodeAccountingResponse)
 	}
 
+	attrs := map[string]interface{}{
+		"Reply-Message":           "Hello, RADIUS client!",
+		"ERX-Service-Activate:1":  "ipoe-parking",
+		"ERX-Service-Activate:3":  "svc-ipoe-policer(52428800, 52428800)",
+		"ERX-Primary-Dns":         "8.8.8.8",
+		"ERX-Ingress-Policy-Name": "svc-ipoe-filter",
+		"Framed-IP-Address":       "192.0.2.11",
+	}
+
+	resp.SetAttributes(attrs)
+	resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat")
+	// resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat-v2")
+
+	// expected response SetAttributes + SetAttribute
 	return resp, nil
 }
 
@@ -53,6 +58,7 @@ func main() {
 	// Create dictionary with standard RFC definitions
 	dict := dictionary.New()
 	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	dict.AddVendor(dictionaries.ERXVendorDefinition)
 
 	srv, err := server.New(":1812", &simpleHandler{}, dict)
 	if err != nil {
