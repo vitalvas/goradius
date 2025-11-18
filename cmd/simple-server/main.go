@@ -33,6 +33,17 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 		fmt.Println("Request attributes:", attrList)
 	}
 
+	// Example: Get specific attributes
+	if userValues := req.Packet.GetAttribute("User-Name"); len(userValues) > 0 {
+		username := packet.DecodeString(userValues[0].Value)
+		fmt.Printf("Username: %s\n", username)
+	}
+
+	if nasIPValues := req.Packet.GetAttribute("NAS-IP-Address"); len(nasIPValues) > 0 {
+		nasIP, _ := packet.DecodeIPAddr(nasIPValues[0].Value)
+		fmt.Printf("NAS IP: %s\n", nasIP)
+	}
+
 	resp := server.NewResponse(req)
 
 	// Set appropriate response code based on request type

@@ -97,7 +97,9 @@ req.AddAttribute(taggedAttr)
 
 ```go
 // Get first attribute of a type
-attr, found := req.GetAttribute(1) // User-Name
+attrs := req.GetAttributes(1)
+if len(attrs) > 0 {
+    attr := attrs[0] // User-Name
 if found {
     username := packet.DecodeString(attr.Value)
     fmt.Printf("Username: %s\n", username)
@@ -274,7 +276,9 @@ for _, va := range vas {
 }
 
 // Parse VSA from Type 26 attribute
-attr, found := req.GetAttribute(26) // Vendor-Specific
+attrs := req.GetAttributes(26)
+if len(attrs) > 0 {
+    attr := attrs[0] // Vendor-Specific
 if found {
     va, err := packet.ParseVSA(attr)
     if err == nil {

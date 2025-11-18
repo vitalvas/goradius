@@ -187,7 +187,9 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
     }
 
     // Get username
-    usernameAttr, found := req.Packet.GetAttribute(1) // User-Name
+    usernameAttrs := req.Packet.GetAttributes(1)
+if len(usernameAttrs) > 0 {
+    usernameAttr := usernameAttrs[0] // User-Name
     if !found {
         resp.SetCode(packet.CodeAccessReject)
         resp.SetAttribute("Reply-Message", "Username required")
@@ -251,7 +253,9 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 
 func handleAccountingStart(req *server.Request) {
     // Get session ID
-    sessionAttr, _ := req.Packet.GetAttribute(44) // Acct-Session-ID
+    sessionAttrs := req.Packet.GetAttributes(44)
+if len(sessionAttrs) > 0 {
+    sessionAttr := sessionAttrs[0] // Acct-Session-ID
     sessionID := string(sessionAttr.Value)
 
     // Store session start

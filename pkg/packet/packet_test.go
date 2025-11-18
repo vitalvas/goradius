@@ -50,12 +50,12 @@ func TestPacketGetAttribute(t *testing.T) {
 	attr := NewAttribute(1, []byte("testuser"))
 	pkt.AddAttribute(attr)
 
-	found, ok := pkt.GetAttribute(1)
-	assert.True(t, ok)
-	assert.Equal(t, []byte("testuser"), found.Value)
+	attrs := pkt.GetAttributes(1)
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, []byte("testuser"), attrs[0].Value)
 
-	_, ok = pkt.GetAttribute(99)
-	assert.False(t, ok)
+	attrs = pkt.GetAttributes(99)
+	assert.Empty(t, attrs)
 }
 
 func TestPacketGetAttributes(t *testing.T) {
@@ -226,13 +226,13 @@ func TestPacketWithDictionary(t *testing.T) {
 
 	assert.Len(t, pkt.Attributes, 2)
 
-	userAttr, ok := pkt.GetAttribute(1)
-	assert.True(t, ok)
-	assert.Equal(t, []byte("testuser"), userAttr.Value)
+	userAttrs := pkt.GetAttributes(1)
+	assert.Len(t, userAttrs, 1)
+	assert.Equal(t, []byte("testuser"), userAttrs[0].Value)
 
-	ipAttr, ok := pkt.GetAttribute(8)
-	assert.True(t, ok)
-	ip, err := DecodeIPAddr(ipAttr.Value)
+	ipAttrs := pkt.GetAttributes(8)
+	assert.Len(t, ipAttrs, 1)
+	ip, err := DecodeIPAddr(ipAttrs[0].Value)
 	assert.NoError(t, err)
 	assert.Equal(t, "192.0.2.10", ip.String())
 }
@@ -406,7 +406,7 @@ func TestPacketListAttributes(t *testing.T) {
 		ID:   4874,
 		Name: "ERX",
 		Attributes: []*dictionary.AttributeDefinition{
-			{ID: 13, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
+			{ID: 4, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
 			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: dictionary.DataTypeString},
 		},
 	})
@@ -445,7 +445,7 @@ func TestPacketListAttributes(t *testing.T) {
 	t.Run("with dictionary - vendor attributes", func(t *testing.T) {
 		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
 		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
-		pkt.AddVendorAttribute(NewVendorAttribute(4874, 13, []byte{8, 8, 8, 8}))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
 		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb:cc:dd:ee:ff")))
 
 		result := pkt.ListAttributes()
@@ -471,7 +471,7 @@ func TestPacketListAttributes(t *testing.T) {
 	t.Run("with dictionary - unknown vendor attributes skipped", func(t *testing.T) {
 		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
 		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
-		pkt.AddVendorAttribute(NewVendorAttribute(4874, 13, []byte{8, 8, 8, 8}))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
 		pkt.AddVendorAttribute(NewVendorAttribute(9999, 1, []byte("unknown vendor")))
 
 		result := pkt.ListAttributes()
@@ -485,5 +485,120 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Empty(t, result)
+	})
+}
+
+func TestPacketGetAttributeByName(t *testing.T) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},
+		{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr},
+		{ID: 27, Name: "Session-Timeout", DataType: dictionary.DataTypeInteger},
+	})
+	dict.AddVendor(&dictionary.VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*dictionary.AttributeDefinition{
+			{ID: 4, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
+			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: dictionary.DataTypeString},
+		},
+	})
+
+	t.Run("no dictionary", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		result := pkt.GetAttribute("User-Name")
+		assert.Empty(t, result)
+	})
+
+	t.Run("standard attribute - single value", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		values := pkt.GetAttribute("User-Name")
+		assert.Len(t, values, 1)
+		assert.Equal(t, "User-Name", values[0].Name)
+		assert.Equal(t, uint8(1), values[0].Type)
+		assert.Equal(t, dictionary.DataTypeString, values[0].DataType)
+		assert.Equal(t, []byte("testuser"), values[0].Value)
+		assert.False(t, values[0].IsVSA)
+	})
+
+	t.Run("standard attribute - multiple values", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("user1")))
+		pkt.AddAttribute(NewAttribute(1, []byte("user2")))
+		pkt.AddAttribute(NewAttribute(1, []byte("user3")))
+
+		values := pkt.GetAttribute("User-Name")
+		assert.Len(t, values, 3)
+		assert.Equal(t, []byte("user1"), values[0].Value)
+		assert.Equal(t, []byte("user2"), values[1].Value)
+		assert.Equal(t, []byte("user3"), values[2].Value)
+	})
+
+	t.Run("VSA attribute - single value", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
+
+		values := pkt.GetAttribute("ERX-Primary-Dns")
+		assert.Len(t, values, 1)
+		assert.Equal(t, "ERX-Primary-Dns", values[0].Name)
+		assert.Equal(t, uint8(26), values[0].Type)
+		assert.Equal(t, dictionary.DataTypeIPAddr, values[0].DataType)
+		assert.Equal(t, []byte{192, 0, 2, 1}, values[0].Value)
+		assert.True(t, values[0].IsVSA)
+		assert.Equal(t, uint32(4874), values[0].VendorID)
+		assert.Equal(t, uint8(4), values[0].VendorType)
+	})
+
+	t.Run("VSA attribute - multiple values", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb:cc:dd:ee:ff")))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("11:22:33:44:55:66")))
+
+		values := pkt.GetAttribute("ERX-Dhcp-Mac-Addr")
+		assert.Len(t, values, 2)
+		assert.Equal(t, []byte("aa:bb:cc:dd:ee:ff"), values[0].Value)
+		assert.Equal(t, []byte("11:22:33:44:55:66"), values[1].Value)
+		assert.True(t, values[0].IsVSA)
+		assert.True(t, values[1].IsVSA)
+	})
+
+	t.Run("attribute not found", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		values := pkt.GetAttribute("NonExistent")
+		assert.Empty(t, values)
+	})
+
+	t.Run("attribute not in dictionary", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(99, []byte("unknown")))
+
+		values := pkt.GetAttribute("Unknown-Attribute")
+		assert.Empty(t, values)
+	})
+
+	t.Run("mixed attributes", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
+
+		userValues := pkt.GetAttribute("User-Name")
+		assert.Len(t, userValues, 1)
+		assert.Equal(t, "User-Name", userValues[0].Name)
+
+		nasValues := pkt.GetAttribute("NAS-IP-Address")
+		assert.Len(t, nasValues, 1)
+		assert.Equal(t, "NAS-IP-Address", nasValues[0].Name)
+
+		dnsValues := pkt.GetAttribute("ERX-Primary-Dns")
+		assert.Len(t, dnsValues, 1)
+		assert.Equal(t, "ERX-Primary-Dns", dnsValues[0].Name)
+		assert.True(t, dnsValues[0].IsVSA)
 	})
 }

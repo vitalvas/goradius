@@ -91,9 +91,9 @@ func TestResponseSetAttribute(t *testing.T) {
 
 	assert.Len(t, resp.Packet.Attributes, 1)
 
-	attr, found := resp.Packet.GetAttribute(18) // Reply-Message
-	assert.True(t, found)
-	assert.Equal(t, []byte("Welcome!"), attr.Value)
+	attrs := resp.Packet.GetAttributes(18) // Reply-Message
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, []byte("Welcome!"), attrs[0].Value)
 }
 
 func TestResponseSetAttributes(t *testing.T) {

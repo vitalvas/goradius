@@ -46,6 +46,15 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 - Tagged attribute handling
 - Password encryption/decryption
 
+## Definition of Done (SDK Goals)
+
+GoRADIUS targets developers who need to ship RADIUS integrations without becoming protocol experts. The library is considered “done” when it delivers a batteries-included SDK for both server and client use cases with the following traits:
+
+- **High-level server workflow**: Handlers receive already-parsed attribute sets, apply business rules, and send attributes back via a fluent response builder. Low-level details such as packet encoding, authenticators, retries, and dictionary lookups stay inside the library.
+- **High-level client workflow**: Callers describe the attributes they want to send (e.g., Access-Request, Accounting-Request) and receive parsed attributes in return. Session management, retransmissions, and message authentication are handled automatically, so client code resembles `send attributes → wait for attributes`.
+- **Protocol expertise optional**: Exhaustive dictionaries, sane defaults, guardrails, and validation should make it possible to build a RADIUS client or server while only thinking about the business domain (authorize a user, record accounting data, etc.).
+- **Composable SDK building blocks**: Helpers, middleware hooks, and extensibility points should allow mixing low-level and high-level APIs as needed without leaking protocol complexity into business logic.
+
 ## Architecture
 
 ```mermaid

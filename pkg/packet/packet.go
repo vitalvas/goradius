@@ -20,6 +20,17 @@ type Packet struct {
 	Dict          *dictionary.Dictionary // Optional dictionary for attribute lookups
 }
 
+// AttributeValue contains a single attribute value with type information
+type AttributeValue struct {
+	Name       string              // Attribute name from dictionary
+	Type       uint8               // Attribute type ID (26 for VSA)
+	DataType   dictionary.DataType // Data type (string, integer, ipaddr, etc.)
+	Value      []byte              // Raw value bytes
+	IsVSA      bool                // True if this is a vendor-specific attribute
+	VendorID   uint32              // Vendor ID (only for VSA)
+	VendorType uint8               // Vendor attribute type (only for VSA)
+}
+
 // New creates a new RADIUS packet with the specified code and identifier
 func New(code Code, identifier uint8) *Packet {
 	return &Packet{
@@ -47,16 +58,6 @@ func (p *Packet) AddAttribute(attr *Attribute) {
 func (p *Packet) AddVendorAttribute(va *VendorAttribute) {
 	attr := va.ToVSA()
 	p.AddAttribute(attr)
-}
-
-// GetAttribute returns the first attribute with the specified type
-func (p *Packet) GetAttribute(attrType uint8) (*Attribute, bool) {
-	for _, attr := range p.Attributes {
-		if attr.Type == attrType {
-			return attr, true
-		}
-	}
-	return nil, false
 }
 
 // GetAttributes returns all attributes with the specified type
@@ -531,6 +532,63 @@ func (p *Packet) ListAttributes() []string {
 	}
 
 	return result
+}
+
+// GetAttribute returns all values for the given attribute name.
+// Works for both standard and VSA attributes.
+// Returns empty slice if dictionary is nil or attribute not found.
+func (p *Packet) GetAttribute(name string) []AttributeValue {
+	if p.Dict == nil {
+		return []AttributeValue{}
+	}
+
+	var result []AttributeValue
+
+	// Try to find as standard attribute
+	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		for _, attr := range p.Attributes {
+			if attr.Type == uint8(attrDef.ID) {
+				result = append(result, AttributeValue{
+					Name:     attrDef.Name,
+					Type:     attr.Type,
+					DataType: attrDef.DataType,
+					Value:    attr.GetValue(),
+					IsVSA:    false,
+				})
+			}
+		}
+		return result
+	}
+
+	// Try to find as vendor attribute
+	vendors := p.Dict.GetAllVendors()
+	for _, vendor := range vendors {
+		if attrDef, exists := p.Dict.LookupVendorAttributeByName(vendor.Name, name); exists {
+			for _, attr := range p.Attributes {
+				if attr.Type == 26 {
+					va, err := ParseVSA(attr)
+					if err != nil {
+						continue
+					}
+
+					if va.VendorID == vendor.ID && va.VendorType == uint8(attrDef.ID) {
+						result = append(result, AttributeValue{
+							Name:       attrDef.Name,
+							Type:       attr.Type,
+							DataType:   attrDef.DataType,
+							Value:      va.GetValue(),
+							IsVSA:      true,
+							VendorID:   va.VendorID,
+							VendorType: va.VendorType,
+						})
+					}
+				}
+			}
+			return result
+		}
+	}
+
+	return []AttributeValue{}
 }
 
 // String returns a string representation of the packet
