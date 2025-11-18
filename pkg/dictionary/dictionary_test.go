@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
@@ -38,7 +39,7 @@ func TestAddStandardAttributes(t *testing.T) {
 		},
 	}
 
-	dict.AddStandardAttributes(attrs)
+	require.NoError(t, dict.AddStandardAttributes(attrs))
 
 	// Verify lookup by ID
 	attr, exists := dict.LookupStandardByID(1)
@@ -121,7 +122,7 @@ func TestAddVendor(t *testing.T) {
 		},
 	}
 
-	dict.AddVendor(vendor)
+	require.NoError(t, dict.AddVendor(vendor))
 
 	// Verify vendor lookup
 	v, exists := dict.LookupVendorByID(4874)
@@ -227,9 +228,9 @@ func TestLookupVendorAttributeByName(t *testing.T) {
 func TestGetAllVendors(t *testing.T) {
 	dict := New()
 
-	dict.AddVendor(&VendorDefinition{ID: 4874, Name: "ERX"})
-	dict.AddVendor(&VendorDefinition{ID: 9, Name: "Cisco"})
-	dict.AddVendor(&VendorDefinition{ID: 529, Name: "Ascend"})
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 4874, Name: "ERX"}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 9, Name: "Cisco"}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 529, Name: "Ascend"}))
 
 	vendors := dict.GetAllVendors()
 	assert.Len(t, vendors, 3)
@@ -351,4 +352,96 @@ func TestEmptyDictionary(t *testing.T) {
 
 	vendors := dict.GetAllVendors()
 	assert.Empty(t, vendors)
+}
+
+func TestDuplicateStandardAttributeName(t *testing.T) {
+	dict := New()
+
+	// Add initial standard attributes
+	attrs1 := []*AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		{ID: 2, Name: "User-Password", DataType: DataTypeString},
+	}
+	require.NoError(t, dict.AddStandardAttributes(attrs1))
+
+	// Try to add duplicate standard attribute name
+	attrs2 := []*AttributeDefinition{
+		{ID: 3, Name: "User-Name", DataType: DataTypeString}, // Duplicate!
+	}
+	err := dict.AddStandardAttributes(attrs2)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate attribute name")
+	assert.Contains(t, err.Error(), "User-Name")
+}
+
+func TestStandardAttributeConflictsWithVendorAttribute(t *testing.T) {
+	dict := New()
+
+	// Add vendor with attribute first
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "Test-Attribute", DataType: DataTypeString},
+		},
+	}))
+
+	// Try to add standard attribute with same name
+	attrs := []*AttributeDefinition{
+		{ID: 1, Name: "Test-Attribute", DataType: DataTypeString}, // Conflicts with ERX!
+	}
+	err := dict.AddStandardAttributes(attrs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate attribute name")
+	assert.Contains(t, err.Error(), "Test-Attribute")
+	assert.Contains(t, err.Error(), "vendor ERX")
+}
+
+func TestDuplicateVendorAttributeName(t *testing.T) {
+	dict := New()
+
+	// Add first vendor
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "Shared-Attribute", DataType: DataTypeString},
+		},
+	}))
+
+	// Try to add second vendor with same attribute name
+	err := dict.AddVendor(&VendorDefinition{
+		ID:   9,
+		Name: "Cisco",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "Shared-Attribute", DataType: DataTypeString}, // Duplicate!
+		},
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate attribute name")
+	assert.Contains(t, err.Error(), "Shared-Attribute")
+	assert.Contains(t, err.Error(), "vendor ERX")
+}
+
+func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
+	dict := New()
+
+	// Add standard attribute first
+	attrs := []*AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+	}
+	require.NoError(t, dict.AddStandardAttributes(attrs))
+
+	// Try to add vendor attribute with same name
+	err := dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "User-Name", DataType: DataTypeString}, // Conflicts with standard!
+		},
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate attribute name")
+	assert.Contains(t, err.Error(), "User-Name")
+	assert.Contains(t, err.Error(), "standard attribute")
 }

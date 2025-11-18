@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
 
@@ -297,11 +298,11 @@ func TestDictionaryIntegration(t *testing.T) {
 	// Test that dictionaries can be loaded into a dictionary
 	dict := dictionary.New()
 
-	dict.AddStandardAttributes(StandardRFCAttributes)
-	dict.AddVendor(ERXVendorDefinition)
-	dict.AddVendor(AscendVendorDefinition)
-	dict.AddVendor(WISPrVendorDefinition)
-	dict.AddVendor(MikrotikVendorDefinition)
+	require.NoError(t, dict.AddStandardAttributes(StandardRFCAttributes))
+	require.NoError(t, dict.AddVendor(ERXVendorDefinition))
+	require.NoError(t, dict.AddVendor(AscendVendorDefinition))
+	require.NoError(t, dict.AddVendor(WISPrVendorDefinition))
+	require.NoError(t, dict.AddVendor(MikrotikVendorDefinition))
 
 	// Test standard attribute lookup
 	_, exists := dict.LookupStandardByName("User-Name")
@@ -332,7 +333,8 @@ func TestDictionaryIntegration(t *testing.T) {
 }
 
 func TestNewDefault(t *testing.T) {
-	dict := NewDefault()
+	dict, err := NewDefault()
+	require.NoError(t, err)
 	assert.NotNil(t, dict)
 
 	// Verify standard attributes are loaded
@@ -378,3 +380,15 @@ func TestNewDefault(t *testing.T) {
 	assert.Equal(t, uint32(8), framedIPAttr.ID)
 }
 
+
+func TestNewDefaultReturnsError(t *testing.T) {
+	// This test verifies that NewDefault returns an error instead of panicking
+	// In the current implementation, there should be no duplicates, so it should succeed
+	dict, err := NewDefault()
+	require.NoError(t, err, "NewDefault should not return error with valid dictionary definitions")
+	require.NotNil(t, dict, "Dictionary should not be nil on success")
+	
+	// Verify the dictionary is properly loaded
+	vendors := dict.GetAllVendors()
+	require.Greater(t, len(vendors), 0, "Dictionary should have vendors loaded")
+}

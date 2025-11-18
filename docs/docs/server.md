@@ -54,7 +54,10 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 
 func main() {
     // Create dictionary with standard attributes and common vendors
-    dict := dictionaries.NewDefault()
+    dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Create and start server
     srv, err := server.New(":1812", &myHandler{}, dict)

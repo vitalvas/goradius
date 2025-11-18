@@ -75,7 +75,10 @@ import (
 )
 
 // Create packet with dictionary
-dict := dictionaries.NewDefault()
+dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 
 // Add attributes by name - type-safe and automatic encoding
@@ -186,7 +189,10 @@ const (
 
 ```go
 // Create packet with dictionary
-dict := dictionaries.NewDefault()
+dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 
 // User credentials - use attribute names instead of IDs
@@ -269,7 +275,10 @@ for _, name := range attrNames {
 
 ```go
 // Create packet with dictionary
-dict := dictionaries.NewDefault()
+dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 
 // Add attributes using dictionary API
@@ -300,7 +309,10 @@ if err != nil {
 }
 
 // Attach dictionary for high-level attribute access
-dict := dictionaries.NewDefault()
+dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 pkt.Dict = dict
 
 // Now you can use dictionary API

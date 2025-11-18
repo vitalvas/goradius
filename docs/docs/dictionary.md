@@ -262,7 +262,10 @@ The simplest way to get started is using the default dictionary with all standar
 import "github.com/vitalvas/goradius/pkg/dictionaries"
 
 // Create dictionary with standard RFC attributes and common vendors (ERX, Ascend)
-dict := dictionaries.NewDefault()
+dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 
 // Ready to use!
 pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
@@ -303,7 +306,10 @@ import (
 
 func main() {
     // Create dictionary with all standard attributes and common vendors
-    dict := dictionaries.NewDefault()
+    dict, err := dictionaries.NewDefault()
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Create packet with dictionary
     req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)

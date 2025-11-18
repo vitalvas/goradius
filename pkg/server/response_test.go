@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/dictionaries"
 	"github.com/vitalvas/goradius/pkg/packet"
@@ -44,7 +45,7 @@ func TestNewResponse(t *testing.T) {
 
 func TestNewResponseWithDictionary(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
@@ -78,7 +79,7 @@ func TestResponseSetCode(t *testing.T) {
 
 func TestResponseSetAttribute(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
@@ -98,8 +99,8 @@ func TestResponseSetAttribute(t *testing.T) {
 
 func TestResponseSetAttributes(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-	dict.AddVendor(dictionaries.ERXVendorDefinition)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+	require.NoError(t, dict.AddVendor(dictionaries.ERXVendorDefinition))
 
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
@@ -147,7 +148,7 @@ func TestResponseSetAttributesNilPacket(_ *testing.T) {
 
 func TestResponseMultipleAttributes(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
@@ -168,7 +169,7 @@ func TestResponseMultipleAttributes(t *testing.T) {
 
 func TestResponseFullWorkflow(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	// Create request
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 42, dict)

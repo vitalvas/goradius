@@ -112,7 +112,7 @@ func TestServerServeStop(t *testing.T) {
 
 func TestServerHandlePacket(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	handler := &testHandler{
 		secretResp: SecretResponse{Secret: []byte("testing123")},
@@ -174,7 +174,7 @@ func TestServerHandlePacket(t *testing.T) {
 
 func TestServerWithDictionary(t *testing.T) {
 	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
 
 	handler := &testHandler{
 		secretResp: SecretResponse{Secret: []byte("testing123")},

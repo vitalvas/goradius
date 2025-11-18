@@ -738,7 +738,7 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 	}
 
 	dict := dictionary.New()
-	dict.AddVendor(vendor)
+	require.NoError(t, dict.AddVendor(vendor))
 
 	pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
 
