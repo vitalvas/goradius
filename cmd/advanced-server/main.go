@@ -26,17 +26,17 @@ func (h *advancedHandler) ServeSecret(req server.SecretRequest) (server.SecretRe
 }
 
 func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-	fmt.Printf("[Handler] Processing %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
+	fmt.Printf("[Handler] Processing %s from %s\n", req.Code().String(), req.RemoteAddr)
 
 	// Get user information
-	if userValues := req.Packet.GetAttribute("User-Name"); len(userValues) > 0 {
+	if userValues := req.GetAttribute("User-Name"); len(userValues) > 0 {
 		fmt.Printf("[Handler] User: %s\n", userValues[0].String())
 	}
 
 	resp := server.NewResponse(req)
 
 	// Set appropriate response code based on request type
-	switch req.Packet.Code {
+	switch req.Code() {
 	case packet.CodeAccessRequest:
 		resp.SetCode(packet.CodeAccessAccept)
 	case packet.CodeAccountingRequest:
@@ -61,7 +61,7 @@ func loggingMiddleware(next server.Handler) server.Handler {
 		start := time.Now()
 
 		fmt.Printf("[Middleware:Logging] >>> Request started: %s from %s\n",
-			req.Packet.Code.String(), req.RemoteAddr)
+			req.Code().String(), req.RemoteAddr)
 
 		resp, err := next.ServeRADIUS(req)
 
@@ -80,13 +80,13 @@ func loggingMiddleware(next server.Handler) server.Handler {
 // Attribute listing middleware
 func attributeListMiddleware(next server.Handler) server.Handler {
 	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
-		attrs := req.Packet.ListAttributes()
+		attrs := req.ListAttributes()
 		if len(attrs) > 0 {
 			fmt.Printf("[Middleware:Attributes] Request contains: %v\n", attrs)
 
 			// Print detailed attribute values
 			for _, attrName := range attrs {
-				values := req.Packet.GetAttribute(attrName)
+				values := req.GetAttribute(attrName)
 				for i, val := range values {
 					fmt.Printf("[Middleware:Attributes]   %s[%d] = %s (type: %s)\n",
 						attrName, i, val.String(), val.DataType)
@@ -102,8 +102,8 @@ func attributeListMiddleware(next server.Handler) server.Handler {
 func validationMiddleware(next server.Handler) server.Handler {
 	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
 		// Validate User-Name is present for Access-Request
-		if req.Packet.Code == packet.CodeAccessRequest {
-			userValues := req.Packet.GetAttribute("User-Name")
+		if req.Code() == packet.CodeAccessRequest {
+			userValues := req.GetAttribute("User-Name")
 			if len(userValues) == 0 {
 				fmt.Println("[Middleware:Validation] ERROR: User-Name is required")
 				// Return Access-Reject

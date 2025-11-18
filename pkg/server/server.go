@@ -109,7 +109,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		Context:    ctx,
 		LocalAddr:  s.conn.LocalAddr(),
 		RemoteAddr: clientAddr,
-		Packet:     pkt,
+		packet:     pkt,
 		Secret:     secretResp,
 	}
 

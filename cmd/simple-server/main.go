@@ -25,27 +25,27 @@ func (h *simpleHandler) ServeSecret(req server.SecretRequest) (server.SecretResp
 }
 
 func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-	fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
+	fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
 	// List all attributes in the request
-	attrList := req.Packet.ListAttributes()
+	attrList := req.ListAttributes()
 	if len(attrList) > 0 {
 		fmt.Println("Request attributes:", attrList)
 	}
 
 	// Example: Get specific attributes
-	if userValues := req.Packet.GetAttribute("User-Name"); len(userValues) > 0 {
+	if userValues := req.GetAttribute("User-Name"); len(userValues) > 0 {
 		fmt.Printf("Username: %s\n", userValues[0].String())
 	}
 
-	if nasIPValues := req.Packet.GetAttribute("NAS-IP-Address"); len(nasIPValues) > 0 {
+	if nasIPValues := req.GetAttribute("NAS-IP-Address"); len(nasIPValues) > 0 {
 		fmt.Printf("NAS IP: %s\n", nasIPValues[0].String())
 	}
 
 	resp := server.NewResponse(req)
 
 	// Set appropriate response code based on request type
-	switch req.Packet.Code {
+	switch req.Code() {
 	case packet.CodeAccessRequest:
 		resp.SetCode(packet.CodeAccessAccept)
 	case packet.CodeAccountingRequest:

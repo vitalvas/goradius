@@ -30,7 +30,7 @@ func TestNewResponse(t *testing.T) {
 				Context:    context.Background(),
 				LocalAddr:  &net.UDPAddr{},
 				RemoteAddr: &net.UDPAddr{},
-				Packet:     reqPkt,
+				packet:     reqPkt,
 			}
 
 			resp := NewResponse(req)
@@ -49,7 +49,7 @@ func TestNewResponseWithDictionary(t *testing.T) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
 		Context: context.Background(),
-		Packet:  reqPkt,
+		packet:  reqPkt,
 	}
 
 	resp := NewResponse(req)
@@ -63,7 +63,7 @@ func TestResponseSetCode(t *testing.T) {
 	reqPkt := packet.New(packet.CodeAccessRequest, 1)
 	req := &Request{
 		Context: context.Background(),
-		Packet:  reqPkt,
+		packet:  reqPkt,
 	}
 
 	resp := NewResponse(req)
@@ -83,7 +83,7 @@ func TestResponseSetAttribute(t *testing.T) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
 		Context: context.Background(),
-		Packet:  reqPkt,
+		packet:  reqPkt,
 	}
 
 	resp := NewResponse(req)
@@ -104,7 +104,7 @@ func TestResponseSetAttributes(t *testing.T) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
 		Context: context.Background(),
-		Packet:  reqPkt,
+		packet:  reqPkt,
 	}
 
 	resp := NewResponse(req)
@@ -152,7 +152,7 @@ func TestResponseMultipleAttributes(t *testing.T) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{
 		Context: context.Background(),
-		Packet:  reqPkt,
+		packet:  reqPkt,
 	}
 
 	resp := NewResponse(req)
@@ -176,7 +176,7 @@ func TestResponseFullWorkflow(t *testing.T) {
 		Context:    context.Background(),
 		LocalAddr:  &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812},
 		RemoteAddr: &net.UDPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 50000},
-		Packet:     reqPkt,
+		packet:     reqPkt,
 		Secret: SecretResponse{
 			Secret: []byte("testing123"),
 		},

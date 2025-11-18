@@ -8,7 +8,7 @@ import (
 func NewResponse(req *Request) Response {
 	// Set default response code based on request type
 	var responseCode packet.Code
-	switch req.Packet.Code {
+	switch req.packet.Code {
 	case packet.CodeAccessRequest:
 		responseCode = packet.CodeAccessReject
 	case packet.CodeAccountingRequest:
@@ -21,11 +21,11 @@ func NewResponse(req *Request) Response {
 		responseCode = packet.CodeAccessReject // fallback
 	}
 
-	pkt := packet.New(responseCode, req.Packet.Identifier)
+	pkt := packet.New(responseCode, req.packet.Identifier)
 
 	// Set dictionary from request packet
-	if req.Packet != nil && req.Packet.Dict != nil {
-		pkt.Dict = req.Packet.Dict
+	if req.packet != nil && req.packet.Dict != nil {
+		pkt.Dict = req.packet.Dict
 	}
 
 	return Response{

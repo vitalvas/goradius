@@ -11,8 +11,32 @@ type Request struct {
 	Context    context.Context
 	LocalAddr  net.Addr
 	RemoteAddr net.Addr
-	Packet     *packet.Packet
+	packet     *packet.Packet // private - use GetAttribute() and ListAttributes()
 	Secret     SecretResponse
+}
+
+// GetAttribute returns all values for the given attribute name
+func (r *Request) GetAttribute(name string) []packet.AttributeValue {
+	if r.packet == nil {
+		return []packet.AttributeValue{}
+	}
+	return r.packet.GetAttribute(name)
+}
+
+// ListAttributes returns a list of unique attribute names found in the request
+func (r *Request) ListAttributes() []string {
+	if r.packet == nil {
+		return []string{}
+	}
+	return r.packet.ListAttributes()
+}
+
+// Code returns the packet code
+func (r *Request) Code() packet.Code {
+	if r.packet == nil {
+		return 0
+	}
+	return r.packet.Code
 }
 
 type Response struct {
