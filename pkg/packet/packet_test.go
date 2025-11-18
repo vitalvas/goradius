@@ -602,3 +602,82 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		assert.True(t, dnsValues[0].IsVSA)
 	})
 }
+
+func TestAttributeValueString(t *testing.T) {
+	t.Run("string type", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeString,
+			Value:    []byte("testuser"),
+		}
+		assert.Equal(t, "testuser", av.String())
+	})
+
+	t.Run("integer type", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeInteger,
+			Value:    EncodeInteger(3600),
+		}
+		assert.Equal(t, "3600", av.String())
+	})
+
+	t.Run("ipaddr type", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeIPAddr,
+			Value:    []byte{192, 168, 1, 1},
+		}
+		assert.Equal(t, "192.168.1.1", av.String())
+	})
+
+	t.Run("ipv6addr type", func(t *testing.T) {
+		ip := net.ParseIP("2001:db8::1")
+		encoded, _ := EncodeIPv6Addr(ip)
+		av := AttributeValue{
+			DataType: dictionary.DataTypeIPv6Addr,
+			Value:    encoded,
+		}
+		assert.Equal(t, "2001:db8::1", av.String())
+	})
+
+	t.Run("date type", func(t *testing.T) {
+		now := time.Date(2024, 1, 15, 10, 30, 45, 0, time.UTC)
+		av := AttributeValue{
+			DataType: dictionary.DataTypeDate,
+			Value:    EncodeDate(now),
+		}
+		// DecodeDate returns local time, so convert expected time to local
+		expected := time.Unix(now.Unix(), 0).Format(time.RFC3339)
+		assert.Equal(t, expected, av.String())
+	})
+
+	t.Run("octets type", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeOctets,
+			Value:    []byte{0x1a, 0x2b, 0x3c, 0x4d},
+		}
+		assert.Equal(t, "0x1a2b3c4d", av.String())
+	})
+
+	t.Run("unknown type", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataType("unknown"),
+			Value:    []byte{0xaa, 0xbb, 0xcc},
+		}
+		assert.Equal(t, "0xaabbcc", av.String())
+	})
+
+	t.Run("invalid integer", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeInteger,
+			Value:    []byte{0x01}, // Invalid length for integer
+		}
+		assert.Equal(t, "0x01", av.String())
+	})
+
+	t.Run("invalid ipaddr", func(t *testing.T) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeIPAddr,
+			Value:    []byte{0x01, 0x02}, // Invalid length for IP
+		}
+		assert.Equal(t, "0x0102", av.String())
+	})
+}

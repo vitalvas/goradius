@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
@@ -29,6 +30,49 @@ type AttributeValue struct {
 	IsVSA      bool                // True if this is a vendor-specific attribute
 	VendorID   uint32              // Vendor ID (only for VSA)
 	VendorType uint8               // Vendor attribute type (only for VSA)
+}
+
+// String returns the attribute value as a string, decoded based on DataType
+func (av AttributeValue) String() string {
+	switch av.DataType {
+	case dictionary.DataTypeString:
+		return DecodeString(av.Value)
+
+	case dictionary.DataTypeInteger:
+		val, err := DecodeInteger(av.Value)
+		if err != nil {
+			return fmt.Sprintf("0x%x", av.Value)
+		}
+		return fmt.Sprintf("%d", val)
+
+	case dictionary.DataTypeIPAddr:
+		ip, err := DecodeIPAddr(av.Value)
+		if err != nil {
+			return fmt.Sprintf("0x%x", av.Value)
+		}
+		return ip.String()
+
+	case dictionary.DataTypeIPv6Addr:
+		ip, err := DecodeIPv6Addr(av.Value)
+		if err != nil {
+			return fmt.Sprintf("0x%x", av.Value)
+		}
+		return ip.String()
+
+	case dictionary.DataTypeDate:
+		t, err := DecodeDate(av.Value)
+		if err != nil {
+			return fmt.Sprintf("0x%x", av.Value)
+		}
+		return t.Format(time.RFC3339)
+
+	case dictionary.DataTypeOctets:
+		return fmt.Sprintf("0x%x", av.Value)
+
+	default:
+		// For unknown types, return hex representation
+		return fmt.Sprintf("0x%x", av.Value)
+	}
 }
 
 // New creates a new RADIUS packet with the specified code and identifier
