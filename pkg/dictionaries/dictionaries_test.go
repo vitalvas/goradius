@@ -92,6 +92,96 @@ func TestAscendVendorDefinition(t *testing.T) {
 	assert.Greater(t, len(AscendVendorDefinition.Attributes), 0)
 }
 
+func TestWISPrVendorDefinition(t *testing.T) {
+	assert.NotNil(t, WISPrVendorDefinition)
+	assert.Equal(t, uint32(14122), WISPrVendorDefinition.ID)
+	assert.Equal(t, "WISPr", WISPrVendorDefinition.Name)
+	assert.NotEmpty(t, WISPrVendorDefinition.Attributes)
+
+	// Check known WISPr attributes
+	attrMap := make(map[string]*dictionary.AttributeDefinition)
+	for _, attr := range WISPrVendorDefinition.Attributes {
+		attrMap[attr.Name] = attr
+	}
+
+	// Verify WISPr-Location-Id exists
+	locationID, exists := attrMap["WISPr-Location-Id"]
+	assert.True(t, exists, "WISPr-Location-Id should exist")
+	if exists {
+		assert.Equal(t, uint32(1), locationID.ID)
+		assert.Equal(t, dictionary.DataTypeString, locationID.DataType)
+	}
+
+	// Verify WISPr-Bandwidth-Min-Up exists
+	bandwidthMinUp, exists := attrMap["WISPr-Bandwidth-Min-Up"]
+	assert.True(t, exists, "WISPr-Bandwidth-Min-Up should exist")
+	if exists {
+		assert.Equal(t, uint32(5), bandwidthMinUp.ID)
+		assert.Equal(t, dictionary.DataTypeInteger, bandwidthMinUp.DataType)
+	}
+
+	// Verify all 9 attributes exist
+	assert.Len(t, WISPrVendorDefinition.Attributes, 9)
+}
+
+func TestMikrotikVendorDefinition(t *testing.T) {
+	assert.NotNil(t, MikrotikVendorDefinition)
+	assert.Equal(t, uint32(14988), MikrotikVendorDefinition.ID)
+	assert.Equal(t, "Mikrotik", MikrotikVendorDefinition.Name)
+	assert.NotEmpty(t, MikrotikVendorDefinition.Attributes)
+
+	// Check known Mikrotik attributes
+	attrMap := make(map[string]*dictionary.AttributeDefinition)
+	for _, attr := range MikrotikVendorDefinition.Attributes {
+		attrMap[attr.Name] = attr
+	}
+
+	// Verify Mikrotik-Recv-Limit exists
+	recvLimit, exists := attrMap["Mikrotik-Recv-Limit"]
+	assert.True(t, exists, "Mikrotik-Recv-Limit should exist")
+	if exists {
+		assert.Equal(t, uint32(1), recvLimit.ID)
+		assert.Equal(t, dictionary.DataTypeInteger, recvLimit.DataType)
+	}
+
+	// Verify Mikrotik-Group exists
+	group, exists := attrMap["Mikrotik-Group"]
+	assert.True(t, exists, "Mikrotik-Group should exist")
+	if exists {
+		assert.Equal(t, uint32(3), group.ID)
+		assert.Equal(t, dictionary.DataTypeString, group.DataType)
+	}
+
+	// Verify Mikrotik-Host-IP exists
+	hostIP, exists := attrMap["Mikrotik-Host-IP"]
+	assert.True(t, exists, "Mikrotik-Host-IP should exist")
+	if exists {
+		assert.Equal(t, uint32(10), hostIP.ID)
+		assert.Equal(t, dictionary.DataTypeIPAddr, hostIP.DataType)
+	}
+
+	// Verify Mikrotik-Wireless-Enc-Algo exists and has values
+	encAlgo, exists := attrMap["Mikrotik-Wireless-Enc-Algo"]
+	assert.True(t, exists, "Mikrotik-Wireless-Enc-Algo should exist")
+	if exists {
+		assert.Equal(t, uint32(6), encAlgo.ID)
+		assert.Equal(t, dictionary.DataTypeInteger, encAlgo.DataType)
+
+		// Verify values for Mikrotik-Wireless-Enc-Algo
+		assert.NotNil(t, encAlgo.Values, "Mikrotik-Wireless-Enc-Algo should have defined values")
+		if encAlgo.Values != nil {
+			assert.Equal(t, uint32(0), encAlgo.Values["No-encryption"])
+			assert.Equal(t, uint32(1), encAlgo.Values["40-bit-WEP"])
+			assert.Equal(t, uint32(2), encAlgo.Values["104-bit-WEP"])
+			assert.Equal(t, uint32(3), encAlgo.Values["AES-CCM"])
+			assert.Equal(t, uint32(4), encAlgo.Values["TKIP"])
+		}
+	}
+
+	// Verify all 29 attributes exist
+	assert.Len(t, MikrotikVendorDefinition.Attributes, 29)
+}
+
 func TestNoDuplicateStandardAttributeIDs(t *testing.T) {
 	seen := make(map[uint32]string)
 
@@ -136,6 +226,28 @@ func TestNoDuplicateAscendAttributeIDs(t *testing.T) {
 	}
 }
 
+func TestNoDuplicateWISPrAttributeIDs(t *testing.T) {
+	seen := make(map[uint32]string)
+
+	for _, attr := range WISPrVendorDefinition.Attributes {
+		if existing, exists := seen[attr.ID]; exists {
+			t.Errorf("Duplicate WISPr attribute ID %d: %s and %s", attr.ID, existing, attr.Name)
+		}
+		seen[attr.ID] = attr.Name
+	}
+}
+
+func TestNoDuplicateMikrotikAttributeIDs(t *testing.T) {
+	seen := make(map[uint32]string)
+
+	for _, attr := range MikrotikVendorDefinition.Attributes {
+		if existing, exists := seen[attr.ID]; exists {
+			t.Errorf("Duplicate Mikrotik attribute ID %d: %s and %s", attr.ID, existing, attr.Name)
+		}
+		seen[attr.ID] = attr.Name
+	}
+}
+
 func TestAllAttributesHaveValidDataTypes(t *testing.T) {
 	validDataTypes := map[dictionary.DataType]bool{
 		dictionary.DataTypeString:     true,
@@ -167,6 +279,18 @@ func TestAllAttributesHaveValidDataTypes(t *testing.T) {
 			t.Errorf("Invalid data type for Ascend %s: %s", attr.Name, attr.DataType)
 		}
 	}
+
+	for _, attr := range WISPrVendorDefinition.Attributes {
+		if !validDataTypes[attr.DataType] {
+			t.Errorf("Invalid data type for WISPr %s: %s", attr.Name, attr.DataType)
+		}
+	}
+
+	for _, attr := range MikrotikVendorDefinition.Attributes {
+		if !validDataTypes[attr.DataType] {
+			t.Errorf("Invalid data type for Mikrotik %s: %s", attr.Name, attr.DataType)
+		}
+	}
 }
 
 func TestDictionaryIntegration(t *testing.T) {
@@ -176,6 +300,8 @@ func TestDictionaryIntegration(t *testing.T) {
 	dict.AddStandardAttributes(StandardRFCAttributes)
 	dict.AddVendor(ERXVendorDefinition)
 	dict.AddVendor(AscendVendorDefinition)
+	dict.AddVendor(WISPrVendorDefinition)
+	dict.AddVendor(MikrotikVendorDefinition)
 
 	// Test standard attribute lookup
 	_, exists := dict.LookupStandardByName("User-Name")
@@ -188,8 +314,20 @@ func TestDictionaryIntegration(t *testing.T) {
 	_, exists = dict.LookupVendorByID(529)
 	assert.True(t, exists)
 
+	_, exists = dict.LookupVendorByID(14122)
+	assert.True(t, exists)
+
+	_, exists = dict.LookupVendorByID(14988)
+	assert.True(t, exists)
+
 	// Test vendor attribute lookup
 	_, exists = dict.LookupVendorAttributeByName("ERX", "ERX-Service-Activate")
+	assert.True(t, exists)
+
+	_, exists = dict.LookupVendorAttributeByName("WISPr", "WISPr-Location-Id")
+	assert.True(t, exists)
+
+	_, exists = dict.LookupVendorAttributeByName("Mikrotik", "Mikrotik-Group")
 	assert.True(t, exists)
 }
 
@@ -212,9 +350,27 @@ func TestNewDefault(t *testing.T) {
 	assert.True(t, exists, "Ascend vendor should exist in default dictionary")
 	assert.Equal(t, "Ascend", ascendVendor.Name)
 
+	// Verify WISPr vendor is loaded
+	wisprVendor, exists := dict.LookupVendorByID(14122)
+	assert.True(t, exists, "WISPr vendor should exist in default dictionary")
+	assert.Equal(t, "WISPr", wisprVendor.Name)
+
+	// Verify Mikrotik vendor is loaded
+	mikrotikVendor, exists := dict.LookupVendorByID(14988)
+	assert.True(t, exists, "Mikrotik vendor should exist in default dictionary")
+	assert.Equal(t, "Mikrotik", mikrotikVendor.Name)
+
 	// Verify ERX attribute lookup works
 	_, exists = dict.LookupVendorAttributeByName("ERX", "ERX-Service-Activate")
 	assert.True(t, exists, "ERX-Service-Activate should exist in default dictionary")
+
+	// Verify WISPr attribute lookup works
+	_, exists = dict.LookupVendorAttributeByName("WISPr", "WISPr-Location-Id")
+	assert.True(t, exists, "WISPr-Location-Id should exist in default dictionary")
+
+	// Verify Mikrotik attribute lookup works
+	_, exists = dict.LookupVendorAttributeByName("Mikrotik", "Mikrotik-Group")
+	assert.True(t, exists, "Mikrotik-Group should exist in default dictionary")
 
 	// Verify Framed-IP-Address exists
 	framedIPAttr, exists := dict.LookupStandardByName("Framed-IP-Address")

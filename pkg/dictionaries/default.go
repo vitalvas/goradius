@@ -8,6 +8,8 @@ import "github.com/vitalvas/goradius/pkg/dictionary"
 //   - RFC 2865/2866/2868/2869 standard attributes
 //   - Juniper ERX vendor attributes
 //   - Ascend vendor attributes
+//   - WISPr vendor attributes
+//   - Mikrotik vendor attributes
 //
 // Example usage:
 //
@@ -18,5 +20,7 @@ func NewDefault() *dictionary.Dictionary {
 	dict.AddStandardAttributes(StandardRFCAttributes)
 	dict.AddVendor(ERXVendorDefinition)
 	dict.AddVendor(AscendVendorDefinition)
+	dict.AddVendor(WISPrVendorDefinition)
+	dict.AddVendor(MikrotikVendorDefinition)
 	return dict
 }
