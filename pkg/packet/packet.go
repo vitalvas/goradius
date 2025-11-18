@@ -105,6 +105,8 @@ func (p *Packet) AddVendorAttribute(va *VendorAttribute) {
 }
 
 // GetAttributes returns all attributes with the specified type
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
+// Users should use GetAttribute(name string) instead.
 func (p *Packet) GetAttributes(attrType uint8) []*Attribute {
 	var attrs []*Attribute
 	for _, attr := range p.Attributes {
@@ -145,6 +147,7 @@ func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint8) []*Vendo
 }
 
 // RemoveAttribute removes the first attribute with the specified type
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
 func (p *Packet) RemoveAttribute(attrType uint8) bool {
 	for i, attr := range p.Attributes {
 		if attr.Type == attrType {
@@ -157,6 +160,7 @@ func (p *Packet) RemoveAttribute(attrType uint8) bool {
 }
 
 // RemoveAttributes removes all attributes with the specified type
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
 func (p *Packet) RemoveAttributes(attrType uint8) int {
 	removed := 0
 	for i := len(p.Attributes) - 1; i >= 0; i-- {
@@ -170,11 +174,15 @@ func (p *Packet) RemoveAttributes(attrType uint8) int {
 }
 
 // SetAuthenticator sets the packet authenticator
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
+// Authenticators are managed automatically by the server.
 func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 	p.Authenticator = auth
 }
 
 // CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
+// Authenticators are managed automatically by the server.
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
 	// Response Authenticator = MD5(Code + ID + Length + Request Authenticator + Response Attributes + Secret)
 
@@ -204,6 +212,8 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 }
 
 // CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
+// INTERNAL: This method is for internal library use only and may be removed in future versions.
+// Authenticators are managed automatically by the server/client.
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
 	// Request Authenticator = MD5(Code + ID + Length + Null Authenticator + Attributes + Secret)
 
