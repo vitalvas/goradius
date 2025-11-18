@@ -57,90 +57,25 @@ GoRADIUS targets developers who need to ship RADIUS integrations without becomin
 
 ## Architecture
 
-```mermaid
-graph TB
-    A[RADIUS Client] -->|UDP/TCP/TLS| B[RADIUS Server]
-    B --> C[Handler Interface]
-    C --> D[Authentication Logic]
-    C --> E[Accounting Logic]
-    
-    F[Packet Layer] --> G[Attribute Processing]
-    F --> H[Encoding/Decoding]
-    F --> I[Validation]
-    
-    J[Dictionary] --> K[Attribute Definitions]
-    J --> L[Vendor Attributes]
-    J --> M[Type Validation]
-    
-    N[Security Layer] --> O[Message Auth]
-    N --> P[Crypto Validation]
-    N --> Q[Secret Management]
-```
+GoRADIUS centers around three layers:
+
+1. **Transport/server layer** that listens on UDP sockets, manages authenticators, and orchestrates retries.
+2. **Packet and dictionary layer** that owns encoding/decoding, attribute mapping, vendor logic, and validation.
+3. **Business logic layer** where developers plug custom handlers or client calls, only receiving/sending attribute sets.
 
 ## Installation
 
-```bash
-go get github.com/vitalvas/goradius
-```
+Install the module with go get github.com/vitalvas/goradius
 
 ## Quick Start
 
-### Basic RADIUS Server
+### Basic RADIUS Server Flow
 
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-
-    "github.com/vitalvas/goradius/pkg/dictionaries"
-    "github.com/vitalvas/goradius/pkg/dictionary"
-    "github.com/vitalvas/goradius/pkg/packet"
-    "github.com/vitalvas/goradius/pkg/server"
-)
-
-type myHandler struct{}
-
-func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
-    // Return shared secret for this client
-    return server.SecretResponse{
-        Secret: []byte("testing123"),
-    }, nil
-}
-
-func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-    fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
-
-    resp := server.NewResponse(req)
-
-    // Set response code based on request type
-    switch req.Packet.Code {
-    case packet.CodeAccessRequest:
-        resp.SetCode(packet.CodeAccessAccept)
-        resp.SetAttribute("Reply-Message", "Access granted")
-    case packet.CodeAccountingRequest:
-        resp.SetCode(packet.CodeAccountingResponse)
-    }
-
-    return resp, nil
-}
-
-func main() {
-    // Create dictionary with standard attributes
-    dict := dictionary.New()
-    dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-
-    // Create and start server
-    srv, err := server.New(":1812", &myHandler{}, dict)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println("RADIUS server listening on :1812")
-    log.Fatal(srv.Serve())
-}
-```
+1. Create a dictionary with standard attributes (and optionally vendor extensions).
+2. Instantiate the UDP server with a handler implementation.
+3. Implement `ServeSecret` to return the shared secret for each client.
+4. Implement `ServeRADIUS` to inspect the parsed request attributes, run business logic, and populate the response attributes/code.
+5. Call `Serve()` to start processing requests concurrently.
 
 ## Package Structure
 
@@ -188,83 +123,15 @@ func main() {
 
 ### Creating Packets with Dictionary
 
-```go
-// Create dictionary
-dict := dictionary.New()
-dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-dict.AddVendor(dictionaries.ERXVendorDefinition)
-
-// Create packet with dictionary
-req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
-
-// Add attributes by name
-req.AddAttributeByName("User-Name", "john.doe")
-req.AddAttributeByName("Framed-IP-Address", "192.0.2.11")
-req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
-
-// Add tagged vendor attribute
-req.AddAttributeByName("ERX-Service-Activate:1", "ipoe-parking")
-```
+- Instantiate a dictionary, register standard and vendor definitions, then create packets with `NewWithDictionary`.
+- Attributes can be added by name, including vendor-specific or tagged variants, without remembering numeric IDs.
+- The packet layer enforces type safety, value encoding, and authenticator calculation automatically.
 
 ### Working with VSAs
 
-```go
-// Create vendor attribute
-va := packet.NewVendorAttribute(4874, 13, []byte("8.8.8.8"))
-req.AddVendorAttribute(va)
-
-// Get vendor attribute
-va, found := req.GetVendorAttribute(4874, 13)
-if found {
-    fmt.Printf("Value: %s\n", string(va.Value))
-}
-```
-
-## Testing
-
-Run tests:
-
-```bash
-go test ./...
-```
-
-Run tests with race detection:
-
-```bash
-go test -race ./...
-```
-
-Run tests with coverage:
-
-```bash
-go test -cover ./...
-```
-
-## Building
-
-Format code:
-
-```bash
-go fmt ./...
-```
-
-Vet code:
-
-```bash
-go vet ./...
-```
-
-Run linter:
-
-```bash
-golangci-lint run
-```
-
-## Dependencies
-
-- **Go 1.23** or later
-- **github.com/sirupsen/logrus** - Structured logging
-- **github.com/stretchr/testify** - Testing framework
+- Use vendor helper functions to create attributes for a given vendor ID and attribute code, then attach them to the packet.
+- Retrieve vendor attributes through lookup helpers that return both the attribute and a flag indicating whether it was present.
+- Vendor helpers allow working with dictionary metadata so business logic references human-readable names instead of numeric identifiers.
 
 ## Standards Compliance
 
@@ -321,7 +188,3 @@ See `cmd/simple-server/main.go` for a working example of a basic RADIUS server.
 Detailed documentation is available in the `docs/` directory:
 - [Dictionary Usage](docs/docs/dictionary.md)
 - [Packet Handling](docs/docs/packets.md)
-
-## License
-
-This project follows standard Go module licensing practices. Please refer to the project repository for specific license information.
