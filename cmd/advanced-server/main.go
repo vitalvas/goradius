@@ -70,7 +70,7 @@ func loggingMiddleware(next server.Handler) server.Handler {
 			fmt.Printf("[Middleware:Logging] <<< Request failed in %v: %v\n", duration, err)
 		} else {
 			fmt.Printf("[Middleware:Logging] <<< Request completed in %v: %s\n",
-				duration, resp.Packet.Code.String())
+				duration, resp.Code().String())
 		}
 
 		return resp, err
@@ -143,8 +143,8 @@ func statisticsMiddleware(next server.Handler) server.Handler {
 
 		resp, err := next.ServeRADIUS(req)
 
-		if resp.Packet != nil {
-			switch resp.Packet.Code {
+		if err == nil {
+			switch resp.Code() {
 			case packet.CodeAccessAccept:
 				acceptedCount++
 			case packet.CodeAccessReject:

@@ -35,9 +35,9 @@ func TestNewResponse(t *testing.T) {
 
 			resp := NewResponse(req)
 
-			assert.NotNil(t, resp.Packet)
-			assert.Equal(t, tt.expectedCode, resp.Packet.Code)
-			assert.Equal(t, uint8(42), resp.Packet.Identifier)
+			assert.NotNil(t, resp.packet)
+			assert.Equal(t, tt.expectedCode, resp.packet.Code)
+			assert.Equal(t, uint8(42), resp.packet.Identifier)
 		})
 	}
 }
@@ -54,9 +54,9 @@ func TestNewResponseWithDictionary(t *testing.T) {
 
 	resp := NewResponse(req)
 
-	assert.NotNil(t, resp.Packet)
-	assert.NotNil(t, resp.Packet.Dict)
-	assert.Equal(t, dict, resp.Packet.Dict)
+	assert.NotNil(t, resp.packet)
+	assert.NotNil(t, resp.packet.Dict)
+	assert.Equal(t, dict, resp.packet.Dict)
 }
 
 func TestResponseSetCode(t *testing.T) {
@@ -67,13 +67,13 @@ func TestResponseSetCode(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
-	assert.Equal(t, packet.CodeAccessReject, resp.Packet.Code)
+	assert.Equal(t, packet.CodeAccessReject, resp.packet.Code)
 
 	resp.SetCode(packet.CodeAccessAccept)
-	assert.Equal(t, packet.CodeAccessAccept, resp.Packet.Code)
+	assert.Equal(t, packet.CodeAccessAccept, resp.packet.Code)
 
 	resp.SetCode(packet.CodeAccessChallenge)
-	assert.Equal(t, packet.CodeAccessChallenge, resp.Packet.Code)
+	assert.Equal(t, packet.CodeAccessChallenge, resp.packet.Code)
 }
 
 func TestResponseSetAttribute(t *testing.T) {
@@ -89,9 +89,9 @@ func TestResponseSetAttribute(t *testing.T) {
 	resp := NewResponse(req)
 	resp.SetAttribute("Reply-Message", "Welcome!")
 
-	assert.Len(t, resp.Packet.Attributes, 1)
+	assert.Len(t, resp.packet.Attributes,1)
 
-	attrs := resp.Packet.GetAttributes(18) // Reply-Message
+	attrs := resp.packet.GetAttributes(18) // Reply-Message
 	assert.Len(t, attrs, 1)
 	assert.Equal(t, []byte("Welcome!"), attrs[0].Value)
 }
@@ -119,25 +119,25 @@ func TestResponseSetAttributes(t *testing.T) {
 	resp.SetAttributes(attrs)
 
 	// Should have 4 attributes
-	assert.Len(t, resp.Packet.Attributes, 4)
+	assert.Len(t, resp.packet.Attributes,4)
 }
 
 func TestResponseSetCodeNilPacket(_ *testing.T) {
-	resp := Response{Packet: nil}
+	resp := Response{packet: nil}
 
 	// Should not crash
 	resp.SetCode(packet.CodeAccessAccept)
 }
 
 func TestResponseSetAttributeNilPacket(_ *testing.T) {
-	resp := Response{Packet: nil}
+	resp := Response{packet: nil}
 
 	// Should not crash
 	resp.SetAttribute("Reply-Message", "test")
 }
 
 func TestResponseSetAttributesNilPacket(_ *testing.T) {
-	resp := Response{Packet: nil}
+	resp := Response{packet: nil}
 
 	// Should not crash
 	resp.SetAttributes(map[string]interface{}{
@@ -163,7 +163,7 @@ func TestResponseMultipleAttributes(t *testing.T) {
 	resp.SetAttribute("Session-Timeout", 3600)
 
 	// Should have 3 attributes
-	assert.Len(t, resp.Packet.Attributes, 3)
+	assert.Len(t, resp.packet.Attributes,3)
 }
 
 func TestResponseFullWorkflow(t *testing.T) {
@@ -196,17 +196,17 @@ func TestResponseFullWorkflow(t *testing.T) {
 	})
 
 	// Verify response
-	assert.Equal(t, packet.CodeAccessAccept, resp.Packet.Code)
-	assert.Equal(t, uint8(42), resp.Packet.Identifier)
-	assert.Len(t, resp.Packet.Attributes, 3)
+	assert.Equal(t, packet.CodeAccessAccept, resp.packet.Code)
+	assert.Equal(t, uint8(42), resp.packet.Identifier)
+	assert.Len(t, resp.packet.Attributes,3)
 
 	// Encode and verify
-	resp.Packet.SetAuthenticator(resp.Packet.CalculateResponseAuthenticator(
+	resp.packet.SetAuthenticator(resp.packet.CalculateResponseAuthenticator(
 		req.Secret.Secret,
 		reqPkt.Authenticator,
 	))
 
-	data, err := resp.Packet.Encode()
+	data, err := resp.packet.Encode()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
 }

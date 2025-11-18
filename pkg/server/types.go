@@ -40,7 +40,15 @@ func (r *Request) Code() packet.Code {
 }
 
 type Response struct {
-	Packet *packet.Packet
+	packet *packet.Packet // private - use SetCode() and SetAttribute() methods
+}
+
+// Code returns the response packet code
+func (r *Response) Code() packet.Code {
+	if r.packet == nil {
+		return 0
+	}
+	return r.packet.Code
 }
 
 type SecretRequest struct {

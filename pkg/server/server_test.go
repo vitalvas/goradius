@@ -144,7 +144,7 @@ func TestServerHandlePacket(t *testing.T) {
 
 	// Set response for handler
 	respPkt := packet.New(packet.CodeAccessAccept, 1)
-	handler.SetRadiusResponse(Response{Packet: respPkt})
+	handler.SetRadiusResponse(Response{packet: respPkt})
 
 	// Encode packet
 	data, err := pkt.Encode()
@@ -269,7 +269,7 @@ func TestServerMiddleware(t *testing.T) {
 
 	// Set response for handler
 	respPkt := packet.New(packet.CodeAccessAccept, 1)
-	handler.SetRadiusResponse(Response{Packet: respPkt})
+	handler.SetRadiusResponse(Response{packet: respPkt})
 
 	// Start server
 	go func() {

@@ -117,14 +117,14 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	handler := s.buildHandler()
 
 	resp, err := handler.ServeRADIUS(req)
-	if err != nil || resp.Packet == nil {
+	if err != nil || resp.packet == nil {
 		return
 	}
 
 	// Calculate response authenticator
-	resp.Packet.SetAuthenticator(resp.Packet.CalculateResponseAuthenticator(secretResp.Secret, pkt.Authenticator))
+	resp.packet.SetAuthenticator(resp.packet.CalculateResponseAuthenticator(secretResp.Secret, pkt.Authenticator))
 
-	respData, err := resp.Packet.Encode()
+	respData, err := resp.packet.Encode()
 	if err != nil {
 		return
 	}

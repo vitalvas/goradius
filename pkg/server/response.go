@@ -29,29 +29,29 @@ func NewResponse(req *Request) Response {
 	}
 
 	return Response{
-		Packet: pkt,
+		packet: pkt,
 	}
 }
 
 // SetCode sets the response packet code
 func (r *Response) SetCode(code packet.Code) {
-	if r.Packet != nil {
-		r.Packet.Code = code
+	if r.packet != nil {
+		r.packet.Code = code
 	}
 }
 
 // SetAttribute adds a single attribute to the response packet
 func (r *Response) SetAttribute(name string, value interface{}) {
-	if r.Packet != nil {
-		r.Packet.AddAttributeByName(name, value)
+	if r.packet != nil {
+		r.packet.AddAttributeByName(name, value)
 	}
 }
 
 // SetAttributes adds multiple attributes to the response packet
 func (r *Response) SetAttributes(attrs map[string]interface{}) {
-	if r.Packet != nil {
+	if r.packet != nil {
 		for name, value := range attrs {
-			r.Packet.AddAttributeByName(name, value)
+			r.packet.AddAttributeByName(name, value)
 		}
 	}
 }
