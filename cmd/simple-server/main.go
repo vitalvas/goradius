@@ -27,6 +27,14 @@ func (h *simpleHandler) ServeSecret(req server.SecretRequest) (server.SecretResp
 func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 	fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
+	// Access metadata from the secret response
+	if nastype, ok := req.Secret.Metadata["nastype"].(string); ok {
+		fmt.Printf("NAS Type: %s\n", nastype)
+	}
+	if client, ok := req.Secret.Metadata["client"].(string); ok {
+		fmt.Printf("Client: %s\n", client)
+	}
+
 	// List all attributes in the request
 	attrList := req.ListAttributes()
 	if len(attrList) > 0 {
