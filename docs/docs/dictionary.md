@@ -302,15 +302,13 @@ import (
 )
 
 func main() {
-    // Create dictionary with standard attributes
-    dict := dictionary.New()
-    dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-    dict.AddVendor(dictionaries.ERXVendorDefinition)
+    // Create dictionary with all standard attributes and common vendors
+    dict := dictionaries.NewDefault()
 
     // Create packet with dictionary
     req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 
-    // Add attributes by name
+    // Add attributes by name - type-safe and automatic encoding
     req.AddAttributeByName("User-Name", "john.doe")
     req.AddAttributeByName("Framed-IP-Address", "192.0.2.11")
     req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")

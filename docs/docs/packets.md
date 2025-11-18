@@ -182,26 +182,30 @@ const (
 )
 ```
 
-### Example Usage
+### Example Usage with Dictionary
 
 ```go
-// User credentials
-req.AddAttribute(packet.NewAttribute(1, []byte("john.doe")))              // User-Name
-req.AddAttribute(packet.NewAttribute(2, []byte("encrypted-password")))    // User-Password
+// Create packet with dictionary
+dict := dictionaries.NewDefault()
+req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+
+// User credentials - use attribute names instead of IDs
+req.AddAttributeByName("User-Name", "john.doe")
+req.AddAttributeByName("User-Password", "secret123")  // Will be encrypted automatically
 
 // NAS information
-req.AddAttribute(packet.NewAttribute(4, packet.EncodeIPAddr(net.ParseIP("192.168.1.1")))) // NAS-IP-Address
-req.AddAttribute(packet.NewAttribute(5, packet.EncodeInteger(123)))       // NAS-Port
-req.AddAttribute(packet.NewAttribute(32, []byte("nas-gateway-01")))       // NAS-Identifier
+req.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+req.AddAttributeByName("NAS-Port", 123)
+req.AddAttributeByName("NAS-Identifier", "nas-gateway-01")
 
 // Session information
-req.AddAttribute(packet.NewAttribute(8, packet.EncodeIPAddr(net.ParseIP("10.0.0.100")))) // Framed-IP-Address
-req.AddAttribute(packet.NewAttribute(27, packet.EncodeInteger(3600)))     // Session-Timeout
+req.AddAttributeByName("Framed-IP-Address", "10.0.0.100")
+req.AddAttributeByName("Session-Timeout", 3600)
 
 // Accounting
-req.AddAttribute(packet.NewAttribute(40, packet.EncodeInteger(1)))        // Acct-Status-Type (Start)
-req.AddAttribute(packet.NewAttribute(42, packet.EncodeInteger(1024000)))  // Acct-Input-Octets
-req.AddAttribute(packet.NewAttribute(43, packet.EncodeInteger(2048000)))  // Acct-Output-Octets
+req.AddAttributeByName("Acct-Status-Type", "Start")  // Uses enumerated value
+req.AddAttributeByName("Acct-Input-Octets", 1024000)
+req.AddAttributeByName("Acct-Output-Octets", 2048000)
 ```
 
 ## Vendor-Specific Attributes
@@ -225,35 +229,35 @@ req.AddAttributeByName("ERX-Service-Activate:2", "svc-ipoe-policer(52428800, 524
 // - Handles tagging if the attribute supports it
 ```
 
-### Parsing VSAs
+### Retrieving VSAs
+
+Use the high-level dictionary API to retrieve vendor attributes by name:
 
 ```go
-// Get vendor attribute by IDs
-va, found := req.GetVendorAttribute(4874, 13)
-if found {
-    fmt.Printf("Vendor ID: %d, Type: %d, Value: %s\n",
-        va.VendorID, va.VendorType, string(va.Value))
+// Get vendor attribute by name - no need to know vendor IDs
+dnsServers := req.GetAttribute("ERX-Primary-Dns")
+if len(dnsServers) > 0 {
+    fmt.Printf("Primary DNS: %s\n", dnsServers[0].String())
+
+    // Access VSA metadata if needed
+    fmt.Printf("Vendor ID: %d\n", dnsServers[0].VendorID)
+    fmt.Printf("Vendor Type: %d\n", dnsServers[0].VendorType)
 }
 
-// Get all vendor attributes of a type
-vas := req.GetVendorAttributes(4874, 1)
-for _, va := range vas {
-    if va.Tag != 0 {
-        fmt.Printf("Vendor attr with tag %d: %s\n", va.Tag, string(va.GetValue()))
+// Get all vendor attributes (including tagged ones)
+services := req.GetAttribute("ERX-Service-Activate")
+for _, svc := range services {
+    if svc.Tag > 0 {
+        fmt.Printf("Service (Tag %d): %s\n", svc.Tag, svc.String())
     } else {
-        fmt.Printf("Vendor attr: %s\n", string(va.Value))
+        fmt.Printf("Service: %s\n", svc.String())
     }
 }
 
-// Parse VSA from Type 26 attribute
-attrs := req.GetAttributes(26)
-if len(attrs) > 0 {
-    attr := attrs[0] // Vendor-Specific
-if found {
-    va, err := packet.ParseVSA(attr)
-    if err == nil {
-        fmt.Printf("Vendor ID: %d, Type: %d\n", va.VendorID, va.VendorType)
-    }
+// List all attributes including VSAs
+attrNames := req.ListAttributes()
+for _, name := range attrNames {
+    fmt.Printf("Attribute: %s\n", name)
 }
 ```
 
@@ -261,15 +265,21 @@ if found {
 
 ### Encoding Packets
 
+**Note: When using the server package, encoding is handled automatically. This section describes low-level packet operations for advanced use cases.**
+
 ```go
-// Create packet
-req := packet.New(packet.CodeAccessRequest, 1)
-req.AddAttribute(packet.NewAttribute(1, []byte("john.doe")))
+// Create packet with dictionary
+dict := dictionaries.NewDefault()
+req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+
+// Add attributes using dictionary API
+req.AddAttributeByName("User-Name", "john.doe")
+req.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
 
 // Generate random authenticator for request packets
 rand.Read(req.Authenticator[:])
 
-// Encode packet to bytes
+// Encode packet to bytes (done automatically by server layer)
 data, err := req.Encode()
 if err != nil {
     log.Fatal("Failed to encode packet:", err)
@@ -280,16 +290,24 @@ fmt.Printf("Encoded packet: %x\n", data)
 
 ### Decoding Packets
 
+**Note: When using the server package, decoding is handled automatically and packets are provided with a dictionary already attached.**
+
 ```go
-// Decode packet from bytes
+// Decode packet from bytes (done automatically by server layer)
 pkt, err := packet.Decode(data)
 if err != nil {
     log.Fatal("Failed to decode packet:", err)
 }
 
-fmt.Printf("Decoded packet code: %v\n", pkt.Code)
-fmt.Printf("Decoded packet identifier: %d\n", pkt.Identifier)
-fmt.Printf("Number of attributes: %d\n", len(pkt.Attributes))
+// Attach dictionary for high-level attribute access
+dict := dictionaries.NewDefault()
+pkt.Dict = dict
+
+// Now you can use dictionary API
+usernames := pkt.GetAttribute("User-Name")
+if len(usernames) > 0 {
+    fmt.Printf("Username: %s\n", usernames[0].String())
+}
 ```
 
 ### Packet Validation
