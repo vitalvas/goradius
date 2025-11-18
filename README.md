@@ -63,10 +63,6 @@ GoRADIUS centers around three layers:
 2. **Packet and dictionary layer** that owns encoding/decoding, attribute mapping, vendor logic, and validation.
 3. **Business logic layer** where developers plug custom handlers or client calls, only receiving/sending attribute sets.
 
-## Installation
-
-Install the module with go get github.com/vitalvas/goradius
-
 ## Quick Start
 
 ### Basic RADIUS Server Flow
