@@ -19,7 +19,7 @@ type Dictionary struct {
 	vendorAttrByName map[string]*AttributeDefinition
 }
 
-// New creates a new dictionary with fast lookup indices
+// New creates a new empty dictionary with fast lookup indices
 func New() *Dictionary {
 	return &Dictionary{
 		standardByID:     make(map[uint32]*AttributeDefinition),
@@ -29,6 +29,7 @@ func New() *Dictionary {
 		vendorAttrByName: make(map[string]*AttributeDefinition),
 	}
 }
+
 
 // AddStandardAttributes adds standard RFC attributes to the dictionary
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) {

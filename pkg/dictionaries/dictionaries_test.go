@@ -192,3 +192,33 @@ func TestDictionaryIntegration(t *testing.T) {
 	_, exists = dict.LookupVendorAttributeByName("ERX", "ERX-Service-Activate")
 	assert.True(t, exists)
 }
+
+func TestNewDefault(t *testing.T) {
+	dict := NewDefault()
+	assert.NotNil(t, dict)
+
+	// Verify standard attributes are loaded
+	userNameAttr, exists := dict.LookupStandardByName("User-Name")
+	assert.True(t, exists, "User-Name should exist in default dictionary")
+	assert.Equal(t, uint32(1), userNameAttr.ID)
+
+	// Verify ERX vendor is loaded
+	erxVendor, exists := dict.LookupVendorByID(4874)
+	assert.True(t, exists, "ERX vendor should exist in default dictionary")
+	assert.Equal(t, "ERX", erxVendor.Name)
+
+	// Verify Ascend vendor is loaded
+	ascendVendor, exists := dict.LookupVendorByID(529)
+	assert.True(t, exists, "Ascend vendor should exist in default dictionary")
+	assert.Equal(t, "Ascend", ascendVendor.Name)
+
+	// Verify ERX attribute lookup works
+	_, exists = dict.LookupVendorAttributeByName("ERX", "ERX-Service-Activate")
+	assert.True(t, exists, "ERX-Service-Activate should exist in default dictionary")
+
+	// Verify Framed-IP-Address exists
+	framedIPAttr, exists := dict.LookupStandardByName("Framed-IP-Address")
+	assert.True(t, exists, "Framed-IP-Address should exist in default dictionary")
+	assert.Equal(t, uint32(8), framedIPAttr.ID)
+}
+
