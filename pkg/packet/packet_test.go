@@ -733,6 +733,7 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 		Name: "ERX",
 		Attributes: []*dictionary.AttributeDefinition{
 			{ID: 1, Name: "ERX-Service-Activate", DataType: dictionary.DataTypeString, HasTag: true},
+			{ID: 4, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr, HasTag: false},
 		},
 	}
 
@@ -741,15 +742,16 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 
 	pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
 
-	t.Run("single vendor value", func(t *testing.T) {
+	t.Run("single vendor value with tag", func(t *testing.T) {
 		pkt.AddAttributeByName("ERX-Service-Activate:1", "service1")
 
 		attrs := pkt.GetAttribute("ERX-Service-Activate")
 		assert.Len(t, attrs, 1)
+		assert.Equal(t, uint8(1), attrs[0].Tag)
 		assert.Equal(t, "service1", attrs[0].String())
 	})
 
-	t.Run("multiple vendor values", func(t *testing.T) {
+	t.Run("multiple vendor values with tag", func(t *testing.T) {
 		pkt2 := NewWithDictionary(CodeAccessAccept, 2, dict)
 
 		services := []string{"service-a", "service-b", "service-c"}
@@ -757,8 +759,27 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 
 		attrs := pkt2.GetAttribute("ERX-Service-Activate")
 		assert.Len(t, attrs, 3)
+		assert.Equal(t, uint8(1), attrs[0].Tag)
 		assert.Equal(t, "service-a", attrs[0].String())
+		assert.Equal(t, uint8(1), attrs[1].Tag)
 		assert.Equal(t, "service-b", attrs[1].String())
+		assert.Equal(t, uint8(1), attrs[2].Tag)
 		assert.Equal(t, "service-c", attrs[2].String())
+	})
+
+	t.Run("non-tagged vendor attributes with IP addresses", func(t *testing.T) {
+		pkt3 := NewWithDictionary(CodeAccessAccept, 3, dict)
+
+		dnsServers := []string{"8.8.8.8", "8.8.4.4", "1.1.1.1"}
+		pkt3.AddAttributeByName("ERX-Primary-Dns", dnsServers)
+
+		attrs := pkt3.GetAttribute("ERX-Primary-Dns")
+		assert.Len(t, attrs, 3)
+		assert.Equal(t, uint8(0), attrs[0].Tag) // No tag
+		assert.Equal(t, "8.8.8.8", attrs[0].String())
+		assert.Equal(t, uint8(0), attrs[1].Tag)
+		assert.Equal(t, "8.8.4.4", attrs[1].String())
+		assert.Equal(t, uint8(0), attrs[2].Tag)
+		assert.Equal(t, "1.1.1.1", attrs[2].String())
 	})
 }

@@ -27,6 +27,7 @@ type AttributeValue struct {
 	Type       uint8               // Attribute type ID (26 for VSA)
 	DataType   dictionary.DataType // Data type (string, integer, ipaddr, etc.)
 	Value      []byte              // Raw value bytes
+	Tag        uint8               // Tag value for tagged attributes (0 = no tag)
 	IsVSA      bool                // True if this is a vendor-specific attribute
 	VendorID   uint32              // Vendor ID (only for VSA)
 	VendorType uint8               // Vendor attribute type (only for VSA)
@@ -621,11 +622,20 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
 		for _, attr := range p.Attributes {
 			if attr.Type == uint8(attrDef.ID) {
+				// Only use tag if the attribute definition supports tagging
+				tag := uint8(0)
+				value := attr.Value
+				if attrDef.HasTag && attr.Tag > 0 {
+					tag = attr.Tag
+					value = attr.GetValue() // Strips tag byte
+				}
+
 				result = append(result, AttributeValue{
 					Name:     attrDef.Name,
 					Type:     attr.Type,
 					DataType: attrDef.DataType,
-					Value:    attr.GetValue(),
+					Value:    value,
+					Tag:      tag,
 					IsVSA:    false,
 				})
 			}
@@ -645,11 +655,20 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 					}
 
 					if va.VendorID == vendor.ID && va.VendorType == uint8(attrDef.ID) {
+						// Only use tag if the attribute definition supports tagging
+						tag := uint8(0)
+						value := va.Value
+						if attrDef.HasTag && va.Tag > 0 {
+							tag = va.Tag
+							value = va.GetValue() // Strips tag byte
+						}
+
 						result = append(result, AttributeValue{
 							Name:       attrDef.Name,
 							Type:       attr.Type,
 							DataType:   attrDef.DataType,
-							Value:      va.GetValue(),
+							Value:      value,
+							Tag:        tag,
 							IsVSA:      true,
 							VendorID:   va.VendorID,
 							VendorType: va.VendorType,
