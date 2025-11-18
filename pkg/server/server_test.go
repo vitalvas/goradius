@@ -214,3 +214,100 @@ func TestServerNilHandler(t *testing.T) {
 	// Should not crash
 	time.Sleep(100 * time.Millisecond)
 }
+
+func TestServerMiddleware(t *testing.T) {
+	dict := dictionary.New()
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: []byte("testing123")},
+	}
+
+	srv, err := New(":0", handler, dict)
+	require.NoError(t, err)
+	defer srv.Close()
+
+	// Track middleware execution order
+	var executionOrder []string
+	mu := sync.Mutex{}
+
+	// First middleware
+	middleware1 := func(next Handler) Handler {
+		return HandlerFunc(func(req *Request) (Response, error) {
+			mu.Lock()
+			executionOrder = append(executionOrder, "middleware1-before")
+			mu.Unlock()
+
+			resp, err := next.ServeRADIUS(req)
+
+			mu.Lock()
+			executionOrder = append(executionOrder, "middleware1-after")
+			mu.Unlock()
+
+			return resp, err
+		})
+	}
+
+	// Second middleware
+	middleware2 := func(next Handler) Handler {
+		return HandlerFunc(func(req *Request) (Response, error) {
+			mu.Lock()
+			executionOrder = append(executionOrder, "middleware2-before")
+			mu.Unlock()
+
+			resp, err := next.ServeRADIUS(req)
+
+			mu.Lock()
+			executionOrder = append(executionOrder, "middleware2-after")
+			mu.Unlock()
+
+			return resp, err
+		})
+	}
+
+	// Add middlewares
+	srv.Use(middleware1)
+	srv.Use(middleware2)
+
+	// Set response for handler
+	respPkt := packet.New(packet.CodeAccessAccept, 1)
+	handler.SetRadiusResponse(Response{Packet: respPkt})
+
+	// Start server
+	go func() {
+		srv.Serve()
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Send request
+	serverAddr := srv.conn.LocalAddr().(*net.UDPAddr)
+	clientConn, err := net.DialUDP("udp", nil, serverAddr)
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	pkt := packet.New(packet.CodeAccessRequest, 1)
+	pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+	data, err := pkt.Encode()
+	require.NoError(t, err)
+
+	_, err = clientConn.Write(data)
+	require.NoError(t, err)
+
+	// Read response
+	buffer := make([]byte, 4096)
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err = clientConn.Read(buffer)
+	require.NoError(t, err)
+
+	// Verify middleware execution order
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Middlewares should execute in order: middleware1, middleware2, handler, middleware2, middleware1
+	assert.Len(t, executionOrder, 4)
+	assert.Equal(t, "middleware1-before", executionOrder[0])
+	assert.Equal(t, "middleware2-before", executionOrder[1])
+	assert.Equal(t, "middleware2-after", executionOrder[2])
+	assert.Equal(t, "middleware1-after", executionOrder[3])
+}

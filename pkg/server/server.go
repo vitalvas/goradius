@@ -10,9 +10,10 @@ import (
 
 // Server is a simple RADIUS UDP server
 type Server struct {
-	conn    *net.UDPConn
-	handler Handler
-	dict    *dictionary.Dictionary
+	conn        *net.UDPConn
+	handler     Handler
+	dict        *dictionary.Dictionary
+	middlewares []Middleware
 }
 
 // New creates a new RADIUS server
@@ -51,6 +52,24 @@ func (s *Server) Serve() error {
 // Close stops the server
 func (s *Server) Close() error {
 	return s.conn.Close()
+}
+
+// Use adds middleware to the server
+// Middlewares are applied in the order they are added
+func (s *Server) Use(middleware Middleware) {
+	s.middlewares = append(s.middlewares, middleware)
+}
+
+// buildHandler wraps the handler with all middlewares
+func (s *Server) buildHandler() Handler {
+	handler := s.handler
+
+	// Apply middlewares in reverse order (last added is outermost)
+	for i := len(s.middlewares) - 1; i >= 0; i-- {
+		handler = s.middlewares[i](handler)
+	}
+
+	return handler
 }
 
 func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
@@ -94,7 +113,10 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		Secret:     secretResp,
 	}
 
-	resp, err := s.handler.ServeRADIUS(req)
+	// Build handler with middlewares
+	handler := s.buildHandler()
+
+	resp, err := handler.ServeRADIUS(req)
 	if err != nil || resp.Packet == nil {
 		return
 	}
