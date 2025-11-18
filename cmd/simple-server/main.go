@@ -27,6 +27,12 @@ func (h *simpleHandler) ServeSecret(req server.SecretRequest) (server.SecretResp
 func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 	fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
 
+	// List all attributes in the request
+	attrList := req.Packet.ListAttributes()
+	if len(attrList) > 0 {
+		fmt.Println("Request attributes:", attrList)
+	}
+
 	resp := server.NewResponse(req)
 
 	// Set appropriate response code based on request type

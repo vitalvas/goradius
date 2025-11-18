@@ -394,3 +394,96 @@ func TestEncodeValue(t *testing.T) {
 		})
 	}
 }
+
+func TestPacketListAttributes(t *testing.T) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},
+		{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr},
+		{ID: 8, Name: "Framed-IP-Address", DataType: dictionary.DataTypeIPAddr},
+	})
+	dict.AddVendor(&dictionary.VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*dictionary.AttributeDefinition{
+			{ID: 13, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
+			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: dictionary.DataTypeString},
+		},
+	})
+
+	t.Run("no dictionary", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		result := pkt.ListAttributes()
+		assert.Empty(t, result)
+	})
+
+	t.Run("with dictionary - standard attributes", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+
+		result := pkt.ListAttributes()
+		assert.Len(t, result, 2)
+		assert.Contains(t, result, "User-Name")
+		assert.Contains(t, result, "NAS-IP-Address")
+	})
+
+	t.Run("with dictionary - duplicate attributes", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser1")))
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser2")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+
+		result := pkt.ListAttributes()
+		assert.Len(t, result, 2)
+		assert.Contains(t, result, "User-Name")
+		assert.Contains(t, result, "NAS-IP-Address")
+	})
+
+	t.Run("with dictionary - vendor attributes", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 13, []byte{8, 8, 8, 8}))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb:cc:dd:ee:ff")))
+
+		result := pkt.ListAttributes()
+		assert.Len(t, result, 3)
+		assert.Contains(t, result, "User-Name")
+		assert.Contains(t, result, "ERX-Primary-Dns")
+		assert.Contains(t, result, "ERX-Dhcp-Mac-Addr")
+	})
+
+	t.Run("with dictionary - unknown attributes skipped", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddAttribute(NewAttribute(99, []byte("unknown")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+
+		result := pkt.ListAttributes()
+		assert.Len(t, result, 2)
+		assert.Contains(t, result, "User-Name")
+		assert.Contains(t, result, "NAS-IP-Address")
+		assert.NotContains(t, result, "unknown")
+	})
+
+	t.Run("with dictionary - unknown vendor attributes skipped", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 13, []byte{8, 8, 8, 8}))
+		pkt.AddVendorAttribute(NewVendorAttribute(9999, 1, []byte("unknown vendor")))
+
+		result := pkt.ListAttributes()
+		assert.Len(t, result, 2)
+		assert.Contains(t, result, "User-Name")
+		assert.Contains(t, result, "ERX-Primary-Dns")
+	})
+
+	t.Run("empty packet", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+
+		result := pkt.ListAttributes()
+		assert.Empty(t, result)
+	})
+}

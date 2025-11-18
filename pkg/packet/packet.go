@@ -486,6 +486,53 @@ func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, at
 	}
 }
 
+// ListAttributes returns a list of unique attribute names found in the packet.
+// Requires a dictionary to be set on the packet. Returns empty slice if dictionary is nil.
+// Attributes not found in dictionary are skipped.
+// VSA attributes return their attribute name (e.g., "ERX-Dhcp-Mac-Addr").
+func (p *Packet) ListAttributes() []string {
+	if p.Dict == nil {
+		return []string{}
+	}
+
+	seen := make(map[string]bool)
+	var result []string
+
+	for _, attr := range p.Attributes {
+		var name string
+
+		if attr.Type == 26 {
+			// VSA - Vendor-Specific Attribute
+			va, err := ParseVSA(attr)
+			if err != nil {
+				continue
+			}
+
+			attrDef, found := p.Dict.LookupVendorAttributeByID(va.VendorID, uint32(va.VendorType))
+			if !found {
+				continue
+			}
+
+			name = attrDef.Name
+		} else {
+			// Standard attribute
+			attrDef, exists := p.Dict.LookupStandardByID(uint32(attr.Type))
+			if !exists {
+				continue
+			}
+
+			name = attrDef.Name
+		}
+
+		if !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+
+	return result
+}
+
 // String returns a string representation of the packet
 func (p *Packet) String() string {
 	return fmt.Sprintf("Code=%s(%d), ID=%d, Length=%d, Attributes=%d",
