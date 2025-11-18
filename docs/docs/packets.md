@@ -69,136 +69,159 @@ packet.CodeCoANAK           // 45
 ```go
 req := packet.New(packet.CodeAccessRequest, 1)
 
-// String attributes
-req.AddStringAttribute(packet.AttributeUserName, "john.doe")
-req.AddStringAttribute(packet.AttributeNASIdentifier, "nas-01")
+// Create and add raw attributes
+attr := packet.NewAttribute(1, []byte("john.doe")) // User-Name
+req.AddAttribute(attr)
 
-// Integer attributes
-req.AddIntegerAttribute(packet.AttributeNASPort, 123)
+// Using encoding helpers
+attr = packet.NewAttribute(4, packet.EncodeIPAddr(net.ParseIP("192.168.1.1"))) // NAS-IP-Address
+req.AddAttribute(attr)
 
-// IP address attributes
-req.AddIPAttribute(packet.AttributeNASIPAddress, net.ParseIP("192.168.1.1"))
-req.AddIPAttribute(packet.AttributeFramedIPAddress, net.ParseIP("10.0.0.100"))
+attr = packet.NewAttribute(5, packet.EncodeInteger(123)) // NAS-Port
+req.AddAttribute(attr)
 
 // Binary/bytes attributes
-req.AddBytesAttribute(packet.AttributeState, []byte{0x01, 0x02, 0x03})
+attr = packet.NewAttribute(24, []byte{0x01, 0x02, 0x03}) // State
+req.AddAttribute(attr)
 
 // Date/time attributes
-req.AddDateAttribute(packet.AttributeEventTimestamp, time.Now())
+attr = packet.NewAttribute(55, packet.EncodeDate(time.Now())) // Event-Timestamp
+req.AddAttribute(attr)
+
+// Tagged attributes (for tunnel attributes)
+taggedAttr := packet.NewTaggedAttribute(64, 1, []byte("example")) // Tunnel-Type with tag 1
+req.AddAttribute(taggedAttr)
 ```
 
 ### Retrieving Attributes
 
 ```go
-// Get string attributes
-username, ok := req.GetStringAttribute(packet.AttributeUserName)
-if ok {
+// Get first attribute of a type
+attr, found := req.GetAttribute(1) // User-Name
+if found {
+    username := packet.DecodeString(attr.Value)
     fmt.Printf("Username: %s\n", username)
 }
 
-// Get integer attributes
-nasPort, ok := req.GetIntegerAttribute(packet.AttributeNASPort)
-if ok {
-    fmt.Printf("NAS Port: %d\n", nasPort)
+// Get all attributes of a type
+attrs := req.GetAttributes(1) // All User-Name attributes
+for _, attr := range attrs {
+    fmt.Printf("User: %s\n", string(attr.Value))
 }
 
-// Get IP address attributes
-nasIP, ok := req.GetIPAttribute(packet.AttributeNASIPAddress)
-if ok {
-    fmt.Printf("NAS IP: %s\n", nasIP.String())
+// Decode typed values
+attr, found = req.GetAttribute(5) // NAS-Port
+if found {
+    port, err := packet.DecodeInteger(attr.Value)
+    if err == nil {
+        fmt.Printf("NAS Port: %d\n", port)
+    }
 }
 
-// Get all attributes of a specific type
-usernames := req.GetAllStringAttributes(packet.AttributeUserName)
-for _, name := range usernames {
-    fmt.Printf("User: %s\n", name)
-}
-```
-
-### Working with Raw Attributes
-
-```go
-// Create raw attribute
-attr := packet.Attribute{
-    Type:   packet.AttributeUserName,
-    Length: uint8(2 + len("john.doe")),
-    Value:  []byte("john.doe"),
-}
-req.AddAttribute(attr)
-
-// Get raw attribute
-attr, ok := req.GetAttribute(packet.AttributeUserName)
-if ok {
-    fmt.Printf("Attribute type: %d, length: %d, value: %s\n", 
-        attr.Type, attr.Length, string(attr.Value))
+attr, found = req.GetAttribute(4) // NAS-IP-Address
+if found {
+    ip, err := packet.DecodeIPAddr(attr.Value)
+    if err == nil {
+        fmt.Printf("NAS IP: %s\n", ip.String())
+    }
 }
 
 // Iterate through all attributes
 for _, attr := range req.Attributes {
-    fmt.Printf("Type: %d, Value: %x\n", attr.Type, attr.Value)
+    if attr.Tag != 0 {
+        fmt.Printf("Type: %d, Tag: %d, Value: %x\n", attr.Type, attr.Tag, attr.GetValue())
+    } else {
+        fmt.Printf("Type: %d, Value: %x\n", attr.Type, attr.Value)
+    }
 }
+```
+
+### Attribute Helper Functions
+
+```go
+// String encoding/decoding
+value := packet.EncodeString("john.doe")
+username := packet.DecodeString(value)
+
+// Integer encoding/decoding
+value = packet.EncodeInteger(uint32(123))
+number, err := packet.DecodeInteger(value)
+
+// IP address encoding/decoding
+value, err = packet.EncodeIPAddr(net.ParseIP("192.168.1.1"))
+ip, err := packet.DecodeIPAddr(value)
+
+// IPv6 address encoding/decoding
+value, err = packet.EncodeIPv6Addr(net.ParseIP("2001:db8::1"))
+ip, err = packet.DecodeIPv6Addr(value)
+
+// Date encoding/decoding
+value = packet.EncodeDate(time.Now())
+timestamp, err := packet.DecodeDate(value)
+
+// Octets (raw bytes)
+value = packet.EncodeOctets([]byte{0x01, 0x02, 0x03})
+data := packet.DecodeOctets(value)
 ```
 
 ## Standard Attributes
 
-### User Authentication Attributes
+Common RADIUS attribute types (use with dictionary for names or reference):
+
+```go
+// Common attribute types
+const (
+    AttributeUserName             = 1
+    AttributeUserPassword         = 2
+    AttributeCHAPPassword         = 3
+    AttributeNASIPAddress         = 4
+    AttributeNASPort              = 5
+    AttributeServiceType          = 6
+    AttributeFramedProtocol       = 7
+    AttributeFramedIPAddress      = 8
+    AttributeFramedIPNetmask      = 9
+    AttributeFramedRouting        = 10
+    AttributeReplyMessage         = 18
+    AttributeState                = 24
+    AttributeVendorSpecific       = 26
+    AttributeSessionTimeout       = 27
+    AttributeIdleTimeout          = 28
+    AttributeCallingStationID     = 31
+    AttributeCalledStationID      = 30
+    AttributeNASIdentifier        = 32
+    AttributeAcctStatusType       = 40
+    AttributeAcctInputOctets      = 42
+    AttributeAcctOutputOctets     = 43
+    AttributeAcctSessionID        = 44
+    AttributeAcctSessionTime      = 46
+    AttributeAcctInputPackets     = 47
+    AttributeAcctOutputPackets    = 48
+    AttributeAcctTerminateCause   = 49
+    AttributeEventTimestamp       = 55
+    AttributeNASPortType          = 61
+)
+```
+
+### Example Usage
 
 ```go
 // User credentials
-req.AddStringAttribute(packet.AttributeUserName, "john.doe")
-req.AddStringAttribute(packet.AttributeUserPassword, "secret123")
+req.AddAttribute(packet.NewAttribute(1, []byte("john.doe")))              // User-Name
+req.AddAttribute(packet.NewAttribute(2, []byte("encrypted-password")))    // User-Password
 
-// CHAP authentication
-req.AddBytesAttribute(packet.AttributeCHAPPassword, chapResponse)
-req.AddBytesAttribute(packet.AttributeCHAPChallenge, challenge)
+// NAS information
+req.AddAttribute(packet.NewAttribute(4, packet.EncodeIPAddr(net.ParseIP("192.168.1.1")))) // NAS-IP-Address
+req.AddAttribute(packet.NewAttribute(5, packet.EncodeInteger(123)))       // NAS-Port
+req.AddAttribute(packet.NewAttribute(32, []byte("nas-gateway-01")))       // NAS-Identifier
 
-// Service information
-req.AddIntegerAttribute(packet.AttributeServiceType, 1)req.AddIntegerAttribute(packet.AttributeLoginService, 0) // Telnet
-```
+// Session information
+req.AddAttribute(packet.NewAttribute(8, packet.EncodeIPAddr(net.ParseIP("10.0.0.100")))) // Framed-IP-Address
+req.AddAttribute(packet.NewAttribute(27, packet.EncodeInteger(3600)))     // Session-Timeout
 
-### NAS Information Attributes
-
-```go
-// NAS identification
-req.AddStringAttribute(packet.AttributeNASIdentifier, "nas-gateway-01")
-req.AddIPAttribute(packet.AttributeNASIPAddress, net.ParseIP("192.168.1.1"))
-req.AddIntegerAttribute(packet.AttributeNASPort, 123)
-req.AddIntegerAttribute(packet.AttributeNASPortType, 5) // Ethernet
-
-// Connection information
-req.AddStringAttribute(packet.AttributeCallingStationID, "00:11:22:33:44:55")
-req.AddStringAttribute(packet.AttributeCalledStationID, "66:77:88:99:AA:BB")
-```
-
-### Session Attributes
-
-```go
-// Session management
-req.AddStringAttribute(packet.AttributeAcctSessionID, "sess-12345")
-req.AddIntegerAttribute(packet.AttributeSessionTimeout, 3600)
-req.AddIntegerAttribute(packet.AttributeIdleTimeout, 300)
-
-// Framed protocol attributes
-req.AddIPAttribute(packet.AttributeFramedIPAddress, net.ParseIP("10.0.0.100"))
-req.AddIPAttribute(packet.AttributeFramedIPNetmask, net.ParseIP("255.255.255.0"))
-req.AddIntegerAttribute(packet.AttributeFramedMTU, 1500)
-```
-
-### Accounting Attributes
-
-```go
-// Accounting status
-req.AddIntegerAttribute(packet.AttributeAcctStatusType, 1) // Start
-
-// Usage statistics
-req.AddIntegerAttribute(packet.AttributeAcctInputOctets, 1024000)
-req.AddIntegerAttribute(packet.AttributeAcctOutputOctets, 2048000)
-req.AddIntegerAttribute(packet.AttributeAcctInputPackets, 1000)
-req.AddIntegerAttribute(packet.AttributeAcctOutputPackets, 1500)
-req.AddIntegerAttribute(packet.AttributeAcctSessionTime, 3600)
-
-// Termination
-req.AddIntegerAttribute(packet.AttributeAcctTerminateCause, 1) // User Request
+// Accounting
+req.AddAttribute(packet.NewAttribute(40, packet.EncodeInteger(1)))        // Acct-Status-Type (Start)
+req.AddAttribute(packet.NewAttribute(42, packet.EncodeInteger(1024000)))  // Acct-Input-Octets
+req.AddAttribute(packet.NewAttribute(43, packet.EncodeInteger(2048000)))  // Acct-Output-Octets
 ```
 
 ## Vendor-Specific Attributes
@@ -206,30 +229,57 @@ req.AddIntegerAttribute(packet.AttributeAcctTerminateCause, 1) // User Request
 ### Creating VSAs
 
 ```go
-// Cisco VSA example
-vsa := packet.VendorSpecificAttribute{
-    VendorID: 9,    // Cisco
-    Type:     1,    // Cisco-AVPair
-    Value:    []byte("tunnel-type=PPTP"),
-}
+// Create a vendor-specific attribute
+va := packet.NewVendorAttribute(
+    4874,                  // Vendor ID (e.g., Juniper ERX)
+    13,                    // Vendor attribute type
+    []byte("8.8.8.8"),     // Value
+)
 
-vsaBytes := vsa.Encode()
-req.AddBytesAttribute(packet.AttributeVendorSpecific, vsaBytes)
+// Convert to standard VSA attribute (Type 26)
+vsaAttr := va.ToVSA()
+req.AddAttribute(vsaAttr)
+
+// Or add directly
+req.AddVendorAttribute(va)
+
+// Tagged vendor attributes
+taggedVA := packet.NewTaggedVendorAttribute(
+    4874,                  // Vendor ID
+    1,                     // Vendor attribute type
+    1,                     // Tag
+    []byte("ipoe-parking"), // Value
+)
+req.AddVendorAttribute(taggedVA)
 ```
 
 ### Parsing VSAs
 
 ```go
-// Get vendor-specific attributes
-vsaAttrs := req.GetAllBytesAttributes(packet.AttributeVendorSpecific)
-for _, vsaData := range vsaAttrs {
-    vsa, err := packet.ParseVendorSpecificAttribute(vsaData)
-    if err != nil {
-        continue
+// Get vendor attribute by IDs
+va, found := req.GetVendorAttribute(4874, 13)
+if found {
+    fmt.Printf("Vendor ID: %d, Type: %d, Value: %s\n",
+        va.VendorID, va.VendorType, string(va.Value))
+}
+
+// Get all vendor attributes of a type
+vas := req.GetVendorAttributes(4874, 1)
+for _, va := range vas {
+    if va.Tag != 0 {
+        fmt.Printf("Vendor attr with tag %d: %s\n", va.Tag, string(va.GetValue()))
+    } else {
+        fmt.Printf("Vendor attr: %s\n", string(va.Value))
     }
-    
-    fmt.Printf("Vendor ID: %d, Type: %d, Value: %s\n", 
-        vsa.VendorID, vsa.Type, string(vsa.Value))
+}
+
+// Parse VSA from Type 26 attribute
+attr, found := req.GetAttribute(26) // Vendor-Specific
+if found {
+    va, err := packet.ParseVSA(attr)
+    if err == nil {
+        fmt.Printf("Vendor ID: %d, Type: %d\n", va.VendorID, va.VendorType)
+    }
 }
 ```
 
@@ -240,13 +290,13 @@ for _, vsaData := range vsaAttrs {
 ```go
 // Create packet
 req := packet.New(packet.CodeAccessRequest, 1)
-req.AddStringAttribute(packet.AttributeUserName, "john.doe")
+req.AddAttribute(packet.NewAttribute(1, []byte("john.doe")))
 
-// Set secret for authenticator calculation
-secret := "testing123"
+// Generate random authenticator for request packets
+rand.Read(req.Authenticator[:])
 
 // Encode packet to bytes
-data, err := req.Encode(secret)
+data, err := req.Encode()
 if err != nil {
     log.Fatal("Failed to encode packet:", err)
 }
@@ -258,34 +308,47 @@ fmt.Printf("Encoded packet: %x\n", data)
 
 ```go
 // Decode packet from bytes
-secret := "testing123"
-req, err := packet.Decode(data, secret)
+pkt, err := packet.Decode(data)
 if err != nil {
     log.Fatal("Failed to decode packet:", err)
 }
 
-fmt.Printf("Decoded packet code: %v\n", req.Code)
-fmt.Printf("Decoded packet identifier: %d\n", req.Identifier)
+fmt.Printf("Decoded packet code: %v\n", pkt.Code)
+fmt.Printf("Decoded packet identifier: %d\n", pkt.Identifier)
+fmt.Printf("Number of attributes: %d\n", len(pkt.Attributes))
 ```
 
 ### Packet Validation
 
 ```go
 // Validate packet structure
-if err := req.Validate(); err != nil {
+if err := req.IsValid(); err != nil {
     log.Printf("Invalid packet: %v", err)
 }
 
-// Validate authenticator
-secret := "testing123"
-if !req.ValidateAuthenticator(secret) {
-    log.Printf("Invalid authenticator")
+// Check packet code
+if !req.Code.IsValid() {
+    log.Printf("Invalid packet code")
 }
 
-// Validate message authenticator (if present)
-if !req.ValidateMessageAuthenticator(secret) {
-    log.Printf("Invalid message authenticator")
+// Validate packet length
+if req.Length < packet.MinPacketLength || req.Length > packet.MaxPacketLength {
+    log.Printf("Invalid packet length: %d", req.Length)
 }
+```
+
+### Authenticator Calculation
+
+```go
+secret := []byte("testing123")
+
+// For Access-Request packets: calculate request authenticator
+// (when using Message-Authenticator)
+requestAuth := req.CalculateRequestAuthenticator(secret)
+
+// For response packets: calculate response authenticator
+responseAuth := resp.CalculateResponseAuthenticator(secret, req.Authenticator)
+resp.SetAuthenticator(responseAuth)
 ```
 
 ## Advanced Packet Operations
@@ -293,18 +356,18 @@ if !req.ValidateMessageAuthenticator(secret) {
 ### Packet Modification
 
 ```go
-// Copy packet
-newReq := req.Copy()
+// Remove single attribute
+removed := req.RemoveAttribute(24) // Remove State attribute
+if removed {
+    fmt.Println("Attribute removed")
+}
 
-// Remove attribute
-req.RemoveAttribute(packet.AttributeState)
+// Remove all attributes of a type
+count := req.RemoveAttributes(1) // Remove all User-Name attributes
+fmt.Printf("Removed %d attributes\n", count)
 
-// Replace attribute
-req.RemoveAttribute(packet.AttributeUserName)
-req.AddStringAttribute(packet.AttributeUserName, "new.user")
-
-// Update packet length after modifications
-req.UpdateLength()
+// Update authenticator
+req.SetAuthenticator([16]byte{/* 16 bytes */})
 ```
 
 ### Request/Response Matching
@@ -312,11 +375,17 @@ req.UpdateLength()
 ```go
 // Create response matching request
 func createResponse(req *packet.Packet, code packet.Code) *packet.Packet {
+    // Use same identifier as request
     resp := packet.New(code, req.Identifier)
-    
-    // Copy request authenticator for response calculation
-    resp.SetRequestAuthenticator(req.Authenticator)
-    
+
+    // Add response attributes
+    resp.AddAttribute(packet.NewAttribute(18, []byte("Access granted"))) // Reply-Message
+
+    // Calculate and set response authenticator
+    secret := []byte("testing123")
+    responseAuth := resp.CalculateResponseAuthenticator(secret, req.Authenticator)
+    resp.SetAuthenticator(responseAuth)
+
     return resp
 }
 
@@ -326,70 +395,71 @@ func verifyResponse(req, resp *packet.Packet) bool {
 }
 ```
 
-### Packet Statistics
+### Packet Information
 
 ```go
-// Calculate packet size
-size := req.GetSize()
-fmt.Printf("Packet size: %d bytes\n", size)
+// Get packet size
+fmt.Printf("Packet size: %d bytes\n", req.Length)
 
 // Count attributes
-attrCount := req.GetAttributeCount()
-fmt.Printf("Number of attributes: %d\n", attrCount)
+fmt.Printf("Number of attributes: %d\n", len(req.Attributes))
 
-// Get attribute summary
-summary := req.GetAttributeSummary()
-for attrType, count := range summary {
-    fmt.Printf("Attribute %d: %d occurrences\n", attrType, count)
-}
+// Print packet info
+fmt.Println(req.String())
+// Output: Code=Access-Request(1), ID=1, Length=40, Attributes=2
 ```
 
 ## Packet Security
 
-### Message Authenticator
-
-```go
-// Add message authenticator for enhanced security
-req.AddMessageAuthenticator(secret)
-
-// Verify message authenticator in response
-if !resp.VerifyMessageAuthenticator(secret, req.Authenticator) {
-    log.Printf("Message authenticator verification failed")
-}
-```
-
 ### Password Encryption
 
-```go
-// Encrypt user password attribute
-func encryptPassword(password, secret string, authenticator [16]byte) []byte {
-    return packet.EncryptPassword([]byte(password), secret, authenticator)
-}
+Password encryption is handled automatically when using the dictionary API with the `AddAttributeByNameWithSecret` method. The encryption algorithms are implemented in the packet layer:
 
-// Decrypt user password attribute
-func decryptPassword(encrypted []byte, secret string, authenticator [16]byte) string {
-    decrypted := packet.DecryptPassword(encrypted, secret, authenticator)
-    return string(decrypted)
-}
+```go
+// User-Password encryption (RFC 2865)
+secret := []byte("testing123")
+authenticator := [16]byte{/* request authenticator */}
+password := []byte("secret123")
+
+encrypted := packet.EncryptAttributeValue(
+    password,
+    dictionary.EncryptionUserPassword,
+    secret,
+    authenticator,
+)
+
+// Or use via dictionary
+req.AddAttributeByNameWithSecret("User-Password", "secret123", secret, authenticator)
 ```
 
 ### Tunnel Password Encryption
 
 ```go
-// Encrypt tunnel password (RFC 2868)
-tunnelPassword := "tunnel-secret"
-tag := byte(1)
-salt := generateSalt()
+// Tunnel-Password encryption (RFC 2868)
+secret := []byte("testing123")
+authenticator := req.Authenticator
+tunnelPassword := []byte("tunnel-secret")
 
-encrypted := packet.EncryptTunnelPassword(
-    []byte(tunnelPassword), 
-    secret, 
-    authenticator, 
-    tag, 
-    salt,
+encrypted := packet.EncryptAttributeValue(
+    tunnelPassword,
+    dictionary.EncryptionTunnelPassword,
+    secret,
+    authenticator,
 )
 
-req.AddBytesAttribute(packet.AttributeTunnelPassword, encrypted)
+// The encrypted value includes a random salt
+```
+
+### Ascend Secret Encryption
+
+```go
+// Ascend-Secret encryption
+encrypted := packet.EncryptAttributeValue(
+    []byte("ascend-secret"),
+    dictionary.EncryptionAscendSecret,
+    secret,
+    authenticator,
+)
 ```
 
 ## Error Handling
@@ -397,27 +467,27 @@ req.AddBytesAttribute(packet.AttributeTunnelPassword, encrypted)
 ### Packet Validation Errors
 
 ```go
-func validatePacket(data []byte, secret string) error {
+func validatePacket(data []byte) error {
     // Check minimum packet length
     if len(data) < packet.MinPacketLength {
         return fmt.Errorf("packet too short: %d bytes", len(data))
     }
-    
+
     // Check maximum packet length
     if len(data) > packet.MaxPacketLength {
         return fmt.Errorf("packet too long: %d bytes", len(data))
     }
-    
+
     // Decode and validate
-    req, err := packet.Decode(data, secret)
+    pkt, err := packet.Decode(data)
     if err != nil {
         return fmt.Errorf("decode failed: %w", err)
     }
-    
-    if err := req.Validate(); err != nil {
+
+    if err := pkt.IsValid(); err != nil {
         return fmt.Errorf("validation failed: %w", err)
     }
-    
+
     return nil
 }
 ```
@@ -425,101 +495,63 @@ func validatePacket(data []byte, secret string) error {
 ### Attribute Parsing Errors
 
 ```go
-func safeGetAttribute(req *packet.Packet, attrType packet.AttributeType) (string, error) {
-    attr, ok := req.GetAttribute(attrType)
-    if !ok {
+func safeGetAttribute(req *packet.Packet, attrType uint8) (string, error) {
+    attr, found := req.GetAttribute(attrType)
+    if !found {
         return "", fmt.Errorf("attribute %d not found", attrType)
     }
-    
+
     if len(attr.Value) == 0 {
         return "", fmt.Errorf("attribute %d has empty value", attrType)
     }
-    
+
     return string(attr.Value), nil
 }
 ```
 
-## Testing Packets
-
-### Packet Testing Utilities
+### VSA Parsing Errors
 
 ```go
-func TestPacketCreation(t *testing.T) {
-    req := packet.New(packet.CodeAccessRequest, 123)
-    
-    assert.Equal(t, packet.CodeAccessRequest, req.Code)
-    assert.Equal(t, uint8(123), req.Identifier)
-    assert.Equal(t, uint16(20), req.Length) // Header only
-}
-
-func TestAttributeHandling(t *testing.T) {
-    req := packet.New(packet.CodeAccessRequest, 1)
-    
-    // Add attribute
-    req.AddStringAttribute(packet.AttributeUserName, "testuser")
-    
-    // Verify attribute
-    username, ok := req.GetStringAttribute(packet.AttributeUserName)
-    assert.True(t, ok)
-    assert.Equal(t, "testuser", username)
-}
-```
-
-### Packet Comparison
-
-```go
-func comparePackets(t *testing.T, expected, actual *packet.Packet) {
-    assert.Equal(t, expected.Code, actual.Code)
-    assert.Equal(t, expected.Identifier, actual.Identifier)
-    assert.Equal(t, len(expected.Attributes), len(actual.Attributes))
-    
-    for i, expectedAttr := range expected.Attributes {
-        actualAttr := actual.Attributes[i]
-        assert.Equal(t, expectedAttr.Type, actualAttr.Type)
-        assert.Equal(t, expectedAttr.Value, actualAttr.Value)
+func safeParseVSA(attr *packet.Attribute) (*packet.VendorAttribute, error) {
+    if attr.Type != 26 {
+        return nil, fmt.Errorf("not a VSA attribute (type %d)", attr.Type)
     }
+
+    va, err := packet.ParseVSA(attr)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse VSA: %w", err)
+    }
+
+    return va, nil
 }
 ```
 
-## Performance Considerations
+## Best Practices
 
-### Efficient Packet Handling
+### Packet Creation
 
-```go
-// Use packet pools for high-throughput applications
-var packetPool = sync.Pool{
-    New: func() interface{} {
-        return &packet.Packet{
-            Attributes: make([]packet.Attribute, 0, 10),
-        }
-    },
-}
+1. **Use appropriate packet codes** for request types
+2. **Set random authenticators** for Access-Request packets
+3. **Match identifiers** between requests and responses
+4. **Validate packets** before and after encoding/decoding
 
-func getPacket() *packet.Packet {
-    return packetPool.Get().(*packet.Packet)
-}
+### Attribute Handling
 
-func putPacket(p *packet.Packet) {
-    p.Reset()
-    packetPool.Put(p)
-}
-```
+1. **Use dictionaries** for named attribute access when possible
+2. **Check attribute existence** before accessing values
+3. **Handle encoding errors** for IP addresses and other typed values
+4. **Use tagged attributes** correctly for tunnel attributes
 
-### Memory Optimization
+### Security
 
-```go
-// Pre-allocate attribute slices for known packet types
-func createAuthPacket(identifier uint8) *packet.Packet {
-    req := packet.New(packet.CodeAccessRequest, identifier)
-    // Pre-allocate for common auth attributes
-    req.Attributes = make([]packet.Attribute, 0, 8)
-    return req
-}
+1. **Always use secrets** for authenticator calculation
+2. **Encrypt passwords** using appropriate methods (User-Password, Tunnel-Password)
+3. **Validate packet length** to prevent buffer overflows
+4. **Use Message-Authenticator** for enhanced security (EAP and other sensitive operations)
 
-// Reuse byte buffers for encoding
-var bufferPool = sync.Pool{
-    New: func() interface{} {
-        return make([]byte, 0, packet.MaxPacketLength)
-    },
-}
-```
+### Performance
+
+1. **Pre-allocate attribute slices** for known packet structures
+2. **Reuse packets** when processing many requests (clear and reuse)
+3. **Avoid unnecessary encoding/decoding** cycles
+4. **Use efficient attribute lookups** by type instead of iteration

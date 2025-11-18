@@ -1,6 +1,6 @@
 # RADIUS Server Usage
 
-This guide covers how to implement and configure RADIUS servers using the GoRADIUS library.
+This guide covers how to implement RADIUS servers using the GoRADIUS library.
 
 ## Basic Server Setup
 
@@ -10,518 +10,357 @@ This guide covers how to implement and configure RADIUS servers using the GoRADI
 package main
 
 import (
-    "context"
+    "fmt"
     "log"
-    "time"
 
-    "github.com/vitalvas/goradius/pkg/server"
+    "github.com/vitalvas/goradius/pkg/dictionaries"
+    "github.com/vitalvas/goradius/pkg/dictionary"
     "github.com/vitalvas/goradius/pkg/packet"
+    "github.com/vitalvas/goradius/pkg/server"
 )
 
-func main() {
-    // Configure server
-    config := &server.Config{
-        Bindings: []server.Binding{
-            {
-                Network: "udp",
-                Address: ":1812",
-            },
+type myHandler struct{}
+
+func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+    fmt.Printf("Secret request from %s\n", req.RemoteAddr)
+
+    // Return shared secret for this client
+    return server.SecretResponse{
+        Secret: []byte("testing123"),
+        Metadata: map[string]interface{}{
+            "client":  req.RemoteAddr.String(),
+            "nastype": "generic",
         },
-        ReadTimeout:    time.Second * 30,
-        WriteTimeout:   time.Second * 30,
-        MaxRequestSize: 4096,
-    }
-
-    // Create server with handler
-    srv, err := server.New(config, &AuthHandler{})
-    if err != nil {
-        log.Fatal("Failed to create server:", err)
-    }
-
-    // Start server
-    ctx := context.Background()
-    if err := srv.Start(ctx); err != nil {
-        log.Fatal("Failed to start server:", err)
-    }
-
-    log.Println("RADIUS server started on :1812")
-    
-    // Keep server running
-    select {}
-}
-```
-
-## Server Configuration
-
-### Network Bindings
-
-Configure multiple network bindings for different protocols:
-
-```go
-config := &server.Config{
-    Bindings: []server.Binding{
-        // UDP binding (standard RADIUS)
-        {
-            Network: "udp",
-            Address: ":1812",
-        },
-        // TCP binding
-        {
-            Network: "tcp", 
-            Address: ":1812",
-        },
-        // TCP with TLS
-        {
-            Network: "tcp",
-            Address: ":2083",
-            TLSConfig: &tls.Config{
-                CertFile: "/path/to/cert.pem",
-                KeyFile:  "/path/to/key.pem",
-            },
-        },
-        // Accounting server
-        {
-            Network: "udp",
-            Address: ":1813",
-        },
-    },
-    
-    // Secret management - configure per-client secrets
-    SecretProvider: &MySecretProvider{},
-}
-```
-
-### Secret Management
-
-Instead of configuring secrets in bindings, use a SecretProvider to manage client secrets:
-
-```go
-type SecretProvider interface {
-    GetSecret(clientIP string) (string, error)
+    }, nil
 }
 
-type MySecretProvider struct {
-    secrets map[string]string
-}
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
 
-func (sp *MySecretProvider) GetSecret(clientIP string) (string, error) {
-    secret, exists := sp.secrets[clientIP]
-    if !exists {
-        return "", fmt.Errorf("no secret for client: %s", clientIP)
-    }
-    return secret, nil
-}
+    resp := server.NewResponse(req)
 
-// Initialize with client secrets
-secretProvider := &MySecretProvider{
-    secrets: map[string]string{
-        "192.168.1.100": "nas-secret-1",
-        "192.168.1.101": "nas-secret-2",
-        "10.0.0.50":     "accounting-secret",
-    },
-}
-
-config := &server.Config{
-    Bindings: []server.Binding{
-        {
-            Network: "udp",
-            Address: ":1812",
-        },
-    },
-    SecretProvider: secretProvider,
-}
-```
-
-### Database-backed Secret Provider
-
-```go
-type DatabaseSecretProvider struct {
-    db *sql.DB
-}
-
-func (dsp *DatabaseSecretProvider) GetSecret(clientIP string) (string, error) {
-    var secret string
-    query := "SELECT secret FROM radius_clients WHERE ip_address = $1 AND active = true"
-    
-    err := dsp.db.QueryRow(query, clientIP).Scan(&secret)
-    if err == sql.ErrNoRows {
-        return "", fmt.Errorf("client not authorized: %s", clientIP)
-    }
-    if err != nil {
-        return "", fmt.Errorf("database error: %v", err)
-    }
-    
-    return secret, nil
-}
-```
-
-### Timeouts and Limits
-
-```go
-config := &server.Config{
-    // Network timeouts
-    ReadTimeout:    time.Second * 30,
-    WriteTimeout:   time.Second * 30,
-    
-    // Request limits
-    MaxRequestSize: 4096,
-    MaxClients:     1000,
-    
-    // Rate limiting
-    RequestsPerSecond: 100,
-    BurstSize:        200,
-}
-```
-
-## Handler Implementation
-
-### Basic Handler Interface
-
-```go
-type AuthHandler struct {
-    users map[string]string // username -> password
-}
-
-func (h *AuthHandler) HandleRequest(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-    switch req.Code {
+    // Handle different request types
+    switch req.Packet.Code {
     case packet.CodeAccessRequest:
-        return h.handleAuth(ctx, req)
+        resp.SetCode(packet.CodeAccessAccept)
+        resp.SetAttribute("Reply-Message", "Access granted")
+
     case packet.CodeAccountingRequest:
-        return h.handleAccounting(ctx, req)
-    default:
-        return nil, fmt.Errorf("unsupported packet type: %v", req.Code)
+        resp.SetCode(packet.CodeAccountingResponse)
     }
+
+    return resp, nil
 }
 
-func (h *AuthHandler) handleAuth(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-    // Extract username and password
-    username, ok := req.GetStringAttribute(packet.AttributeUserName)
-    if !ok {
-        return packet.New(packet.CodeAccessReject, req.Identifier), nil
-    }
-
-    password, ok := req.GetStringAttribute(packet.AttributeUserPassword)
-    if !ok {
-        return packet.New(packet.CodeAccessReject, req.Identifier), nil
-    }
-
-    // Validate credentials
-    if h.validateUser(username, password) {
-        resp := packet.New(packet.CodeAccessAccept, req.Identifier)
-        
-        // Add reply attributes
-        resp.AddStringAttribute(packet.AttributeReplyMessage, "Access granted")
-        resp.AddIntegerAttribute(packet.AttributeSessionTimeout, 3600)
-        
-        return resp, nil
-    }
-
-    return packet.New(packet.CodeAccessReject, req.Identifier), nil
-}
-```
-
-### Enhanced Handler with Middleware
-
-```go
-type EnhancedHandler struct {
-    db     *sql.DB
-    logger log.Logger
-    cache  *redis.Client
-}
-
-func (h *EnhancedHandler) HandleRequest(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-    // Log request
-    h.logger.WithFields(log.Fields{
-        "code":       req.Code,
-        "identifier": req.Identifier,
-        "client_ip":  getClientIP(ctx),
-    }).Info("Processing RADIUS request")
-
-    // Rate limiting check
-    if !h.checkRateLimit(ctx, getClientIP(ctx)) {
-        return packet.New(packet.CodeAccessReject, req.Identifier), nil
-    }
-
-    // Process based on packet type
-    switch req.Code {
-    case packet.CodeAccessRequest:
-        return h.handleAuthentication(ctx, req)
-    case packet.CodeAccountingRequest:
-        return h.handleAccounting(ctx, req)
-    case packet.CodeStatusServer:
-        return h.handleStatusCheck(ctx, req)
-    default:
-        return nil, fmt.Errorf("unsupported request type: %v", req.Code)
-    }
-}
-```
-
-## Middleware Support
-
-### Implementing Middleware
-
-```go
-func LoggingMiddleware(logger log.Logger) server.Middleware {
-    return func(next server.Handler) server.Handler {
-        return server.HandlerFunc(func(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-            start := time.Now()
-            
-            resp, err := next.HandleRequest(ctx, req)
-            
-            duration := time.Since(start)
-            logger.WithFields(log.Fields{
-                "duration":   duration,
-                "request":    req.Code,
-                "response":   resp.Code,
-                "identifier": req.Identifier,
-            }).Info("Request processed")
-            
-            return resp, err
-        })
-    }
-}
-
-func AuthenticationMiddleware(secretProvider SecretProvider) server.Middleware {
-    return func(next server.Handler) server.Handler {
-        return server.HandlerFunc(func(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-            clientIP := getClientIP(ctx)
-            secret, err := secretProvider.GetSecret(clientIP)
-            if err != nil {
-                log.Printf("Failed to get secret for client %s: %v", clientIP, err)
-                return packet.New(packet.CodeAccessReject, req.Identifier), nil
-            }
-            
-            // Validate request authenticator
-            if !validateAuthenticator(req, secret) {
-                return packet.New(packet.CodeAccessReject, req.Identifier), nil
-            }
-            
-            return next.HandleRequest(ctx, req)
-        })
-    }
-}
-```
-
-### Using Middleware
-
-```go
-func createServer() *server.Server {
-    handler := &MyHandler{}
-    secretProvider := &MySecretProvider{...}
-    
-    // Wrap handler with middleware
-    handler = LoggingMiddleware(logger)(handler)
-    handler = AuthenticationMiddleware(secretProvider)(handler)
-    handler = RateLimitMiddleware(rateLimit)(handler)
-    
-    config := &server.Config{
-        SecretProvider: secretProvider,
-        ...
-    }
-    return server.New(config, handler)
-}
-```
-
-## Advanced Configuration
-
-### Client Validation
-
-```go
-config := &server.Config{
-    ClientValidation: &server.ClientValidation{
-        RequireValidSecret: true,
-        AllowedClients: []server.ClientConfig{
-            {
-                IPAddress: "192.168.1.100",
-                Name:      "NAS-1",
-            },
-            {
-                IPAddress: "192.168.1.101", 
-                Name:      "NAS-2",
-            },
-        },
-        DefaultAction: server.ActionReject,
-    },
-    
-    // Secrets are managed separately via SecretProvider
-    SecretProvider: &MySecretProvider{
-        secrets: map[string]string{
-            "192.168.1.100": "nas-secret-1",
-            "192.168.1.101": "nas-secret-2",
-        },
-    },
-}
-```
-
-### Statistics and Monitoring
-
-```go
-// Get server statistics
-stats := srv.GetStatistics()
-fmt.Printf("Requests processed: %d\n", stats.RequestsProcessed)
-fmt.Printf("Authentication success rate: %.2f%%\n", stats.AuthSuccessRate)
-fmt.Printf("Average response time: %v\n", stats.AvgResponseTime)
-
-// Set up Prometheus metrics
-import "github.com/prometheus/client_golang/prometheus"
-
-var (
-    requestsTotal = prometheus.NewCounterVec(
-        prometheus.CounterOpts{
-            Name: "radius_requests_total",
-            Help: "Total number of RADIUS requests",
-        },
-        []string{"code", "result"},
-    )
-    
-    responseTime = prometheus.NewHistogramVec(
-        prometheus.HistogramOpts{
-            Name: "radius_response_duration_seconds",
-            Help: "RADIUS response duration",
-        },
-        []string{"code"},
-    )
-)
-```
-
-### Graceful Shutdown
-
-```go
 func main() {
-    srv, err := server.New(config, handler)
+    // Create dictionary with standard attributes
+    dict := dictionary.New()
+    dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+    dict.AddVendor(dictionaries.ERXVendorDefinition)
+
+    // Create and start server
+    srv, err := server.New(":1812", &myHandler{}, dict)
     if err != nil {
         log.Fatal(err)
     }
 
-    // Start server
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-
-    go func() {
-        if err := srv.Start(ctx); err != nil {
-            log.Fatal("Server failed:", err)
-        }
-    }()
-
-    // Wait for interrupt signal
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-    <-sigChan
-
-    log.Println("Shutting down server...")
-    
-    // Graceful shutdown with timeout
-    shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-    defer shutdownCancel()
-    
-    if err := srv.Shutdown(shutdownCtx); err != nil {
-        log.Printf("Server shutdown error: %v", err)
-    }
-    
-    log.Println("Server stopped")
+    fmt.Println("RADIUS server listening on :1812")
+    log.Fatal(srv.Serve())
 }
 ```
 
-## Performance Optimization
+## Handler Interface
 
-### Connection Pooling
+The server requires a handler that implements two methods:
+
+### ServeSecret
+
+Returns the shared secret for a client:
 
 ```go
-config := &server.Config{
-    TCP: &server.TCPConfig{
-        KeepAlive:       true,
-        KeepAlivePeriod: time.Minute * 2,
-        MaxConnections:  1000,
-        IdleTimeout:     time.Minute * 5,
-    },
+type SecretRequest struct {
+    Context    context.Context
+    LocalAddr  net.Addr
+    RemoteAddr net.Addr
+}
+
+type SecretResponse struct {
+    Secret   []byte
+    Metadata map[string]interface{}
+}
+
+func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+    // Lookup secret based on client address
+    secret := lookupSecretForClient(req.RemoteAddr.String())
+
+    return server.SecretResponse{
+        Secret: []byte(secret),
+        Metadata: map[string]interface{}{
+            "client": req.RemoteAddr.String(),
+        },
+    }, nil
 }
 ```
 
-### Memory Management
+### ServeRADIUS
+
+Processes RADIUS requests and returns responses:
 
 ```go
-config := &server.Config{
-    Memory: &server.MemoryConfig{
-        MaxRequestSize:   4096,
-        BufferPoolSize:   1000,
-        RequestPoolSize:  500,
-        ResponsePoolSize: 500,
-    },
+type Request struct {
+    Context    context.Context
+    LocalAddr  net.Addr
+    RemoteAddr net.Addr
+    Packet     *packet.Packet
+    Secret     SecretResponse
 }
-```
 
-## Error Handling
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    resp := server.NewResponse(req)
 
-### Custom Error Responses
-
-```go
-func (h *Handler) HandleRequest(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-    defer func() {
-        if r := recover(); r != nil {
-            h.logger.Errorf("Handler panic: %v", r)
+    switch req.Packet.Code {
+    case packet.CodeAccessRequest:
+        // Authenticate user
+        if authenticateUser(req) {
+            resp.SetCode(packet.CodeAccessAccept)
+        } else {
+            resp.SetCode(packet.CodeAccessReject)
         }
-    }()
 
-    resp, err := h.processRequest(ctx, req)
-    if err != nil {
-        // Log error
-        h.logger.WithError(err).Error("Request processing failed")
-        
-        // Return appropriate error response
-        switch {
-        case errors.Is(err, ErrInvalidCredentials):
-            return packet.New(packet.CodeAccessReject, req.Identifier), nil
-        case errors.Is(err, ErrServerBusy):
-            return nil, err // Let server handle retry
-        default:
-            return packet.New(packet.CodeAccessReject, req.Identifier), nil
-        }
+    case packet.CodeAccountingRequest:
+        // Handle accounting
+        handleAccounting(req)
+        resp.SetCode(packet.CodeAccountingResponse)
     }
 
     return resp, nil
 }
 ```
 
-## Testing
+## Response Helper Methods
 
-### Unit Testing Server Components
+The Response object provides convenient methods:
+
+### SetCode
+
+Set the response packet code:
 
 ```go
-func TestHandler(t *testing.T) {
-    handler := &AuthHandler{
-        users: map[string]string{
-            "testuser": "testpass",
-        },
+resp.SetCode(packet.CodeAccessAccept)
+resp.SetCode(packet.CodeAccessReject)
+resp.SetCode(packet.CodeAccountingResponse)
+```
+
+### SetAttribute
+
+Add a single attribute by name:
+
+```go
+resp.SetAttribute("Reply-Message", "Welcome!")
+resp.SetAttribute("Framed-IP-Address", "192.0.2.10")
+resp.SetAttribute("Session-Timeout", 3600)
+```
+
+### SetAttributes
+
+Add multiple attributes at once:
+
+```go
+attrs := map[string]interface{}{
+    "Reply-Message":           "Access granted",
+    "Framed-IP-Address":       "192.0.2.10",
+    "Session-Timeout":         3600,
+    "ERX-Primary-Dns":         "8.8.8.8",
+    "ERX-Service-Activate:1":  "ipoe-parking",
+}
+resp.SetAttributes(attrs)
+```
+
+## Authentication Example
+
+```go
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    resp := server.NewResponse(req)
+
+    if req.Packet.Code != packet.CodeAccessRequest {
+        return resp, nil
     }
 
-    req := packet.New(packet.CodeAccessRequest, 1)
-    req.AddStringAttribute(packet.AttributeUserName, "testuser")
-    req.AddStringAttribute(packet.AttributeUserPassword, "testpass")
+    // Get username
+    usernameAttr, found := req.Packet.GetAttribute(1) // User-Name
+    if !found {
+        resp.SetCode(packet.CodeAccessReject)
+        resp.SetAttribute("Reply-Message", "Username required")
+        return resp, nil
+    }
+    username := string(usernameAttr.Value)
 
-    resp, err := handler.HandleRequest(context.Background(), req)
-    
-    assert.NoError(t, err)
-    assert.Equal(t, packet.CodeAccessAccept, resp.Code)
+    // Authenticate (implement your logic)
+    if authenticateUser(username, req.Secret.Secret) {
+        resp.SetCode(packet.CodeAccessAccept)
+        resp.SetAttribute("Reply-Message", "Access granted")
+
+        // Add service attributes
+        attrs := map[string]interface{}{
+            "Framed-IP-Address": "192.0.2.10",
+            "Session-Timeout":   3600,
+        }
+        resp.SetAttributes(attrs)
+    } else {
+        resp.SetCode(packet.CodeAccessReject)
+        resp.SetAttribute("Reply-Message", "Authentication failed")
+    }
+
+    return resp, nil
 }
 ```
 
-### Integration Testing
+## Accounting Example
 
 ```go
-func TestServerIntegration(t *testing.T) {
-    // Start test server
-    srv := startTestServer(t)
-    defer srv.Shutdown(context.Background())
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    resp := server.NewResponse(req)
 
-    // Create test client
-    client := createTestClient(t)
-    defer client.Close()
+    if req.Packet.Code != packet.CodeAccountingRequest {
+        return resp, nil
+    }
 
-    // Send test request
-    req := createAuthRequest("testuser", "testpass")
-    resp, err := client.SendRequest(context.Background(), req)
+    // Get accounting status type
+    statusAttr, found := req.Packet.GetAttribute(40) // Acct-Status-Type
+    if !found {
+        return resp, fmt.Errorf("missing Acct-Status-Type")
+    }
 
-    assert.NoError(t, err)
-    assert.Equal(t, packet.CodeAccessAccept, resp.Code)
+    statusType, err := packet.DecodeInteger(statusAttr.Value)
+    if err != nil {
+        return resp, err
+    }
+
+    switch statusType {
+    case 1: // Start
+        handleAccountingStart(req)
+    case 2: // Stop
+        handleAccountingStop(req)
+    case 3: // Interim-Update
+        handleAccountingUpdate(req)
+    }
+
+    resp.SetCode(packet.CodeAccountingResponse)
+    return resp, nil
+}
+
+func handleAccountingStart(req *server.Request) {
+    // Get session ID
+    sessionAttr, _ := req.Packet.GetAttribute(44) // Acct-Session-ID
+    sessionID := string(sessionAttr.Value)
+
+    // Store session start
+    fmt.Printf("Session started: %s\n", sessionID)
+}
+
+func handleAccountingStop(req *server.Request) {
+    // Get session statistics
+    inputOctets, _ := req.Packet.GetAttribute(42)  // Acct-Input-Octets
+    outputOctets, _ := req.Packet.GetAttribute(43) // Acct-Output-Octets
+    sessionTime, _ := req.Packet.GetAttribute(46)  // Acct-Session-Time
+
+    inBytes, _ := packet.DecodeInteger(inputOctets.Value)
+    outBytes, _ := packet.DecodeInteger(outputOctets.Value)
+    duration, _ := packet.DecodeInteger(sessionTime.Value)
+
+    fmt.Printf("Session ended: %d bytes in, %d bytes out, %d seconds\n",
+        inBytes, outBytes, duration)
 }
 ```
+
+## Secret Management
+
+Implement per-client secret lookup:
+
+```go
+type SecretStore struct {
+    secrets map[string]string
+}
+
+func NewSecretStore() *SecretStore {
+    return &SecretStore{
+        secrets: map[string]string{
+            "192.168.1.1":   "secret1",
+            "192.168.1.2":   "secret2",
+            "10.0.0.0/24":   "shared-secret",
+        },
+    }
+}
+
+func (s *SecretStore) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+    clientIP := req.RemoteAddr.(*net.UDPAddr).IP.String()
+
+    secret, found := s.secrets[clientIP]
+    if !found {
+        // Try subnet match or default
+        secret = "default-secret"
+    }
+
+    return server.SecretResponse{
+        Secret: []byte(secret),
+        Metadata: map[string]interface{}{
+            "client": clientIP,
+        },
+    }, nil
+}
+```
+
+## Server Control
+
+### Graceful Shutdown
+
+```go
+srv, err := server.New(":1812", handler, dict)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Start server in goroutine
+go func() {
+    if err := srv.Serve(); err != nil {
+        log.Printf("Server error: %v\n", err)
+    }
+}()
+
+// Wait for shutdown signal
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+<-sigChan
+
+// Close server
+log.Println("Shutting down...")
+srv.Close()
+```
+
+## Best Practices
+
+### Error Handling
+
+1. **Always validate input**: Check for required attributes
+2. **Handle decode errors**: Attribute value decoding can fail
+3. **Log errors**: Use structured logging for debugging
+4. **Return appropriate codes**: Use Access-Reject for auth failures
+
+### Performance
+
+1. **Use dictionaries**: Pre-load dictionaries once
+2. **Avoid blocking**: Keep handlers fast
+3. **Connection pooling**: Reuse database connections
+4. **Caching**: Cache authentication results when appropriate
+
+### Security
+
+1. **Validate clients**: Check client IP addresses
+2. **Use strong secrets**: Minimum 16 random characters
+3. **Rate limiting**: Implement rate limiting per client
+4. **Audit logging**: Log all authentication attempts
+5. **Network isolation**: Run on private networks when possible
+
+## Complete Example
+
+See `cmd/simple-server/main.go` in the repository for a complete working example.

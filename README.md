@@ -7,48 +7,44 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 ### Core RADIUS Protocol Support
 - **RFC 2865**: Remote Authentication Dial-In User Service (RADIUS)
 - **RFC 2866**: RADIUS Accounting
-- **RFC 3576**: Dynamic Authorization Extensions (CoA/Disconnect)
+- **RFC 2868**: Tunnel Protocol Support (Tagged Attributes)
+- **RFC 2869**: RADIUS Extensions
 - Full packet encoding/decoding with validation
 - Support for all standard RADIUS packet types
 - Comprehensive attribute handling with type safety
 
 ### Transport Protocols
 - **UDP**: Standard RADIUS transport (RFC 2865)
-- **TCP**: TCP transport for RADIUS
-- **TLS over TCP**: Secure RADIUS communication
-- Configurable timeouts and retry mechanisms
-- Connection pooling for TCP connections
 
 ### Security Features
-- Message authenticator validation (RFC 2869)
-- Cryptographic packet validation
-- Request/response authenticator verification
-- Secure secret management
-- Protection against replay attacks
+- Request/response authenticator calculation and verification
+- User-Password encryption (RFC 2865)
+- Tunnel-Password encryption (RFC 2868)
+- Ascend-Secret encryption
+- Cryptographic packet validation using MD5 (RFC required)
 
 ### Dictionary Support
-- Extensible attribute dictionary system
-- YAML-based dictionary configuration
+- Efficient in-memory attribute dictionary system
+- Fast O(1) attribute lookups by ID and name
 - Support for vendor-specific attributes (VSAs)
 - Type validation for all attribute types
-- Custom attribute definitions
+- Tagged attribute support (RFC 2868)
+- Enumerated value support
+- Built-in RFC and vendor dictionaries (ERX, Ascend)
 
 ### Server Features
-- High-performance concurrent request handling
-- Middleware support for request processing
+- Simple UDP RADIUS server
+- Concurrent request handling with goroutines
 - Flexible handler interface
-- Client validation and access control
-- Request lifecycle management
-- Statistics and monitoring
-- Graceful shutdown support
+- Per-client secret management
+- Dictionary-based attribute validation
 
-### Client Features
-- Automatic failover between multiple servers
-- Connection pooling and reuse
-- Retry logic with exponential backoff
-- Accounting support
-- Health checking
-- High-level API for common operations
+### Packet Features
+- Low-level packet manipulation
+- Attribute encoding/decoding helpers
+- VSA (Vendor-Specific Attribute) support
+- Tagged attribute handling
+- Password encryption/decryption
 
 ## Architecture
 
@@ -86,91 +82,54 @@ go get github.com/vitalvas/goradius
 package main
 
 import (
-    "context"
+    "fmt"
     "log"
-    
+
+    "github.com/vitalvas/goradius/pkg/dictionaries"
+    "github.com/vitalvas/goradius/pkg/dictionary"
+    "github.com/vitalvas/goradius/pkg/packet"
     "github.com/vitalvas/goradius/pkg/server"
-    "github.com/vitalvas/goradius/pkg/packet"
 )
 
-func main() {
-    // Create server configuration
-    config := &server.Config{
-        Bindings: []server.Binding{
-            {
-                Network: "udp",
-                Address: ":1812",
-            },
-        },
+type myHandler struct{}
+
+func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+    // Return shared secret for this client
+    return server.SecretResponse{
+        Secret: []byte("testing123"),
+    }, nil
+}
+
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
+
+    resp := server.NewResponse(req)
+
+    // Set response code based on request type
+    switch req.Packet.Code {
+    case packet.CodeAccessRequest:
+        resp.SetCode(packet.CodeAccessAccept)
+        resp.SetAttribute("Reply-Message", "Access granted")
+    case packet.CodeAccountingRequest:
+        resp.SetCode(packet.CodeAccountingResponse)
     }
-    
+
+    return resp, nil
+}
+
+func main() {
+    // Create dictionary with standard attributes
+    dict := dictionary.New()
+    dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+
     // Create and start server
-    srv, err := server.New(config, &MyHandler{})
+    srv, err := server.New(":1812", &myHandler{}, dict)
     if err != nil {
         log.Fatal(err)
     }
-    
-    if err := srv.Start(context.Background()); err != nil {
-        log.Fatal(err)
-    }
-}
 
-type MyHandler struct{}
-
-func (h *MyHandler) HandleRequest(ctx context.Context, req *packet.Packet) (*packet.Packet, error) {
-    // Handle authentication request
-    if req.Code == packet.CodeAccessRequest {
-        // Validate credentials and return appropriate response
-        resp := packet.New(packet.CodeAccessAccept, req.Identifier)
-        return resp, nil
-    }
-    return nil, nil
-}
-```
-
-### Basic RADIUS Client
-
-```go
-package main
-
-import (
-    "context"
-    "log"
-    
-    "github.com/vitalvas/goradius/pkg/client"
-    "github.com/vitalvas/goradius/pkg/packet"
-)
-
-func main() {
-    // Create client configuration
-    config := &client.Config{
-        Servers: []client.ServerConfig{
-            {
-                Address: "localhost:1812",
-                Secret:  "testing123",
-            },
-        },
-        Transport: client.TransportUDP,
-    }
-    
-    // Create client
-    c, err := client.New(config)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer c.Close()
-    
-    // Create authentication request
-    req := packet.New(packet.CodeAccessRequest, 1)
-    // Add attributes...
-    
-    // Send request
-    resp, err := c.SendRequest(context.Background(), req)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    log.Printf("Response: %v", resp.Code)
+    fmt.Println("RADIUS server listening on :1812")
+    log.Fatal(srv.Serve())
 }
 ```
 
@@ -178,114 +137,125 @@ func main() {
 
 ### Core Packages
 
-- **`pkg/packet`**: RADIUS packet encoding, decoding, and validation
-- **`pkg/server`**: RADIUS server implementation with UDP/TCP support
-- **`pkg/client`**: RADIUS client with failover and retry capabilities
-- **`pkg/dictionary`**: Attribute dictionary management and validation
-- **`pkg/crypto`**: Cryptographic functions and message authentication
-- **`pkg/log`**: Logging interface and utilities
+- **`pkg/packet`**: RADIUS packet encoding, decoding, and attribute handling
+- **`pkg/server`**: Simple RADIUS UDP server implementation
+- **`pkg/dictionary`**: In-memory attribute dictionary with fast lookups
+- **`pkg/dictionaries`**: Built-in RFC and vendor dictionary definitions
+- **`pkg/crypto`**: Message authenticator and validation functions
+- **`pkg/log`**: Logging interface
 
 ### Key Components
 
-#### Packet Processing
-- Packet encoding/decoding according to RFC specifications
-- Attribute type validation and conversion
-- Authenticator calculation and verification
-- Support for all standard RADIUS packet types
+#### Packet Processing (pkg/packet)
+- Packet encoding/decoding (Encode/Decode)
+- Attribute creation and manipulation
+- Vendor-Specific Attribute (VSA) support
+- Tagged attribute handling
+- Value encoding/decoding helpers
+- Authenticator calculation
+- Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 
-#### Dictionary System
-- YAML-based attribute definitions
-- Vendor-specific attribute support
-- Type-safe attribute handling
-- Extensible dictionary loading
+#### Dictionary System (pkg/dictionary)
+- Fast O(1) lookups by attribute ID or name
+- Vendor attribute lookups
+- Standard RFC attributes
+- Vendor-specific attributes
+- Data type definitions
+- Encryption type support
+- Enumerated values
 
-#### Security
-- Message authenticator support (RFC 2869)
-- Request/response authenticator validation
-- Secure random number generation
-- Protection against common attacks
+#### Server (pkg/server)
+- UDP RADIUS server
+- Handler interface for request processing
+- Secret management per client
+- Response helper functions
 
-## Configuration
+#### Built-in Dictionaries (pkg/dictionaries)
+- Standard RFC attributes (RFC 2865, 2866, etc.)
+- Juniper ERX vendor attributes
+- Ascend vendor attributes
 
-### Server Configuration
+## Usage Examples
+
+### Creating Packets with Dictionary
 
 ```go
-config := &server.Config{
-    Bindings: []server.Binding{
-        {
-            Network: "udp",
-            Address: ":1812",
-            Secret:  "shared-secret",
-        },
-        {
-            Network: "tcp",
-            Address: ":1812",
-            TLSConfig: &tls.Config{...},
-        },
-    },
-    ReadTimeout:    time.Second * 5,
-    WriteTimeout:   time.Second * 5,
-    MaxRequestSize: 4096,
-}
+// Create dictionary
+dict := dictionary.New()
+dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+dict.AddVendor(dictionaries.ERXVendorDefinition)
+
+// Create packet with dictionary
+req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+
+// Add attributes by name
+req.AddAttributeByName("User-Name", "john.doe")
+req.AddAttributeByName("Framed-IP-Address", "192.0.2.11")
+req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+
+// Add tagged vendor attribute
+req.AddAttributeByName("ERX-Service-Activate:1", "ipoe-parking")
 ```
 
-### Client Configuration
+### Working with VSAs
 
 ```go
-config := &client.Config{
-    Servers: []client.ServerConfig{
-        {
-            Address: "radius1.example.com:1812",
-            Secret:  "secret1",
-        },
-        {
-            Address: "radius2.example.com:1812", 
-            Secret:  "secret2",
-        },
-    },
-    Transport:       client.TransportUDP,
-    Timeout:         time.Second * 5,
-    MaxRetries:      3,
-    RetryInterval:   time.Second * 2,
-    FailoverTimeout: time.Second * 30,
+// Create vendor attribute
+va := packet.NewVendorAttribute(4874, 13, []byte("8.8.8.8"))
+req.AddVendorAttribute(va)
+
+// Get vendor attribute
+va, found := req.GetVendorAttribute(4874, 13)
+if found {
+    fmt.Printf("Value: %s\n", string(va.Value))
 }
 ```
 
 ## Testing
 
-Run the full test suite with race detection:
+Run tests:
 
 ```bash
-make test
+go test ./...
 ```
 
-Run tests without race detection (faster for development):
+Run tests with race detection:
 
 ```bash
-make test-fast
+go test -race ./...
+```
+
+Run tests with coverage:
+
+```bash
+go test -cover ./...
 ```
 
 ## Building
 
-Build all binaries:
+Format code:
 
 ```bash
-make build
+go fmt ./...
 ```
 
-Run all checks (format, vet, lint, test):
+Vet code:
 
 ```bash
-make check
+go vet ./...
+```
+
+Run linter:
+
+```bash
+golangci-lint run
 ```
 
 ## Dependencies
 
-- **Go 1.24.4** or later
+- **Go 1.23** or later
 - **github.com/sirupsen/logrus** - Structured logging
 - **github.com/stretchr/testify** - Testing framework
-- **golang.org/x/crypto** - Cryptographic functions
-- **gopkg.in/yaml.v3** - YAML parsing for dictionaries
 
 ## Standards Compliance
 
@@ -293,37 +263,56 @@ This library implements the following RFCs:
 
 - **RFC 2865**: Remote Authentication Dial-In User Service (RADIUS)
 - **RFC 2866**: RADIUS Accounting
-- **RFC 2869**: RADIUS Extensions (Message Authenticator)
-- **RFC 3576**: Dynamic Authorization Extensions to RADIUS
+- **RFC 2868**: RADIUS Attributes for Tunnel Protocol Support
+- **RFC 2869**: RADIUS Extensions
 
 ## Performance
 
-- Concurrent request handling with goroutine pools
-- Connection pooling for TCP transport
-- Efficient packet encoding/decoding
-- Memory-efficient attribute handling
-- Configurable timeouts and limits
+- Concurrent request handling with goroutines
+- Efficient O(1) dictionary lookups using hash maps
+- Memory-efficient packet encoding/decoding
+- Pre-allocated attribute structures
 
 ## Security Considerations
 
-- Always use strong shared secrets
-- Enable message authenticator for additional security
-- Consider using TLS for transport security
-- Implement proper access controls in handlers
-- Regular security audits and updates
+- **MD5 Usage**: This library uses MD5 for RADIUS authenticator calculation as required by RFC 2865. While MD5 is cryptographically weak, it is mandated by the RADIUS specification.
+- **Shared Secrets**: Always use strong, random shared secrets (minimum 16 characters recommended)
+- **Password Encryption**: User passwords are encrypted using the RFC-specified algorithm when using dictionary-based attribute methods
+- **Network Security**: RADIUS transmits over UDP without built-in transport encryption. Use network-level security (VPN, private networks) for production deployments
+- **Input Validation**: All packet decoding includes length and structure validation to prevent malformed packet attacks
+
+## Project Status
+
+This is an active RADIUS library implementation with the following status:
+
+**Implemented:**
+- ✅ RADIUS packet encoding/decoding
+- ✅ Standard attribute handling
+- ✅ Vendor-Specific Attributes (VSAs)
+- ✅ Dictionary system with fast lookups
+- ✅ UDP server
+- ✅ Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
+- ✅ Tagged attributes (RFC 2868)
+- ✅ Authenticator calculation and verification
+
+**Not Yet Implemented:**
+- ❌ TCP transport
+- ❌ TLS support
+- ❌ RADIUS client
+- ❌ Message-Authenticator attribute (RFC 2869)
+- ❌ Dynamic Authorization (CoA/Disconnect) - RFC 3576
+- ❌ EAP support
+
+## Examples
+
+See `cmd/simple-server/main.go` for a working example of a basic RADIUS server.
+
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+- [Dictionary Usage](docs/docs/dictionary.md)
+- [Packet Handling](docs/docs/packets.md)
 
 ## License
 
 This project follows standard Go module licensing practices. Please refer to the project repository for specific license information.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes with appropriate tests
-4. Ensure all tests pass: `make check`
-5. Submit a pull request
-
-## Support
-
-For issues, feature requests, or questions, please refer to the project repository.
