@@ -335,7 +335,7 @@ var StandardRFCAttributes = []*dictionary.AttributeDefinition{
 	{ID: 92, Name: "NAS-Filter-Rule", DataType: dictionary.DataTypeString},                       // RFC4849
 	{ID: 94, Name: "Originating-Line-Info", DataType: dictionary.DataTypeOctets},                 // RFC7155
 	{ID: 95, Name: "NAS-IPv6-Address", DataType: dictionary.DataTypeIPv6Addr},                    // RFC3162
-	{ID: 96, Name: "Framed-Interface-Id", DataType: dictionary.DataTypeIfId},                     // RFC3162
+	{ID: 96, Name: "Framed-Interface-Id", DataType: dictionary.DataTypeIfID},                     // RFC3162
 	{ID: 97, Name: "Framed-IPv6-Prefix", DataType: dictionary.DataTypeIPv6Prefix},                // RFC3162
 	{ID: 98, Name: "Login-IPv6-Host", DataType: dictionary.DataTypeIPv6Addr},                     // RFC3162
 	{ID: 99, Name: "Framed-IPv6-Route", DataType: dictionary.DataTypeString},                     // RFC3162
@@ -460,8 +460,8 @@ var StandardRFCAttributes = []*dictionary.AttributeDefinition{
 	{ID: 150, Name: "PMIP6-Visited-LMA-IPv4-Address", DataType: dictionary.DataTypeIPAddr},       // RFC6572
 	{ID: 151, Name: "PMIP6-Home-HN-Prefix", DataType: dictionary.DataTypeIPv6Prefix},             // RFC6572
 	{ID: 152, Name: "PMIP6-Visited-HN-Prefix", DataType: dictionary.DataTypeIPv6Prefix},          // RFC6572
-	{ID: 153, Name: "PMIP6-Home-Interface-ID", DataType: dictionary.DataTypeIfId},                // RFC6572
-	{ID: 154, Name: "PMIP6-Visited-Interface-ID", DataType: dictionary.DataTypeIfId},             // RFC6572
+	{ID: 153, Name: "PMIP6-Home-Interface-ID", DataType: dictionary.DataTypeIfID},                // RFC6572
+	{ID: 154, Name: "PMIP6-Visited-Interface-ID", DataType: dictionary.DataTypeIfID},             // RFC6572
 	{ID: 155, Name: "PMIP6-Home-IPv4-HoA", DataType: dictionary.DataTypeOctets},                  // RFC6572
 	{ID: 156, Name: "PMIP6-Visited-IPv4-HoA", DataType: dictionary.DataTypeOctets},               // RFC6572
 	{ID: 157, Name: "PMIP6-Home-DHCP4-Server-Address", DataType: dictionary.DataTypeIPAddr},      // RFC6572

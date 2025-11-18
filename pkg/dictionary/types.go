@@ -11,7 +11,7 @@ const (
 	DataTypeDate       DataType = "date"
 	DataTypeIPv6Addr   DataType = "ipv6addr"
 	DataTypeIPv6Prefix DataType = "ipv6prefix"
-	DataTypeIfId       DataType = "ifid"
+	DataTypeIfID       DataType = "ifid"
 	DataTypeTLV        DataType = "tlv"
 	DataTypeABinary    DataType = "abinary"
 )

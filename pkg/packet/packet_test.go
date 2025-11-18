@@ -1,0 +1,396 @@
+package packet
+
+import (
+	"net"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vitalvas/goradius/pkg/dictionary"
+)
+
+func TestNewPacket(t *testing.T) {
+	tests := []struct {
+		name       string
+		code       Code
+		identifier uint8
+	}{
+		{"Access-Request", CodeAccessRequest, 1},
+		{"Access-Accept", CodeAccessAccept, 2},
+		{"Accounting-Request", CodeAccountingRequest, 42},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt := New(tt.code, tt.identifier)
+			assert.Equal(t, tt.code, pkt.Code)
+			assert.Equal(t, tt.identifier, pkt.Identifier)
+			assert.Equal(t, uint16(PacketHeaderLength), pkt.Length)
+			assert.Empty(t, pkt.Attributes)
+		})
+	}
+}
+
+func TestPacketAddAttribute(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	attr := NewAttribute(1, []byte("testuser"))
+	pkt.AddAttribute(attr)
+
+	assert.Len(t, pkt.Attributes, 1)
+	assert.Equal(t, uint8(1), pkt.Attributes[0].Type)
+	assert.Equal(t, []byte("testuser"), pkt.Attributes[0].Value)
+	assert.Equal(t, PacketHeaderLength+uint16(attr.Length), pkt.Length)
+}
+
+func TestPacketGetAttribute(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	attr := NewAttribute(1, []byte("testuser"))
+	pkt.AddAttribute(attr)
+
+	found, ok := pkt.GetAttribute(1)
+	assert.True(t, ok)
+	assert.Equal(t, []byte("testuser"), found.Value)
+
+	_, ok = pkt.GetAttribute(99)
+	assert.False(t, ok)
+}
+
+func TestPacketGetAttributes(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	pkt.AddAttribute(NewAttribute(1, []byte("user1")))
+	pkt.AddAttribute(NewAttribute(1, []byte("user2")))
+	pkt.AddAttribute(NewAttribute(2, []byte("other")))
+
+	attrs := pkt.GetAttributes(1)
+	assert.Len(t, attrs, 2)
+	assert.Equal(t, []byte("user1"), attrs[0].Value)
+	assert.Equal(t, []byte("user2"), attrs[1].Value)
+
+	attrs = pkt.GetAttributes(99)
+	assert.Empty(t, attrs)
+}
+
+func TestPacketRemoveAttribute(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	pkt.AddAttribute(NewAttribute(2, []byte("testpass")))
+
+	removed := pkt.RemoveAttribute(1)
+	assert.True(t, removed)
+	assert.Len(t, pkt.Attributes, 1)
+
+	removed = pkt.RemoveAttribute(99)
+	assert.False(t, removed)
+}
+
+func TestPacketRemoveAttributes(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	pkt.AddAttribute(NewAttribute(1, []byte("user1")))
+	pkt.AddAttribute(NewAttribute(1, []byte("user2")))
+	pkt.AddAttribute(NewAttribute(2, []byte("pass")))
+
+	count := pkt.RemoveAttributes(1)
+	assert.Equal(t, 2, count)
+	assert.Len(t, pkt.Attributes, 1)
+
+	count = pkt.RemoveAttributes(99)
+	assert.Equal(t, 0, count)
+}
+
+func TestPacketIsValid(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func() *Packet
+		wantErr bool
+	}{
+		{
+			name: "valid packet",
+			setup: func() *Packet {
+				return New(CodeAccessRequest, 1)
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid code",
+			setup: func() *Packet {
+				pkt := New(CodeAccessRequest, 1)
+				pkt.Code = 99
+				return pkt
+			},
+			wantErr: true,
+		},
+		{
+			name: "packet too short",
+			setup: func() *Packet {
+				pkt := New(CodeAccessRequest, 1)
+				pkt.Length = 10
+				return pkt
+			},
+			wantErr: true,
+		},
+		{
+			name: "packet too long",
+			setup: func() *Packet {
+				pkt := New(CodeAccessRequest, 1)
+				pkt.Length = 5000
+				return pkt
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt := tt.setup()
+			err := pkt.IsValid()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestPacketEncodeDecode(t *testing.T) {
+	pkt := New(CodeAccessRequest, 42)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	pkt.AddAttribute(NewAttribute(4, EncodeInteger(123)))
+
+	// Set a test authenticator
+	for i := range pkt.Authenticator {
+		pkt.Authenticator[i] = byte(i)
+	}
+
+	data, err := pkt.Encode()
+	require.NoError(t, err)
+
+	decoded, err := Decode(data)
+	require.NoError(t, err)
+
+	assert.Equal(t, pkt.Code, decoded.Code)
+	assert.Equal(t, pkt.Identifier, decoded.Identifier)
+	assert.Equal(t, pkt.Length, decoded.Length)
+	assert.Equal(t, pkt.Authenticator, decoded.Authenticator)
+	assert.Len(t, decoded.Attributes, 2)
+}
+
+func TestPacketAuthenticatorCalculation(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+	secret := []byte("testing123")
+
+	// Calculate request authenticator
+	reqAuth := pkt.CalculateRequestAuthenticator(secret)
+	assert.Len(t, reqAuth, AuthenticatorLength)
+
+	// Create response
+	resp := New(CodeAccessAccept, 1)
+	resp.AddAttribute(NewAttribute(18, []byte("Welcome")))
+
+	// Calculate response authenticator
+	respAuth := resp.CalculateResponseAuthenticator(secret, reqAuth)
+	assert.Len(t, respAuth, AuthenticatorLength)
+
+	// Response auth should be different from request auth
+	assert.NotEqual(t, reqAuth, respAuth)
+}
+
+func TestPacketWithDictionary(t *testing.T) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{
+			ID:       1,
+			Name:     "User-Name",
+			DataType: dictionary.DataTypeString,
+		},
+		{
+			ID:       8,
+			Name:     "Framed-IP-Address",
+			DataType: dictionary.DataTypeIPAddr,
+		},
+	})
+
+	pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+	assert.NotNil(t, pkt.Dict)
+
+	pkt.AddAttributeByName("User-Name", "testuser")
+	pkt.AddAttributeByName("Framed-IP-Address", "192.0.2.10")
+
+	assert.Len(t, pkt.Attributes, 2)
+
+	userAttr, ok := pkt.GetAttribute(1)
+	assert.True(t, ok)
+	assert.Equal(t, []byte("testuser"), userAttr.Value)
+
+	ipAttr, ok := pkt.GetAttribute(8)
+	assert.True(t, ok)
+	ip, err := DecodeIPAddr(ipAttr.Value)
+	assert.NoError(t, err)
+	assert.Equal(t, "192.0.2.10", ip.String())
+}
+
+func TestPacketVendorAttributes(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	va := NewVendorAttribute(4874, 13, []byte("8.8.8.8"))
+	pkt.AddVendorAttribute(va)
+
+	assert.Len(t, pkt.Attributes, 1)
+	assert.Equal(t, uint8(26), pkt.Attributes[0].Type) // VSA type
+
+	foundVA, ok := pkt.GetVendorAttribute(4874, 13)
+	assert.True(t, ok)
+	assert.Equal(t, uint32(4874), foundVA.VendorID)
+	assert.Equal(t, uint8(13), foundVA.VendorType)
+	assert.Equal(t, []byte("8.8.8.8"), foundVA.Value)
+}
+
+func TestPacketTaggedVendorAttributes(t *testing.T) {
+	pkt := New(CodeAccessRequest, 1)
+
+	va := NewTaggedVendorAttribute(4874, 1, 3, []byte("test-service"))
+	pkt.AddVendorAttribute(va)
+
+	foundVA, ok := pkt.GetVendorAttribute(4874, 1)
+	assert.True(t, ok)
+	assert.Equal(t, uint8(3), foundVA.Tag)
+	assert.Equal(t, []byte("test-service"), foundVA.GetValue())
+}
+
+func TestPacketString(t *testing.T) {
+	pkt := New(CodeAccessRequest, 42)
+	pkt.AddAttribute(NewAttribute(1, []byte("test")))
+
+	str := pkt.String()
+	assert.Contains(t, str, "Access-Request")
+	assert.Contains(t, str, "ID=42")
+	assert.Contains(t, str, "Attributes=1")
+}
+
+func TestEncodeDecodeInteger(t *testing.T) {
+	tests := []uint32{0, 1, 123, 65535, 4294967295}
+
+	for _, val := range tests {
+		t.Run("", func(t *testing.T) {
+			encoded := EncodeInteger(val)
+			assert.Len(t, encoded, 4)
+
+			decoded, err := DecodeInteger(encoded)
+			assert.NoError(t, err)
+			assert.Equal(t, val, decoded)
+		})
+	}
+}
+
+func TestEncodeDecodeIPAddr(t *testing.T) {
+	tests := []string{
+		"192.168.1.1",
+		"10.0.0.1",
+		"172.16.0.1",
+		"0.0.0.0",
+		"255.255.255.255",
+	}
+
+	for _, ipStr := range tests {
+		t.Run(ipStr, func(t *testing.T) {
+			ip := net.ParseIP(ipStr)
+
+			encoded, err := EncodeIPAddr(ip)
+			require.NoError(t, err)
+			assert.Len(t, encoded, 4)
+
+			decoded, err := DecodeIPAddr(encoded)
+			assert.NoError(t, err)
+			assert.Equal(t, ipStr, decoded.String())
+		})
+	}
+}
+
+func TestEncodeDecodeIPv6Addr(t *testing.T) {
+	tests := []string{
+		"2001:db8::1",
+		"fe80::1",
+		"::1",
+	}
+
+	for _, ipStr := range tests {
+		t.Run(ipStr, func(t *testing.T) {
+			ip := net.ParseIP(ipStr)
+
+			encoded, err := EncodeIPv6Addr(ip)
+			require.NoError(t, err)
+			assert.Len(t, encoded, 16)
+
+			decoded, err := DecodeIPv6Addr(encoded)
+			assert.NoError(t, err)
+			assert.True(t, ip.Equal(decoded))
+		})
+	}
+}
+
+func TestEncodeDecodeDate(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+
+	encoded := EncodeDate(now)
+	assert.Len(t, encoded, 4)
+
+	decoded, err := DecodeDate(encoded)
+	assert.NoError(t, err)
+	assert.Equal(t, now.Unix(), decoded.Unix())
+}
+
+func TestEncodeDecodeString(t *testing.T) {
+	tests := []string{
+		"hello",
+		"test@example.com",
+		"",
+		"long string with spaces and special chars !@#$%",
+	}
+
+	for _, str := range tests {
+		t.Run(str, func(t *testing.T) {
+			encoded := EncodeString(str)
+			decoded := DecodeString(encoded)
+			assert.Equal(t, str, decoded)
+		})
+	}
+}
+
+func TestEncodeValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		dataType dictionary.DataType
+		wantErr  bool
+	}{
+		{"string", "test", dictionary.DataTypeString, false},
+		{"integer-uint32", uint32(123), dictionary.DataTypeInteger, false},
+		{"integer-int", 123, dictionary.DataTypeInteger, false},
+		{"ipaddr-net.IP", net.ParseIP("192.168.1.1"), dictionary.DataTypeIPAddr, false},
+		{"ipaddr-string", "192.168.1.1", dictionary.DataTypeIPAddr, false},
+		{"octets", []byte{1, 2, 3}, dictionary.DataTypeOctets, false},
+		{"date", time.Now(), dictionary.DataTypeDate, false},
+		{"invalid-string", 123, dictionary.DataTypeString, true},
+		{"invalid-integer", "abc", dictionary.DataTypeInteger, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := EncodeValue(tt.value, tt.dataType)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, encoded)
+			}
+		})
+	}
+}

@@ -152,11 +152,9 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 		offset += int(attr.Length)
 	}
 
-	// Append secret
-	data := append(packetBytes, secret...)
-
-	// Calculate MD5 hash
-	hash := md5.Sum(data)
+	// Append secret and calculate MD5 hash
+	packetBytes = append(packetBytes, secret...)
+	hash := md5.Sum(packetBytes)
 	return hash
 }
 
@@ -183,11 +181,9 @@ func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLeng
 		offset += int(attr.Length)
 	}
 
-	// Append secret
-	data := append(packetBytes, secret...)
-
-	// Calculate MD5 hash
-	hash := md5.Sum(data)
+	// Append secret and calculate MD5 hash
+	packetBytes = append(packetBytes, secret...)
+	hash := md5.Sum(packetBytes)
 	return hash
 }
 
@@ -253,7 +249,7 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, se
 // addStandardAttribute handles standard attribute addition with full feature support
 func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
 	// Handle tagged attributes by extracting the tag
-	var tag uint8 = 0
+	var tag uint8
 
 	if strings.Contains(name, ":") && attrDef.HasTag {
 		parts := strings.SplitN(name, ":", 2)
@@ -302,7 +298,7 @@ func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *d
 func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) {
 	// Handle tagged attributes by extracting the tag
 	baseName := name
-	var tag uint8 = 0
+	var tag uint8
 
 	if strings.Contains(name, ":") {
 		parts := strings.SplitN(name, ":", 2)
@@ -357,7 +353,7 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 
 // processEnumeratedValue converts string enumerated values to integers
 func (p *Packet) processEnumeratedValue(value interface{}, attrDef *dictionary.AttributeDefinition) interface{} {
-	if attrDef.Values == nil || len(attrDef.Values) == 0 {
+	if len(attrDef.Values) == 0 {
 		return value
 	}
 
@@ -435,10 +431,10 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 	rand.Read(salt)
 
 	// Prepend salt to password
-	saltedPassword := append(salt, password...)
+	salt = append(salt, password...)
 
 	// Apply User-Password encryption to the salted password
-	encrypted := encryptUserPassword(saltedPassword, secret, authenticator)
+	encrypted := encryptUserPassword(salt, secret, authenticator)
 
 	return encrypted
 }
