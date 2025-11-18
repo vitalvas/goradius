@@ -320,86 +320,43 @@ func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *d
 	// Handle enumerated values - convert string names to integers
 	processedValue := p.processEnumeratedValue(value, attrDef)
 
-	// Handle array attributes - multiple values for same attribute
-	if attrDef.Array {
-		p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
-		return
-	}
-
-	// Encode the value based on data type
-	attrValue, err := p.encodeAttributeValue(processedValue, attrDef)
-	if err != nil {
-		return
-	}
-
-	// Handle encryption if specified
-	if attrDef.Encryption != "" && secret != nil {
-		attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-	}
-
-	// Create and add the attribute
-	if attrDef.HasTag && tag > 0 {
-		// Add tag to the beginning of the value for tagged attributes
-		taggedValue := append([]byte{tag}, attrValue...)
-		attr := NewAttribute(uint8(attrDef.ID), taggedValue)
-		p.AddAttribute(attr)
-	} else {
-		attr := NewAttribute(uint8(attrDef.ID), attrValue)
-		p.AddAttribute(attr)
-	}
+	// Handle array attributes - check if value is a slice
+	// This handles both attributes marked as Array=true and user-provided slices
+	p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
 }
 
 // addVendorAttributeByName handles vendor-specific attribute addition with full feature support
+// Supports formats:
+//   - "AttributeName" - vendor attribute without tag
+//   - "AttributeName:tag" - vendor attribute with tag (tag is a number)
 func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) {
-	// Handle tagged attributes by extracting the tag
-	baseName := name
+	var attrName string
 	var tag uint8
 
-	if strings.Contains(name, ":") {
-		parts := strings.SplitN(name, ":", 2)
-		if len(parts) == 2 {
-			baseName = parts[0]
-			if tagValue := parts[1]; tagValue != "" {
-				if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
-					tag = uint8(parsedTag)
-				}
+	// Parse the name format (attribute:tag)
+	parts := strings.SplitN(name, ":", 2)
+	attrName = parts[0]
+
+	// Check if there's a tag
+	if len(parts) == 2 {
+		if tagValue := parts[1]; tagValue != "" {
+			if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
+				tag = uint8(parsedTag)
 			}
 		}
 	}
 
-	// Find the vendor attribute
+	// Search all vendors for this attribute name
 	vendors := p.Dict.GetAllVendors()
 	for _, vendor := range vendors {
 		for _, attrDef := range vendor.Attributes {
-			if attrDef.Name == baseName {
+			if attrDef.Name == attrName {
 				// Handle enumerated values
 				processedValue := p.processEnumeratedValue(value, attrDef)
 
-				// Handle array attributes
-				if attrDef.Array {
-					p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
-					return
-				}
-
-				// Encode the value
-				attrValue, err := p.encodeAttributeValue(processedValue, attrDef)
-				if err != nil {
-					return
-				}
-
-				// Handle encryption
-				if attrDef.Encryption != "" && secret != nil {
-					attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-				}
-
-				// Create and add vendor attribute
-				var vsa *VendorAttribute
-				if attrDef.HasTag && tag > 0 {
-					vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
-				} else {
-					vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
-				}
-				p.AddVendorAttribute(vsa)
+				// Handle array attributes - check if value is a slice
+				// This handles both attributes marked as Array=true and user-provided slices
+				p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
 				return
 			}
 		}
@@ -503,41 +460,103 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 }
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
+// If value is a slice, it adds each element as a separate attribute instance
 func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
-	// TODO: Implement array attribute handling
-	// For now, treat as single value
-	if attrValue, err := p.encodeAttributeValue(value, attrDef); err == nil {
-		if attrDef.Encryption != "" && secret != nil {
-			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-		}
+	// Check if value is a slice/array
+	values := []interface{}{value}
 
-		if attrDef.HasTag && tag > 0 {
-			taggedValue := append([]byte{tag}, attrValue...)
-			attr := NewAttribute(uint8(attrDef.ID), taggedValue)
-			p.AddAttribute(attr)
-		} else {
-			attr := NewAttribute(uint8(attrDef.ID), attrValue)
-			p.AddAttribute(attr)
+	// Try to convert to slice for array handling
+	switch v := value.(type) {
+	case []interface{}:
+		values = v
+	case []string:
+		values = make([]interface{}, len(v))
+		for i, s := range v {
+			values[i] = s
+		}
+	case []int:
+		values = make([]interface{}, len(v))
+		for i, n := range v {
+			values[i] = n
+		}
+	case []uint32:
+		values = make([]interface{}, len(v))
+		for i, n := range v {
+			values[i] = n
+		}
+	case [][]byte:
+		values = make([]interface{}, len(v))
+		for i, b := range v {
+			values[i] = b
+		}
+	}
+
+	// Add each value as a separate attribute
+	for _, val := range values {
+		if attrValue, err := p.encodeAttributeValue(val, attrDef); err == nil {
+			if attrDef.Encryption != "" && secret != nil {
+				attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+			}
+
+			if attrDef.HasTag && tag > 0 {
+				taggedValue := append([]byte{tag}, attrValue...)
+				attr := NewAttribute(uint8(attrDef.ID), taggedValue)
+				p.AddAttribute(attr)
+			} else {
+				attr := NewAttribute(uint8(attrDef.ID), attrValue)
+				p.AddAttribute(attr)
+			}
 		}
 	}
 }
 
 // addVendorArrayAttribute handles vendor array attributes
+// If value is a slice, it adds each element as a separate vendor attribute instance
 func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
-	// TODO: Implement vendor array attribute handling
-	// For now, treat as single value
-	if attrValue, err := p.encodeAttributeValue(value, attrDef); err == nil {
-		if attrDef.Encryption != "" && secret != nil {
-			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-		}
+	// Check if value is a slice/array
+	values := []interface{}{value}
 
-		var vsa *VendorAttribute
-		if attrDef.HasTag && tag > 0 {
-			vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
-		} else {
-			vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+	// Try to convert to slice for array handling
+	switch v := value.(type) {
+	case []interface{}:
+		values = v
+	case []string:
+		values = make([]interface{}, len(v))
+		for i, s := range v {
+			values[i] = s
 		}
-		p.AddVendorAttribute(vsa)
+	case []int:
+		values = make([]interface{}, len(v))
+		for i, n := range v {
+			values[i] = n
+		}
+	case []uint32:
+		values = make([]interface{}, len(v))
+		for i, n := range v {
+			values[i] = n
+		}
+	case [][]byte:
+		values = make([]interface{}, len(v))
+		for i, b := range v {
+			values[i] = b
+		}
+	}
+
+	// Add each value as a separate vendor attribute
+	for _, val := range values {
+		if attrValue, err := p.encodeAttributeValue(val, attrDef); err == nil {
+			if attrDef.Encryption != "" && secret != nil {
+				attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+			}
+
+			var vsa *VendorAttribute
+			if attrDef.HasTag && tag > 0 {
+				vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
+			} else {
+				vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+			}
+			p.AddVendorAttribute(vsa)
+		}
 	}
 }
 

@@ -64,106 +64,84 @@ packet.CodeCoANAK           // 45
 
 ## Working with Attributes
 
-### Adding Attributes
+### Adding Attributes with Dictionary
+
+The recommended way to work with attributes is using the dictionary-based API:
 
 ```go
-req := packet.New(packet.CodeAccessRequest, 1)
+import (
+    "github.com/vitalvas/goradius/pkg/packet"
+    "github.com/vitalvas/goradius/pkg/dictionaries"
+)
 
-// Create and add raw attributes
-attr := packet.NewAttribute(1, []byte("john.doe")) // User-Name
-req.AddAttribute(attr)
+// Create packet with dictionary
+dict := dictionaries.NewDefault()
+req := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 
-// Using encoding helpers
-attr = packet.NewAttribute(4, packet.EncodeIPAddr(net.ParseIP("192.168.1.1"))) // NAS-IP-Address
-req.AddAttribute(attr)
+// Add attributes by name - type-safe and automatic encoding
+req.AddAttributeByName("User-Name", "john.doe")
+req.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+req.AddAttributeByName("NAS-Port", 123)
+req.AddAttributeByName("Framed-IP-Address", "10.0.0.100")
+req.AddAttributeByName("Session-Timeout", 3600)
 
-attr = packet.NewAttribute(5, packet.EncodeInteger(123)) // NAS-Port
-req.AddAttribute(attr)
-
-// Binary/bytes attributes
-attr = packet.NewAttribute(24, []byte{0x01, 0x02, 0x03}) // State
-req.AddAttribute(attr)
-
-// Date/time attributes
-attr = packet.NewAttribute(55, packet.EncodeDate(time.Now())) // Event-Timestamp
-req.AddAttribute(attr)
-
-// Tagged attributes (for tunnel attributes)
-taggedAttr := packet.NewTaggedAttribute(64, 1, []byte("example")) // Tunnel-Type with tag 1
-req.AddAttribute(taggedAttr)
+// Tagged attributes use colon notation
+req.AddAttributeByName("Tunnel-Type:1", "VLAN")
+req.AddAttributeByName("Tunnel-Medium-Type:1", "IEEE-802")
 ```
 
 ### Retrieving Attributes
 
 ```go
-// Get first attribute of a type
-attrs := req.GetAttributes(1)
-if len(attrs) > 0 {
-    attr := attrs[0] // User-Name
-if found {
-    username := packet.DecodeString(attr.Value)
-    fmt.Printf("Username: %s\n", username)
+// Get attribute by name - returns all values for that attribute
+usernames := req.GetAttribute("User-Name")
+if len(usernames) > 0 {
+    fmt.Printf("Username: %s\n", usernames[0].String())
 }
 
-// Get all attributes of a type
-attrs := req.GetAttributes(1) // All User-Name attributes
-for _, attr := range attrs {
-    fmt.Printf("User: %s\n", string(attr.Value))
+// Get multiple values (for attributes that support arrays)
+replyMessages := req.GetAttribute("Reply-Message")
+for _, msg := range replyMessages {
+    fmt.Printf("Reply: %s\n", msg.String())
 }
 
-// Decode typed values
-attr, found = req.GetAttribute(5) // NAS-Port
-if found {
-    port, err := packet.DecodeInteger(attr.Value)
-    if err == nil {
-        fmt.Printf("NAS Port: %d\n", port)
+// Get vendor attribute by name
+dnsServers := req.GetAttribute("ERX-Primary-Dns")
+if len(dnsServers) > 0 {
+    fmt.Printf("Primary DNS: %s\n", dnsServers[0].String())
+}
+
+// Get tagged attributes
+tunnelTypes := req.GetAttribute("Tunnel-Type")
+for _, tunnelType := range tunnelTypes {
+    if tunnelType.Tag > 0 {
+        fmt.Printf("Tunnel Type (Tag %d): %s\n", tunnelType.Tag, tunnelType.String())
     }
 }
 
-attr, found = req.GetAttribute(4) // NAS-IP-Address
-if found {
-    ip, err := packet.DecodeIPAddr(attr.Value)
-    if err == nil {
-        fmt.Printf("NAS IP: %s\n", ip.String())
-    }
-}
-
-// Iterate through all attributes
-for _, attr := range req.Attributes {
-    if attr.Tag != 0 {
-        fmt.Printf("Type: %d, Tag: %d, Value: %x\n", attr.Type, attr.Tag, attr.GetValue())
-    } else {
-        fmt.Printf("Type: %d, Value: %x\n", attr.Type, attr.Value)
-    }
+// List all attribute names in the packet
+attrNames := req.ListAttributes()
+for _, name := range attrNames {
+    fmt.Printf("Attribute: %s\n", name)
 }
 ```
 
-### Attribute Helper Functions
+### Working with Attribute Values
+
+The dictionary API automatically handles encoding and decoding based on attribute type:
 
 ```go
-// String encoding/decoding
-value := packet.EncodeString("john.doe")
-username := packet.DecodeString(value)
+// AttributeValue provides type-safe access to attribute data
+attrs := req.GetAttribute("User-Name")
+if len(attrs) > 0 {
+    // String() method works for all attribute types
+    fmt.Printf("Username: %s\n", attrs[0].String())
 
-// Integer encoding/decoding
-value = packet.EncodeInteger(uint32(123))
-number, err := packet.DecodeInteger(value)
-
-// IP address encoding/decoding
-value, err = packet.EncodeIPAddr(net.ParseIP("192.168.1.1"))
-ip, err := packet.DecodeIPAddr(value)
-
-// IPv6 address encoding/decoding
-value, err = packet.EncodeIPv6Addr(net.ParseIP("2001:db8::1"))
-ip, err = packet.DecodeIPv6Addr(value)
-
-// Date encoding/decoding
-value = packet.EncodeDate(time.Now())
-timestamp, err := packet.DecodeDate(value)
-
-// Octets (raw bytes)
-value = packet.EncodeOctets([]byte{0x01, 0x02, 0x03})
-data := packet.DecodeOctets(value)
+    // Access metadata
+    fmt.Printf("Attribute type ID: %d\n", attrs[0].Type)
+    fmt.Printf("Data type: %s\n", attrs[0].DataType)
+    fmt.Printf("Is VSA: %t\n", attrs[0].IsVSA)
+}
 ```
 
 ## Standard Attributes
@@ -228,31 +206,23 @@ req.AddAttribute(packet.NewAttribute(43, packet.EncodeInteger(2048000)))  // Acc
 
 ## Vendor-Specific Attributes
 
-### Creating VSAs
+### Adding VSAs with Dictionary
+
+The recommended way to work with vendor-specific attributes is using the dictionary API:
 
 ```go
-// Create a vendor-specific attribute
-va := packet.NewVendorAttribute(
-    4874,                  // Vendor ID (e.g., Juniper ERX)
-    13,                    // Vendor attribute type
-    []byte("8.8.8.8"),     // Value
-)
+// Add vendor attributes by name - dictionary handles VSA encoding automatically
+req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+req.AddAttributeByName("ERX-Secondary-Dns", "8.8.4.4")
 
-// Convert to standard VSA attribute (Type 26)
-vsaAttr := va.ToVSA()
-req.AddAttribute(vsaAttr)
+// Tagged vendor attributes use colon notation
+req.AddAttributeByName("ERX-Service-Activate:1", "ipoe-parking")
+req.AddAttributeByName("ERX-Service-Activate:2", "svc-ipoe-policer(52428800, 52428800)")
 
-// Or add directly
-req.AddVendorAttribute(va)
-
-// Tagged vendor attributes
-taggedVA := packet.NewTaggedVendorAttribute(
-    4874,                  // Vendor ID
-    1,                     // Vendor attribute type
-    1,                     // Tag
-    []byte("ipoe-parking"), // Value
-)
-req.AddVendorAttribute(taggedVA)
+// The library automatically:
+// - Looks up the vendor ID (e.g., 4874 for ERX)
+// - Encodes the VSA with proper structure
+// - Handles tagging if the attribute supports it
 ```
 
 ### Parsing VSAs
@@ -343,59 +313,31 @@ if req.Length < packet.MinPacketLength || req.Length > packet.MaxPacketLength {
 
 ### Authenticator Calculation
 
-```go
-secret := []byte("testing123")
+**Note: These methods are marked INTERNAL and should not be used in application code. The server layer handles authenticator calculation automatically.**
 
-// For Access-Request packets: calculate request authenticator
-// (when using Message-Authenticator)
-requestAuth := req.CalculateRequestAuthenticator(secret)
+For advanced use cases requiring direct authenticator manipulation, these low-level methods are available but discouraged:
+- `CalculateRequestAuthenticator()` - INTERNAL use only
+- `CalculateResponseAuthenticator()` - INTERNAL use only
+- `SetAuthenticator()` - INTERNAL use only
 
-// For response packets: calculate response authenticator
-responseAuth := resp.CalculateResponseAuthenticator(secret, req.Authenticator)
-resp.SetAuthenticator(responseAuth)
-```
-
-## Advanced Packet Operations
-
-### Packet Modification
-
-```go
-// Remove single attribute
-removed := req.RemoveAttribute(24) // Remove State attribute
-if removed {
-    fmt.Println("Attribute removed")
-}
-
-// Remove all attributes of a type
-count := req.RemoveAttributes(1) // Remove all User-Name attributes
-fmt.Printf("Removed %d attributes\n", count)
-
-// Update authenticator
-req.SetAuthenticator([16]byte{/* 16 bytes */})
-```
+When using the server package, authenticators are calculated and validated automatically.
 
 ### Request/Response Matching
 
+When using the server package, responses are automatically created with matching identifiers:
+
 ```go
-// Create response matching request
-func createResponse(req *packet.Packet, code packet.Code) *packet.Packet {
-    // Use same identifier as request
-    resp := packet.New(code, req.Identifier)
+// In your handler
+func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+    // NewResponse automatically matches the request identifier
+    resp := server.NewResponse(req)
 
-    // Add response attributes
-    resp.AddAttribute(packet.NewAttribute(18, []byte("Access granted"))) // Reply-Message
+    // Set response code and attributes
+    resp.SetCode(packet.CodeAccessAccept)
+    resp.SetAttribute("Reply-Message", "Access granted")
 
-    // Calculate and set response authenticator
-    secret := []byte("testing123")
-    responseAuth := resp.CalculateResponseAuthenticator(secret, req.Authenticator)
-    resp.SetAuthenticator(responseAuth)
-
-    return resp
-}
-
-// Verify response matches request
-func verifyResponse(req, resp *packet.Packet) bool {
-    return req.Identifier == resp.Identifier
+    // Authenticators are calculated automatically before sending
+    return resp, nil
 }
 ```
 
@@ -417,54 +359,25 @@ fmt.Println(req.String())
 
 ### Password Encryption
 
-Password encryption is handled automatically when using the dictionary API with the `AddAttributeByNameWithSecret` method. The encryption algorithms are implemented in the packet layer:
+Password encryption is handled automatically when using the dictionary API. The library supports multiple encryption types defined in the dictionary:
 
 ```go
-// User-Password encryption (RFC 2865)
-secret := []byte("testing123")
-authenticator := [16]byte{/* request authenticator */}
-password := []byte("secret123")
-
-encrypted := packet.EncryptAttributeValue(
-    password,
-    dictionary.EncryptionUserPassword,
-    secret,
-    authenticator,
-)
-
-// Or use via dictionary
-req.AddAttributeByNameWithSecret("User-Password", "secret123", secret, authenticator)
-```
-
-### Tunnel Password Encryption
-
-```go
-// Tunnel-Password encryption (RFC 2868)
+// User-Password encryption (RFC 2865) - handled automatically
 secret := []byte("testing123")
 authenticator := req.Authenticator
-tunnelPassword := []byte("tunnel-secret")
+req.AddAttributeByNameWithSecret("User-Password", "secret123", secret, authenticator)
 
-encrypted := packet.EncryptAttributeValue(
-    tunnelPassword,
-    dictionary.EncryptionTunnelPassword,
-    secret,
-    authenticator,
-)
+// Tunnel-Password encryption (RFC 2868) - handled automatically
+req.AddAttributeByNameWithSecret("Tunnel-Password:1", "tunnel-secret", secret, authenticator)
 
-// The encrypted value includes a random salt
+// Ascend-Secret encryption - handled automatically
+req.AddAttributeByNameWithSecret("Ascend-Secret", "ascend-secret", secret, authenticator)
+
+// The dictionary determines the encryption type based on the attribute definition
+// You don't need to specify the encryption algorithm manually
 ```
 
-### Ascend Secret Encryption
-
-```go
-// Ascend-Secret encryption
-encrypted := packet.EncryptAttributeValue(
-    []byte("ascend-secret"),
-    dictionary.EncryptionAscendSecret,
-    secret,
-    authenticator,
-)
-```
+**Note:** Direct encryption functions like `EncryptAttributeValue()` are low-level APIs for advanced use. The dictionary-based methods are recommended for application code.
 
 ## Error Handling
 

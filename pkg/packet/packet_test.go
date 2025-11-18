@@ -681,3 +681,84 @@ func TestAttributeValueString(t *testing.T) {
 		assert.Equal(t, "0x0102", av.String())
 	})
 }
+
+func TestArrayAttributeHandling(t *testing.T) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 18, Name: "Reply-Message", DataType: dictionary.DataTypeString},
+	})
+
+	pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+
+	t.Run("single value as array", func(t *testing.T) {
+		// Single value should still work
+		pkt.AddAttributeByName("Reply-Message", "Single message")
+
+		attrs := pkt.GetAttribute("Reply-Message")
+		assert.Len(t, attrs, 1)
+		assert.Equal(t, "Single message", attrs[0].String())
+	})
+
+	t.Run("slice of strings", func(t *testing.T) {
+		pkt2 := NewWithDictionary(CodeAccessAccept, 2, dict)
+
+		// Pass a slice of strings
+		messages := []string{"First message", "Second message", "Third message"}
+		pkt2.AddAttributeByName("Reply-Message", messages)
+
+		attrs := pkt2.GetAttribute("Reply-Message")
+		assert.Len(t, attrs, 3)
+		assert.Equal(t, "First message", attrs[0].String())
+		assert.Equal(t, "Second message", attrs[1].String())
+		assert.Equal(t, "Third message", attrs[2].String())
+	})
+
+	t.Run("slice of interfaces", func(t *testing.T) {
+		pkt3 := NewWithDictionary(CodeAccessAccept, 3, dict)
+
+		// Pass a slice of interface{}
+		messages := []interface{}{"Message one", "Message two"}
+		pkt3.AddAttributeByName("Reply-Message", messages)
+
+		attrs := pkt3.GetAttribute("Reply-Message")
+		assert.Len(t, attrs, 2)
+		assert.Equal(t, "Message one", attrs[0].String())
+		assert.Equal(t, "Message two", attrs[1].String())
+	})
+}
+
+func TestVendorArrayAttributeHandling(t *testing.T) {
+	vendor := &dictionary.VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*dictionary.AttributeDefinition{
+			{ID: 1, Name: "ERX-Service-Activate", DataType: dictionary.DataTypeString, HasTag: true},
+		},
+	}
+
+	dict := dictionary.New()
+	dict.AddVendor(vendor)
+
+	pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+
+	t.Run("single vendor value", func(t *testing.T) {
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "service1")
+
+		attrs := pkt.GetAttribute("ERX-Service-Activate")
+		assert.Len(t, attrs, 1)
+		assert.Equal(t, "service1", attrs[0].String())
+	})
+
+	t.Run("multiple vendor values", func(t *testing.T) {
+		pkt2 := NewWithDictionary(CodeAccessAccept, 2, dict)
+
+		services := []string{"service-a", "service-b", "service-c"}
+		pkt2.AddAttributeByName("ERX-Service-Activate:1", services)
+
+		attrs := pkt2.GetAttribute("ERX-Service-Activate")
+		assert.Len(t, attrs, 3)
+		assert.Equal(t, "service-a", attrs[0].String())
+		assert.Equal(t, "service-b", attrs[1].String())
+		assert.Equal(t, "service-c", attrs[2].String())
+	})
+}

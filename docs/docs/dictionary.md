@@ -213,61 +213,80 @@ dict.AddVendor(vendor)
 
 ### Using VSAs in Packets
 
-```go
-// Add vendor attribute by name (dictionary handles VSA encoding)
-req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+The recommended approach is to use the dictionary API which handles VSA encoding automatically:
 
-// Add tagged vendor attribute
+```go
+// Add vendor attribute by name (dictionary handles VSA encoding automatically)
+req.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+req.AddAttributeByName("ERX-Secondary-Dns", "8.8.4.4")
+
+// Add tagged vendor attribute using colon notation
 req.AddAttributeByName("ERX-Service-Activate:1", "ipoe-parking")
 req.AddAttributeByName("ERX-Service-Activate:3", "svc-ipoe-policer(52428800, 52428800)")
 
-// Manually create and add vendor attribute
-va := packet.NewVendorAttribute(4874, 13, packet.EncodeIPAddr(net.ParseIP("8.8.8.8")))
-req.AddVendorAttribute(va)
-
-// Create tagged vendor attribute
-va := packet.NewTaggedVendorAttribute(4874, 1, 1, []byte("ipoe-parking"))
-req.AddVendorAttribute(va)
+// The library automatically:
+// - Looks up the vendor ID from the dictionary
+// - Encodes the VSA with the proper structure
+// - Handles tagging if the attribute supports it
 ```
 
 ### Retrieving VSAs from Packets
 
+Use the high-level dictionary API for retrieving vendor attributes:
+
 ```go
-// Get vendor attribute
-va, found := req.GetVendorAttribute(4874, 13) // ERX-Primary-Dns
-if found {
-    ip, _ := packet.DecodeIPAddr(va.Value)
-    fmt.Printf("Primary DNS: %s\n", ip)
+// Get vendor attribute by name
+dnsValues := req.GetAttribute("ERX-Primary-Dns")
+if len(dnsValues) > 0 {
+    fmt.Printf("Primary DNS: %s\n", dnsValues[0].String())
 }
 
-// Get all vendor attributes of a type
-vas := req.GetVendorAttributes(4874, 1) // All ERX-Service-Activate
-for _, va := range vas {
-    fmt.Printf("Service: %s (Tag: %d)\n", string(va.GetValue()), va.Tag)
+// Get all vendor attributes (including tagged ones)
+services := req.GetAttribute("ERX-Service-Activate")
+for _, svc := range services {
+    if svc.Tag > 0 {
+        fmt.Printf("Service (Tag %d): %s\n", svc.Tag, svc.String())
+    }
 }
 ```
 
 ## Built-in Dictionaries
 
-The library provides pre-defined dictionaries for common RADIUS implementations:
+The library provides pre-defined dictionaries for common RADIUS implementations.
 
-### Standard RFC Dictionaries
+### Using the Default Dictionary
+
+The simplest way to get started is using the default dictionary with all standard attributes and common vendors:
 
 ```go
 import "github.com/vitalvas/goradius/pkg/dictionaries"
 
-// Standard RFC attributes (RFC 2865, 2866, etc.)
-dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+// Create dictionary with standard RFC attributes and common vendors (ERX, Ascend)
+dict := dictionaries.NewDefault()
+
+// Ready to use!
+pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 ```
 
-### Vendor Dictionaries
+### Building Custom Dictionaries
+
+For more control, you can build a dictionary manually:
 
 ```go
-// Juniper ERX
-dict.AddVendor(dictionaries.ERXVendorDefinition)
+import (
+    "github.com/vitalvas/goradius/pkg/dictionary"
+    "github.com/vitalvas/goradius/pkg/dictionaries"
+)
 
-// Ascend
-dict.AddVendor(dictionaries.AscendVendorDefinition)
+// Create empty dictionary
+dict := dictionary.New()
+
+// Add standard RFC attributes (RFC 2865, 2866, etc.)
+dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
+
+// Add specific vendors as needed
+dict.AddVendor(dictionaries.ERXVendorDefinition)  // Juniper ERX
+dict.AddVendor(dictionaries.AscendVendorDefinition)  // Ascend
 ```
 
 ## Complete Example

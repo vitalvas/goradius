@@ -40,11 +40,11 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 - Dictionary-based attribute validation
 
 ### Packet Features
-- Low-level packet manipulation
-- Attribute encoding/decoding helpers
+- Dictionary-based attribute manipulation
+- Type-safe attribute handling
 - VSA (Vendor-Specific Attribute) support
 - Tagged attribute handling
-- Password encryption/decryption
+- Automatic password encryption with dictionaries
 
 ## Definition of Done (SDK Goals)
 
@@ -81,7 +81,6 @@ GoRADIUS centers around three layers:
 - **`pkg/server`**: Simple RADIUS UDP server implementation
 - **`pkg/dictionary`**: In-memory attribute dictionary with fast lookups
 - **`pkg/dictionaries`**: Built-in RFC and vendor dictionary definitions
-- **`pkg/crypto`**: Message authenticator and validation functions
 - **`pkg/log`**: Logging interface
 
 ### Key Components

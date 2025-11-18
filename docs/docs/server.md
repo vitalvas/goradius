@@ -53,10 +53,8 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 }
 
 func main() {
-    // Create dictionary with standard attributes
-    dict := dictionary.New()
-    dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-    dict.AddVendor(dictionaries.ERXVendorDefinition)
+    // Create dictionary with standard attributes and common vendors
+    dict := dictionaries.NewDefault()
 
     // Create and start server
     srv, err := server.New(":1812", &myHandler{}, dict)
@@ -186,16 +184,14 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
         return resp, nil
     }
 
-    // Get username
-    usernameAttrs := req.Packet.GetAttributes(1)
-if len(usernameAttrs) > 0 {
-    usernameAttr := usernameAttrs[0] // User-Name
-    if !found {
+    // Get username using dictionary API
+    usernames := req.Packet.GetAttribute("User-Name")
+    if len(usernames) == 0 {
         resp.SetCode(packet.CodeAccessReject)
         resp.SetAttribute("Reply-Message", "Username required")
         return resp, nil
     }
-    username := string(usernameAttr.Value)
+    username := usernames[0].String()
 
     // Authenticate (implement your logic)
     if authenticateUser(username, req.Secret.Secret) {
@@ -227,23 +223,20 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
         return resp, nil
     }
 
-    // Get accounting status type
-    statusAttr, found := req.Packet.GetAttribute(40) // Acct-Status-Type
-    if !found {
+    // Get accounting status type using dictionary API
+    statusAttrs := req.Packet.GetAttribute("Acct-Status-Type")
+    if len(statusAttrs) == 0 {
         return resp, fmt.Errorf("missing Acct-Status-Type")
     }
 
-    statusType, err := packet.DecodeInteger(statusAttr.Value)
-    if err != nil {
-        return resp, err
-    }
+    statusType := statusAttrs[0].String()
 
     switch statusType {
-    case 1: // Start
+    case "Start":
         handleAccountingStart(req)
-    case 2: // Stop
+    case "Stop":
         handleAccountingStop(req)
-    case 3: // Interim-Update
+    case "Interim-Update":
         handleAccountingUpdate(req)
     }
 
@@ -252,28 +245,29 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 }
 
 func handleAccountingStart(req *server.Request) {
-    // Get session ID
-    sessionAttrs := req.Packet.GetAttributes(44)
-if len(sessionAttrs) > 0 {
-    sessionAttr := sessionAttrs[0] // Acct-Session-ID
-    sessionID := string(sessionAttr.Value)
-
-    // Store session start
-    fmt.Printf("Session started: %s\n", sessionID)
+    // Get session ID using dictionary API
+    sessions := req.Packet.GetAttribute("Acct-Session-ID")
+    if len(sessions) > 0 {
+        sessionID := sessions[0].String()
+        // Store session start
+        fmt.Printf("Session started: %s\n", sessionID)
+    }
 }
 
 func handleAccountingStop(req *server.Request) {
-    // Get session statistics
-    inputOctets, _ := req.Packet.GetAttribute(42)  // Acct-Input-Octets
-    outputOctets, _ := req.Packet.GetAttribute(43) // Acct-Output-Octets
-    sessionTime, _ := req.Packet.GetAttribute(46)  // Acct-Session-Time
+    // Get session statistics using dictionary API
+    sessions := req.Packet.GetAttribute("Acct-Session-ID")
+    inputOctets := req.Packet.GetAttribute("Acct-Input-Octets")
+    outputOctets := req.Packet.GetAttribute("Acct-Output-Octets")
+    sessionTime := req.Packet.GetAttribute("Acct-Session-Time")
 
-    inBytes, _ := packet.DecodeInteger(inputOctets.Value)
-    outBytes, _ := packet.DecodeInteger(outputOctets.Value)
-    duration, _ := packet.DecodeInteger(sessionTime.Value)
-
-    fmt.Printf("Session ended: %d bytes in, %d bytes out, %d seconds\n",
-        inBytes, outBytes, duration)
+    if len(sessions) > 0 && len(inputOctets) > 0 && len(outputOctets) > 0 && len(sessionTime) > 0 {
+        fmt.Printf("Session %s ended: %s bytes in, %s bytes out, %s seconds\n",
+            sessions[0].String(),
+            inputOctets[0].String(),
+            outputOctets[0].String(),
+            sessionTime[0].String())
+    }
 }
 ```
 
