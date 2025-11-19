@@ -10,6 +10,14 @@ import (
 	"github.com/vitalvas/goradius/pkg/packet"
 )
 
+// bufferPool provides reusable buffers for UDP packet reads
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 4096)
+		return &b
+	},
+}
+
 // Server is a simple RADIUS UDP server
 type Server struct {
 	addr                    string
@@ -69,15 +77,25 @@ func (s *Server) ListenAndServe() error {
 	close(s.ready)
 	s.mu.Unlock()
 
-	buffer := make([]byte, 4096)
-
 	for {
+		// Get buffer from pool
+		bufPtr := bufferPool.Get().(*[]byte)
+		buffer := *bufPtr
+
 		n, clientAddr, err := s.conn.ReadFromUDP(buffer)
 		if err != nil {
+			// Return buffer to pool on error
+			bufferPool.Put(bufPtr)
 			continue
 		}
 
-		go s.handlePacket(buffer[:n], clientAddr)
+		// Copy data to new slice before passing to goroutine
+		// This allows us to return the buffer to the pool immediately
+		data := make([]byte, n)
+		copy(data, buffer[:n])
+		bufferPool.Put(bufPtr)
+
+		go s.handlePacket(data, clientAddr)
 	}
 }
 
