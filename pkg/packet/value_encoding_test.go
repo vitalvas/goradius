@@ -497,3 +497,154 @@ func TestSplitMultilineAttribute(t *testing.T) {
 		assert.Equal(t, 526, len(rejoined))
 	})
 }
+
+func BenchmarkEncodeString(b *testing.B) {
+	str := "testuser"
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = EncodeString(str)
+	}
+}
+
+func BenchmarkDecodeString(b *testing.B) {
+	data := []byte("testuser")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = DecodeString(data)
+	}
+}
+
+func BenchmarkEncodeInteger(b *testing.B) {
+	val := uint32(3600)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = EncodeInteger(val)
+	}
+}
+
+func BenchmarkDecodeInteger(b *testing.B) {
+	data := EncodeInteger(3600)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeInteger(data)
+	}
+}
+
+func BenchmarkEncodeIPAddr(b *testing.B) {
+	ip := net.ParseIP("192.168.1.1")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = EncodeIPAddr(ip)
+	}
+}
+
+func BenchmarkDecodeIPAddr(b *testing.B) {
+	data := []byte{192, 168, 1, 1}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeIPAddr(data)
+	}
+}
+
+func BenchmarkEncodeIPv6Addr(b *testing.B) {
+	ip := net.ParseIP("2001:db8::1")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = EncodeIPv6Addr(ip)
+	}
+}
+
+func BenchmarkDecodeIPv6Addr(b *testing.B) {
+	ip := net.ParseIP("2001:db8::1")
+	data, _ := EncodeIPv6Addr(ip)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeIPv6Addr(data)
+	}
+}
+
+func BenchmarkEncodeDate(b *testing.B) {
+	now := time.Now()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = EncodeDate(now)
+	}
+}
+
+func BenchmarkDecodeDate(b *testing.B) {
+	data := EncodeDate(time.Now())
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeDate(data)
+	}
+}
+
+func BenchmarkEncodeValueString(b *testing.B) {
+	val := "testuser"
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = EncodeValue(val, dictionary.DataTypeString)
+	}
+}
+
+func BenchmarkEncodeValueInteger(b *testing.B) {
+	val := uint32(3600)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = EncodeValue(val, dictionary.DataTypeInteger)
+	}
+}
+
+func BenchmarkEncodeValueIPAddr(b *testing.B) {
+	val := "192.168.1.1"
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = EncodeValue(val, dictionary.DataTypeIPAddr)
+	}
+}
+
+func BenchmarkDecodeValueString(b *testing.B) {
+	data := []byte("testuser")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeValue(data, dictionary.DataTypeString)
+	}
+}
+
+func BenchmarkDecodeValueInteger(b *testing.B) {
+	data := EncodeInteger(3600)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeValue(data, dictionary.DataTypeInteger)
+	}
+}
+
+func BenchmarkDecodeValueIPAddr(b *testing.B) {
+	data := []byte{192, 168, 1, 1}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = DecodeValue(data, dictionary.DataTypeIPAddr)
+	}
+}
+
+func BenchmarkSplitMultilineAttribute(b *testing.B) {
+	permissions := "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control"
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = SplitMultilineAttribute(permissions, 247)
+	}
+}
+
+func BenchmarkJoinMultilineAttribute(b *testing.B) {
+	chunks := []string{
+		"access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret<contd>",
+		" secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation<contd>",
+		" idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control",
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = JoinMultilineAttribute(chunks)
+	}
+}

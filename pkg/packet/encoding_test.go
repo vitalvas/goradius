@@ -29,3 +29,49 @@ func TestPacketEncodeDecode(t *testing.T) {
 	assert.Equal(t, pkt.Authenticator, decoded.Authenticator)
 	assert.Len(t, decoded.Attributes, 2)
 }
+
+func BenchmarkPacketEncode(b *testing.B) {
+	pkt := New(CodeAccessRequest, 1)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	pkt.AddAttribute(NewAttribute(2, []byte("password123")))
+	pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = pkt.Encode()
+		}
+	})
+}
+
+func BenchmarkPacketDecode(b *testing.B) {
+	pkt := New(CodeAccessRequest, 1)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	pkt.AddAttribute(NewAttribute(2, []byte("password123")))
+	pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+	data, _ := pkt.Encode()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = Decode(data)
+		}
+	})
+}
+
+func BenchmarkPacketEncodeDecode(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pkt := New(CodeAccessRequest, 1)
+			pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+			pkt.AddAttribute(NewAttribute(2, []byte("password123")))
+			pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+
+			data, _ := pkt.Encode()
+			_, _ = Decode(data)
+		}
+	})
+}

@@ -931,3 +931,274 @@ func TestMessageAuthenticator(t *testing.T) {
 		assert.True(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
 	})
 }
+
+func BenchmarkPacketCreation(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = New(CodeAccessRequest, 1)
+		}
+	})
+}
+
+func BenchmarkPacketWithAttributes(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pkt := New(CodeAccessRequest, 1)
+			pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+			pkt.AddAttribute(NewAttribute(2, []byte("password123")))
+			pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+		}
+	})
+}
+
+func BenchmarkPacketWithDictionary(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+			_ = pkt.AddAttributeByName("User-Name", "testuser")
+			_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+		}
+	})
+}
+
+func BenchmarkAuthenticatorCalculation(b *testing.B) {
+	pkt := New(CodeAccessRequest, 1)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	secret := []byte("testing123")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = pkt.CalculateRequestAuthenticator(secret)
+		}
+	})
+}
+
+func BenchmarkMessageAuthenticator(b *testing.B) {
+	secret := []byte("testing123")
+	var reqAuth [16]byte
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pkt := New(CodeAccessRequest, 1)
+			pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+			pkt.AddMessageAuthenticator(secret, reqAuth)
+		}
+	})
+}
+
+func BenchmarkGetAttribute(b *testing.B) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},
+	})
+
+	pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = pkt.GetAttribute("User-Name")
+		}
+	})
+}
+
+func BenchmarkVendorAttribute(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			pkt := New(CodeAccessRequest, 1)
+			va := NewVendorAttribute(4874, 13, []byte("8.8.8.8"))
+			pkt.AddVendorAttribute(va)
+		}
+	})
+}
+
+func BenchmarkCompleteAccessRequest(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i byte
+		for pb.Next() {
+			pkt := NewWithDictionary(CodeAccessRequest, i, dict)
+			_ = pkt.AddAttributeByName("User-Name", "testuser")
+			_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+			_ = pkt.AddAttributeByName("NAS-Port", uint32(1234))
+
+			reqAuth := pkt.CalculateRequestAuthenticator(secret)
+			pkt.SetAuthenticator(reqAuth)
+
+			pkt.AddMessageAuthenticator(secret, reqAuth)
+
+			data, _ := pkt.Encode()
+
+			decoded, _ := Decode(data)
+
+			_ = decoded.VerifyMessageAuthenticator(secret, reqAuth)
+
+			i++
+		}
+	})
+}
+
+func BenchmarkCompleteAccessResponse(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+	var reqAuth [16]byte
+	copy(reqAuth[:], []byte("1234567890123456"))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i byte
+		for pb.Next() {
+			pkt := NewWithDictionary(CodeAccessAccept, i, dict)
+			_ = pkt.AddAttributeByName("Session-Timeout", uint32(3600))
+			_ = pkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+
+			respAuth := pkt.CalculateResponseAuthenticator(secret, reqAuth)
+			pkt.SetAuthenticator(respAuth)
+
+			pkt.AddMessageAuthenticator(secret, reqAuth)
+
+			_, _ = pkt.Encode()
+
+			i++
+		}
+	})
+}
+
+func BenchmarkE2EAuthenticationFlow(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		reqPkt := NewWithDictionary(CodeAccessRequest, byte(i), dict)
+		_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+		_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+		_ = reqPkt.AddAttributeByName("NAS-Port", uint32(1234))
+
+		reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+		reqPkt.SetAuthenticator(reqAuth)
+
+		reqPkt.AddMessageAuthenticator(secret, reqAuth)
+
+		reqData, _ := reqPkt.Encode()
+
+		serverReqPkt, _ := Decode(reqData)
+
+		if !serverReqPkt.VerifyMessageAuthenticator(secret, reqAuth) {
+			b.Fatal("Message-Authenticator verification failed")
+		}
+
+		respPkt := NewWithDictionary(CodeAccessAccept, byte(i), dict)
+		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+
+		respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
+		respPkt.SetAuthenticator(respAuth)
+
+		respPkt.AddMessageAuthenticator(secret, reqAuth)
+
+		respData, _ := respPkt.Encode()
+
+		clientRespPkt, _ := Decode(respData)
+
+		if !clientRespPkt.VerifyMessageAuthenticator(secret, reqAuth) {
+			b.Fatal("Response Message-Authenticator verification failed")
+		}
+	}
+}
+
+func BenchmarkE2EAuthenticationFlowParallel(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i byte
+		for pb.Next() {
+			reqPkt := NewWithDictionary(CodeAccessRequest, i, dict)
+			_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+			_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+			_ = reqPkt.AddAttributeByName("NAS-Port", uint32(1234))
+
+			reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+			reqPkt.SetAuthenticator(reqAuth)
+
+			reqPkt.AddMessageAuthenticator(secret, reqAuth)
+
+			reqData, _ := reqPkt.Encode()
+
+			serverReqPkt, _ := Decode(reqData)
+
+			_ = serverReqPkt.VerifyMessageAuthenticator(secret, reqAuth)
+
+			respPkt := NewWithDictionary(CodeAccessAccept, i, dict)
+			_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+			_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+
+			respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
+			respPkt.SetAuthenticator(respAuth)
+
+			respPkt.AddMessageAuthenticator(secret, reqAuth)
+
+			respData, _ := respPkt.Encode()
+
+			clientRespPkt, _ := Decode(respData)
+
+			_ = clientRespPkt.VerifyMessageAuthenticator(secret, reqAuth)
+
+			i++
+		}
+	})
+}
+
+func BenchmarkE2EAuthenticationFlowMinimal(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		reqPkt := NewWithDictionary(CodeAccessRequest, byte(i), dict)
+		_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+		_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+		reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+		reqPkt.SetAuthenticator(reqAuth)
+
+		reqData, _ := reqPkt.Encode()
+
+		_, _ = Decode(reqData)
+
+		respPkt := NewWithDictionary(CodeAccessAccept, byte(i), dict)
+		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+
+		respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
+		respPkt.SetAuthenticator(respAuth)
+
+		respData, _ := respPkt.Encode()
+
+		_, _ = Decode(respData)
+	}
+}
