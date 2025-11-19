@@ -6,6 +6,7 @@ import "github.com/vitalvas/goradius/pkg/dictionary"
 // This is a convenience function for users who want standard RADIUS support without manually adding dictionaries.
 // Currently includes:
 //   - RFC 2865/2866/2868/2869 standard attributes
+//   - Juniper vendor attributes
 //   - Juniper ERX vendor attributes
 //   - Ascend vendor attributes
 //   - WISPr vendor attributes
@@ -25,6 +26,10 @@ func NewDefault() (*dictionary.Dictionary, error) {
 	dict := dictionary.New()
 
 	if err := dict.AddStandardAttributes(StandardRFCAttributes); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(JuniperVendorDefinition); err != nil {
 		return nil, err
 	}
 

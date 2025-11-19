@@ -80,7 +80,7 @@ func main() {
 	}
 
 	if !strings.Contains(*server, ":") {
-		*server = *server + ":3799"
+		*server += ":3799"
 	}
 
 	dict, err := dictionaries.NewDefault()
@@ -134,7 +134,6 @@ func main() {
 
 	if resp.Code == packet.CodeCoAACK || resp.Code == packet.CodeDisconnectACK {
 		os.Exit(0)
-	} else {
-		os.Exit(1)
 	}
+	os.Exit(1)
 }

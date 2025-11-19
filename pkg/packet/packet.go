@@ -12,6 +12,11 @@ import (
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
 
+const (
+	// ContinuationMarker is the suffix used to indicate attribute continuation
+	ContinuationMarker = "<contd>"
+)
+
 // Packet represents a RADIUS packet as defined in RFC 2865
 type Packet struct {
 	Code          Code
@@ -32,6 +37,7 @@ type AttributeValue struct {
 	IsVSA      bool                // True if this is a vendor-specific attribute
 	VendorID   uint32              // Vendor ID (only for VSA)
 	VendorType uint8               // Vendor attribute type (only for VSA)
+	Multiline  bool                // True if attribute supports multiline continuation
 }
 
 // String returns the attribute value as a string, decoded based on DataType
@@ -775,12 +781,13 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 				}
 
 				result = append(result, AttributeValue{
-					Name:     attrDef.Name,
-					Type:     attr.Type,
-					DataType: attrDef.DataType,
-					Value:    value,
-					Tag:      tag,
-					IsVSA:    false,
+					Name:      attrDef.Name,
+					Type:      attr.Type,
+					DataType:  attrDef.DataType,
+					Value:     value,
+					Tag:       tag,
+					IsVSA:     false,
+					Multiline: attrDef.Multiline,
 				})
 			}
 		}
@@ -816,6 +823,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 							IsVSA:      true,
 							VendorID:   va.VendorID,
 							VendorType: va.VendorType,
+							Multiline:  attrDef.Multiline,
 						})
 					}
 				}
@@ -827,8 +835,116 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	return []AttributeValue{}
 }
 
+// GetAttributeString returns the attribute value(s) as a string.
+// If the attribute is marked as multiline in the dictionary, it automatically
+// joins multiple instances using JoinMultilineAttribute.
+// For non-multiline attributes, it returns the first value's String() representation.
+func (p *Packet) GetAttributeString(name string) string {
+	values := p.GetAttribute(name)
+	if len(values) == 0 {
+		return ""
+	}
+
+	// If multiline is enabled and we have multiple values, join them
+	if values[0].Multiline && len(values) > 1 {
+		stringValues := make([]string, len(values))
+		for i, v := range values {
+			stringValues[i] = v.String()
+		}
+		return JoinMultilineAttribute(stringValues)
+	}
+
+	// Return first value as string
+	return values[0].String()
+}
+
 // String returns a string representation of the packet
 func (p *Packet) String() string {
 	return fmt.Sprintf("Code=%s(%d), ID=%d, Length=%d, Attributes=%d",
 		p.Code.String(), p.Code, p.Identifier, p.Length, len(p.Attributes))
+}
+
+// JoinMultilineAttribute combines multiple attribute values into a single string.
+// It handles vendor-specific attributes that exceed the 253-byte limit by
+// removing continuation markers and joining the values.
+//
+// RADIUS attributes have a maximum length of 255 bytes (2 bytes for Type and Length,
+// leaving 253 bytes for data). Vendor-specific attributes further reduce this to
+// approximately 247 bytes after accounting for vendor ID and vendor type fields.
+//
+// For attributes exceeding this limit, multiple instances can be sent with a
+// continuation marker (default: "<contd>") appended to all but the last value.
+//
+// Example:
+//
+//	values := []string{"first part<contd>", "second part<contd>", "last part"}
+//	result := JoinMultilineAttribute(values) // Returns: "first partsecond partlast part"
+func JoinMultilineAttribute(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+
+	if len(values) == 1 {
+		return strings.TrimSuffix(values[0], ContinuationMarker)
+	}
+
+	data := make([]string, 0, len(values))
+	for _, row := range values {
+		row = strings.TrimSuffix(row, ContinuationMarker)
+		data = append(data, row)
+	}
+
+	return strings.Join(data, "")
+}
+
+// SplitMultilineAttribute splits a long string into multiple attribute values
+// that fit within the RADIUS attribute size limit.
+//
+// Each chunk will be no longer than maxLength bytes. All chunks except the last
+// will have the continuation marker appended.
+//
+// Parameters:
+//   - value: The string to split
+//   - maxLength: Maximum length per chunk (should be 247 for VSA, 253 for standard attributes)
+//
+// Returns a slice of strings, each suitable for a separate RADIUS attribute instance.
+//
+// Example:
+//
+//	longString := strings.Repeat("x", 500)
+//	chunks := SplitMultilineAttribute(longString, 247)
+//	// chunks[0] will end with "<contd>"
+//	// chunks[1] will end with "<contd>"
+//	// chunks[2] will be the remainder without "<contd>"
+func SplitMultilineAttribute(value string, maxLength int) []string {
+	if len(value) == 0 {
+		return []string{""}
+	}
+
+	markerLen := len(ContinuationMarker)
+	chunkSize := maxLength - markerLen
+
+	if chunkSize <= 0 {
+		chunkSize = maxLength
+	}
+
+	if len(value) <= maxLength {
+		return []string{value}
+	}
+
+	var chunks []string
+	remaining := value
+
+	for len(remaining) > 0 {
+		if len(remaining) <= maxLength {
+			chunks = append(chunks, remaining)
+			break
+		}
+
+		chunk := remaining[:chunkSize]
+		chunks = append(chunks, chunk+ContinuationMarker)
+		remaining = remaining[chunkSize:]
+	}
+
+	return chunks
 }

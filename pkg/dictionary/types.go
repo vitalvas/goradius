@@ -34,6 +34,7 @@ type AttributeDefinition struct {
 	Encryption  EncryptionType    `yaml:"encryption,omitempty" json:"encryption,omitempty"`
 	HasTag      bool              `yaml:"has_tag,omitempty" json:"has_tag,omitempty"`
 	Array       bool              `yaml:"array,omitempty" json:"array,omitempty"`
+	Multiline   bool              `yaml:"multiline,omitempty" json:"multiline,omitempty"`
 	Values      map[string]uint32 `yaml:"values,omitempty" json:"values,omitempty"`
 	Description string            `yaml:"description,omitempty" json:"description,omitempty"`
 }

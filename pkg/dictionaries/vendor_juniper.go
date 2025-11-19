@@ -1,0 +1,76 @@
+package dictionaries
+
+import "github.com/vitalvas/goradius/pkg/dictionary"
+
+// JuniperVendorDefinition contains the Juniper vendor definition with all its attributes
+var JuniperVendorDefinition = &dictionary.VendorDefinition{
+	ID:          2636,
+	Name:        "Juniper",
+	Description: "Juniper Networks",
+	Attributes: []*dictionary.AttributeDefinition{
+		{ID: 1, Name: "Juniper-Local-User-Name", DataType: dictionary.DataTypeString},
+		{ID: 2, Name: "Juniper-Allow-Commands", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 3, Name: "Juniper-Deny-Commands", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 4, Name: "Juniper-Allow-Configuration", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 5, Name: "Juniper-Deny-Configuration", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 8, Name: "Juniper-Interactive-Command", DataType: dictionary.DataTypeString},
+		{ID: 9, Name: "Juniper-Configuration-Change", DataType: dictionary.DataTypeString},
+		{ID: 10, Name: "Juniper-User-Permissions", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 11, Name: "Juniper-Authentication-Type", DataType: dictionary.DataTypeString},
+		{ID: 12, Name: "Juniper-Session-Port", DataType: dictionary.DataTypeInteger},
+		{ID: 13, Name: "Juniper-Allow-Configuration-Regexps", DataType: dictionary.DataTypeString, Multiline: true},
+		{ID: 14, Name: "Juniper-Deny-Configuration-Regexps", DataType: dictionary.DataTypeString, Multiline: true},
+		{
+			ID:       21,
+			Name:     "Juniper-CTP-Group",
+			DataType: dictionary.DataTypeInteger,
+			Values: map[string]uint32{
+				"Read_Only":         1,
+				"Admin":             2,
+				"Privileged_Admin":  3,
+				"Auditor":           4,
+			},
+		},
+		{
+			ID:       22,
+			Name:     "Juniper-CTPView-APP-Group",
+			DataType: dictionary.DataTypeInteger,
+			Values: map[string]uint32{
+				"Net_View":     1,
+				"Net_Admin":    2,
+				"Global_Admin": 3,
+			},
+		},
+		{
+			ID:       23,
+			Name:     "Juniper-CTPView-OS-Group",
+			DataType: dictionary.DataTypeInteger,
+			Values: map[string]uint32{
+				"Web_Manager":  1,
+				"System_Admin": 2,
+				"Auditor":      3,
+			},
+		},
+		{ID: 31, Name: "Juniper-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
+		{ID: 32, Name: "Juniper-Primary-Wins", DataType: dictionary.DataTypeIPAddr},
+		{ID: 33, Name: "Juniper-Secondary-Dns", DataType: dictionary.DataTypeIPAddr},
+		{ID: 34, Name: "Juniper-Secondary-Wins", DataType: dictionary.DataTypeIPAddr},
+		{ID: 35, Name: "Juniper-Interface-id", DataType: dictionary.DataTypeString},
+		{ID: 36, Name: "Juniper-Ip-Pool-Name", DataType: dictionary.DataTypeString},
+		{ID: 37, Name: "Juniper-Keep-Alive", DataType: dictionary.DataTypeInteger},
+		{ID: 38, Name: "Juniper-CoS-Traffic-Control-Profile", DataType: dictionary.DataTypeString},
+		{ID: 39, Name: "Juniper-CoS-Parameter", DataType: dictionary.DataTypeString},
+		{ID: 40, Name: "Juniper-encapsulation-overhead", DataType: dictionary.DataTypeInteger},
+		{ID: 41, Name: "Juniper-cell-overhead", DataType: dictionary.DataTypeInteger},
+		{ID: 42, Name: "Juniper-tx-connect-speed", DataType: dictionary.DataTypeInteger},
+		{ID: 43, Name: "Juniper-rx-connect-speed", DataType: dictionary.DataTypeInteger},
+		{ID: 44, Name: "Juniper-Firewall-filter-name", DataType: dictionary.DataTypeString},
+		{ID: 45, Name: "Juniper-Policer-Parameter", DataType: dictionary.DataTypeString},
+		{ID: 46, Name: "Juniper-Local-Group-Name", DataType: dictionary.DataTypeString},
+		{ID: 47, Name: "Juniper-Local-Interface", DataType: dictionary.DataTypeString},
+		{ID: 48, Name: "Juniper-Switching-Filter", DataType: dictionary.DataTypeString},
+		{ID: 49, Name: "Juniper-VoIP-Vlan", DataType: dictionary.DataTypeString},
+		{ID: 50, Name: "Juniper-CWA-Redirect", DataType: dictionary.DataTypeString},
+		{ID: 52, Name: "Juniper-AV-Pair", DataType: dictionary.DataTypeString},
+	},
+}

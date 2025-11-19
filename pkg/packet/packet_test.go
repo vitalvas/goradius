@@ -2,6 +2,7 @@ package packet
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -860,6 +861,288 @@ func TestRemoveAttributeByName(t *testing.T) {
 		// Try to remove without dictionary
 		removed := pkt.RemoveAttributeByName("Reply-Message")
 		assert.Equal(t, 0, removed)
+	})
+}
+
+func TestJoinMultilineAttribute(t *testing.T) {
+	t.Run("empty slice", func(t *testing.T) {
+		result := JoinMultilineAttribute([]string{})
+		assert.Equal(t, "", result)
+	})
+
+	t.Run("single value without marker", func(t *testing.T) {
+		result := JoinMultilineAttribute([]string{"test value"})
+		assert.Equal(t, "test value", result)
+	})
+
+	t.Run("single value with marker", func(t *testing.T) {
+		result := JoinMultilineAttribute([]string{"test value<contd>"})
+		assert.Equal(t, "test value", result)
+	})
+
+	t.Run("multiple values with markers", func(t *testing.T) {
+		values := []string{
+			"first part<contd>",
+			"second part<contd>",
+			"third part",
+		}
+		result := JoinMultilineAttribute(values)
+		assert.Equal(t, "first partsecond partthird part", result)
+	})
+
+	t.Run("multiple values mixed markers", func(t *testing.T) {
+		values := []string{
+			"first<contd>",
+			"second",
+			"third<contd>",
+		}
+		result := JoinMultilineAttribute(values)
+		assert.Equal(t, "firstsecondthird", result)
+	})
+
+	t.Run("juniper style multi-line", func(t *testing.T) {
+		values := []string{
+			"permit source-address 192.168.1.0/24<contd>",
+			" destination-address 10.0.0.0/8<contd>",
+			" application any",
+		}
+		result := JoinMultilineAttribute(values)
+		expected := "permit source-address 192.168.1.0/24 destination-address 10.0.0.0/8 application any"
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("production juniper user permissions", func(t *testing.T) {
+		// Real production value from Juniper-User-Permissions attribute
+		permissions := "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control"
+
+		// This value is 526 characters, which exceeds the 247-byte VSA limit
+		assert.Equal(t, 526, len(permissions))
+
+		// Split into chunks suitable for VSA
+		chunks := SplitMultilineAttribute(permissions, 247)
+
+		// Should be split into at least 3 chunks (526 bytes / ~240 bytes per chunk)
+		assert.GreaterOrEqual(t, len(chunks), 3)
+
+		// All chunks except last should have continuation marker
+		for i := 0; i < len(chunks)-1; i++ {
+			assert.True(t, strings.HasSuffix(chunks[i], "<contd>"))
+			assert.LessOrEqual(t, len(chunks[i]), 247)
+		}
+
+		// Last chunk should not have continuation marker
+		assert.False(t, strings.HasSuffix(chunks[len(chunks)-1], "<contd>"))
+
+		// Join back and verify we get the original value
+		rejoined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, permissions, rejoined)
+	})
+}
+
+func TestSplitMultilineAttribute(t *testing.T) {
+	t.Run("empty string", func(t *testing.T) {
+		chunks := SplitMultilineAttribute("", 247)
+		assert.Equal(t, []string{""}, chunks)
+	})
+
+	t.Run("short string fits in one chunk", func(t *testing.T) {
+		value := "short value"
+		chunks := SplitMultilineAttribute(value, 247)
+		assert.Equal(t, []string{"short value"}, chunks)
+	})
+
+	t.Run("exactly max length", func(t *testing.T) {
+		value := strings.Repeat("x", 247)
+		chunks := SplitMultilineAttribute(value, 247)
+		assert.Equal(t, []string{value}, chunks)
+	})
+
+	t.Run("split into two chunks", func(t *testing.T) {
+		value := strings.Repeat("x", 300)
+		chunks := SplitMultilineAttribute(value, 247)
+
+		assert.Len(t, chunks, 2)
+		assert.True(t, strings.HasSuffix(chunks[0], "<contd>"))
+		assert.False(t, strings.HasSuffix(chunks[1], "<contd>"))
+
+		joined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, value, joined)
+	})
+
+	t.Run("split into multiple chunks", func(t *testing.T) {
+		value := strings.Repeat("x", 1000)
+		chunks := SplitMultilineAttribute(value, 247)
+
+		assert.True(t, len(chunks) >= 3)
+
+		for i := 0; i < len(chunks)-1; i++ {
+			assert.True(t, strings.HasSuffix(chunks[i], "<contd>"))
+			assert.LessOrEqual(t, len(chunks[i]), 247)
+		}
+
+		assert.False(t, strings.HasSuffix(chunks[len(chunks)-1], "<contd>"))
+
+		joined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, value, joined)
+	})
+
+	t.Run("split with standard attribute max length", func(t *testing.T) {
+		value := strings.Repeat("y", 500)
+		chunks := SplitMultilineAttribute(value, 253)
+
+		for i := 0; i < len(chunks)-1; i++ {
+			assert.LessOrEqual(t, len(chunks[i]), 253)
+		}
+
+		joined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, value, joined)
+	})
+
+	t.Run("roundtrip with 4000 characters", func(t *testing.T) {
+		value := strings.Repeat("ABCDEFGHIJ", 400)
+		assert.Equal(t, 4000, len(value))
+
+		chunks := SplitMultilineAttribute(value, 247)
+		assert.True(t, len(chunks) >= 16)
+
+		joined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, value, joined)
+	})
+
+	t.Run("small max length", func(t *testing.T) {
+		value := "test value that is longer than ten characters"
+		chunks := SplitMultilineAttribute(value, 10)
+
+		for i := 0; i < len(chunks)-1; i++ {
+			assert.LessOrEqual(t, len(chunks[i]), 10)
+		}
+
+		joined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, value, joined)
+	})
+
+	t.Run("production juniper permissions split and join", func(t *testing.T) {
+		// Real production value from Juniper-User-Permissions attribute
+		permissions := "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control"
+
+		// Split for VSA (247 bytes max)
+		chunks := SplitMultilineAttribute(permissions, 247)
+
+		// Verify chunk count and sizes - 526 chars should fit in 3 chunks
+		assert.GreaterOrEqual(t, len(chunks), 3)
+		assert.LessOrEqual(t, len(chunks), 4)
+
+		// Verify each chunk respects the limit
+		for i, chunk := range chunks {
+			assert.LessOrEqual(t, len(chunk), 247, "chunk %d exceeds limit", i)
+		}
+
+		// Verify roundtrip
+		rejoined := JoinMultilineAttribute(chunks)
+		assert.Equal(t, permissions, rejoined)
+		assert.Equal(t, 526, len(rejoined))
+	})
+}
+
+func TestGetAttributeStringWithMultiline(t *testing.T) {
+	t.Run("multiline vendor attribute automatic join", func(t *testing.T) {
+		dict := dictionary.New()
+
+		// Add Juniper vendor with multiline attribute
+		juniperVendor := &dictionary.VendorDefinition{
+			ID:   2636,
+			Name: "Juniper",
+			Attributes: []*dictionary.AttributeDefinition{
+				{
+					ID:        1,
+					Name:      "Juniper-User-Permissions",
+					DataType:  dictionary.DataTypeString,
+					Multiline: true,
+				},
+			},
+		}
+		require.NoError(t, dict.AddVendor(juniperVendor))
+
+		// Create packet with multiline VSA
+		pkt := New(CodeAccessAccept, 1)
+		pkt.Dict = dict
+
+		// Simulate split multiline attribute
+		permissions := []string{
+			"access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret<contd>",
+			" secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation<contd>",
+			" idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control",
+		}
+
+		// Add each part as separate VSA
+		for _, perm := range permissions {
+			va := NewVendorAttribute(2636, 1, []byte(perm))
+			attr := va.ToVSA()
+			pkt.AddAttribute(attr)
+		}
+
+		// Use GetAttributeString which should automatically join
+		result := pkt.GetAttributeString("Juniper-User-Permissions")
+
+		expected := JoinMultilineAttribute(permissions)
+		assert.Equal(t, expected, result)
+		assert.NotContains(t, result, "<contd>")
+	})
+
+	t.Run("non-multiline attribute returns first value", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		pkt := New(CodeAccessAccept, 1)
+		pkt.Dict = dict
+
+		// Add multiple Reply-Message attributes (not marked as multiline)
+		pkt.AddAttribute(NewAttribute(18, []byte("First message")))
+		pkt.AddAttribute(NewAttribute(18, []byte("Second message")))
+
+		result := pkt.GetAttributeString("Reply-Message")
+		assert.Equal(t, "First message", result)
+	})
+
+	t.Run("single value multiline attribute", func(t *testing.T) {
+		dict := dictionary.New()
+
+		vendor := &dictionary.VendorDefinition{
+			ID:   2636,
+			Name: "Juniper",
+			Attributes: []*dictionary.AttributeDefinition{
+				{
+					ID:        1,
+					Name:      "Juniper-User-Permissions",
+					DataType:  dictionary.DataTypeString,
+					Multiline: true,
+				},
+			},
+		}
+		require.NoError(t, dict.AddVendor(vendor))
+
+		pkt := New(CodeAccessAccept, 1)
+		pkt.Dict = dict
+
+		// Single value that fits in one attribute
+		singleValue := "access admin shell"
+		va := NewVendorAttribute(2636, 1, []byte(singleValue))
+		attr := va.ToVSA()
+		pkt.AddAttribute(attr)
+
+		result := pkt.GetAttributeString("Juniper-User-Permissions")
+		assert.Equal(t, singleValue, result)
+	})
+
+	t.Run("attribute not found returns empty string", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		pkt := New(CodeAccessAccept, 1)
+		pkt.Dict = dict
+
+		result := pkt.GetAttributeString("Non-Existent-Attribute")
+		assert.Equal(t, "", result)
 	})
 }
 
