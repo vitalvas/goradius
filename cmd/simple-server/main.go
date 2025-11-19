@@ -82,6 +82,17 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 	return resp, nil
 }
 
+func validationMiddleware(next server.Handler) server.Handler {
+	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+		if req.Code() != packet.CodeAccessRequest {
+			// do not response for non Access-Request packets
+			return server.Response{}, nil
+		}
+
+		return next.ServeRADIUS(req)
+	})
+}
+
 func main() {
 	srv, err := server.New(server.Config{
 		Addr:    ":1812",
@@ -90,6 +101,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	srv.Use(validationMiddleware)
 
 	fmt.Println("RADIUS server listening on :1812")
 	log.Fatal(srv.ListenAndServe())
