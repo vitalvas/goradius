@@ -1,0 +1,133 @@
+package client
+
+import (
+	"crypto/rand"
+	"fmt"
+	"net"
+	"time"
+
+	"github.com/vitalvas/goradius/pkg/dictionary"
+	"github.com/vitalvas/goradius/pkg/packet"
+)
+
+type Client struct {
+	addr    string
+	secret  []byte
+	dict    *dictionary.Dictionary
+	timeout time.Duration
+}
+
+type Config struct {
+	Addr       string
+	Secret     []byte
+	Dictionary *dictionary.Dictionary
+	Timeout    time.Duration
+}
+
+func New(cfg Config) (*Client, error) {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 3 * time.Second
+	}
+
+	return &Client{
+		addr:    cfg.Addr,
+		secret:  cfg.Secret,
+		dict:    cfg.Dictionary,
+		timeout: cfg.Timeout,
+	}, nil
+}
+
+func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
+	udpAddr, err := net.ResolveUDPAddr("udp", c.addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve address: %w", err)
+	}
+
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial: %w", err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
+		return nil, fmt.Errorf("failed to set deadline: %w", err)
+	}
+
+	data, err := pkt.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode packet: %w", err)
+	}
+
+	if _, err := conn.Write(data); err != nil {
+		return nil, fmt.Errorf("failed to write packet: %w", err)
+	}
+
+	buffer := make([]byte, 4096)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	respPkt, err := packet.Decode(buffer[:n])
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if c.dict != nil {
+		respPkt.Dict = c.dict
+	}
+
+	return respPkt, nil
+}
+
+func (c *Client) CoA(attributes map[string]interface{}) (*packet.Packet, error) {
+	identifier := make([]byte, 1)
+	if _, err := rand.Read(identifier); err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
+	pkt := packet.New(packet.CodeCoARequest, identifier[0])
+	if c.dict != nil {
+		pkt.Dict = c.dict
+	}
+
+	for name, value := range attributes {
+		if err := pkt.AddAttributeByName(name, value); err != nil {
+			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
+		}
+	}
+
+	authenticator := make([]byte, 16)
+	if _, err := rand.Read(authenticator); err != nil {
+		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
+	}
+	pkt.SetAuthenticator([16]byte(authenticator))
+
+	return c.sendRequest(pkt)
+}
+
+func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, error) {
+	identifier := make([]byte, 1)
+	if _, err := rand.Read(identifier); err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
+	pkt := packet.New(packet.CodeDisconnectRequest, identifier[0])
+	if c.dict != nil {
+		pkt.Dict = c.dict
+	}
+
+	for name, value := range attributes {
+		if err := pkt.AddAttributeByName(name, value); err != nil {
+			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
+		}
+	}
+
+	authenticator := make([]byte, 16)
+	if _, err := rand.Read(authenticator); err != nil {
+		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
+	}
+	pkt.SetAuthenticator([16]byte(authenticator))
+
+	return c.sendRequest(pkt)
+}
