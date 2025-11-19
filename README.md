@@ -19,6 +19,7 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 
 ### Security Features
 - Request/response authenticator calculation and verification
+- Message-Authenticator attribute support (HMAC-MD5, RFC 2869)
 - User-Password encryption (RFC 2865)
 - Tunnel-Password encryption (RFC 2868)
 - Ascend-Secret encryption
@@ -103,6 +104,7 @@ GoRADIUS centers around three layers:
 - Tagged attribute handling
 - Value encoding/decoding helpers
 - Authenticator calculation
+- Message-Authenticator calculation and verification (HMAC-MD5)
 - Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 
 #### Dictionary System (pkg/dictionary)
@@ -168,11 +170,13 @@ This library implements the following RFCs:
 
 ## Security Considerations
 
-- **MD5 Usage**: This library uses MD5 for RADIUS authenticator calculation as required by RFC 2865. While MD5 is cryptographically weak, it is mandated by the RADIUS specification.
+- **MD5 Usage**: This library uses MD5 for RADIUS authenticator calculation and HMAC-MD5 for Message-Authenticator as required by RFC 2865 and RFC 2869. While MD5 is cryptographically weak, it is mandated by the RADIUS specification.
+- **Message-Authenticator**: Use the Message-Authenticator attribute (RFC 2869) for additional packet integrity verification, especially for EAP and other sensitive operations. This provides HMAC-MD5 based authentication of the entire packet.
 - **Shared Secrets**: Always use strong, random shared secrets (minimum 16 characters recommended)
 - **Password Encryption**: User passwords are encrypted using the RFC-specified algorithm when using dictionary-based attribute methods
 - **Network Security**: RADIUS transmits over UDP without built-in transport encryption. Use network-level security (VPN, private networks) for production deployments
 - **Input Validation**: All packet decoding includes length and structure validation to prevent malformed packet attacks
+- **Constant-Time Comparison**: Message-Authenticator verification uses constant-time comparison to prevent timing attacks
 
 ## Project Status
 
@@ -187,12 +191,12 @@ This is an active RADIUS library implementation with the following status:
 - ✅ Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 - ✅ Tagged attributes (RFC 2868)
 - ✅ Authenticator calculation and verification
+- ✅ Message-Authenticator attribute (HMAC-MD5, RFC 2869)
 - ✅ Full RADIUS client (Access-Request, Accounting-Request, CoA/Disconnect)
 
 **Not Yet Implemented:**
 - ❌ TCP transport
 - ❌ TLS support
-- ❌ Message-Authenticator attribute (RFC 2869)
 - ❌ EAP support
 - ❌ Client retransmission logic
 

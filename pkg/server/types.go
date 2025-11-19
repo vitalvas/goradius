@@ -9,9 +9,11 @@ import (
 )
 
 type Config struct {
-	Addr       string
-	Handler    Handler
-	Dictionary *dictionary.Dictionary
+	Addr                        string
+	Handler                     Handler
+	Dictionary                  *dictionary.Dictionary
+	RequireMessageAuthenticator *bool
+	UseMessageAuthenticator     *bool
 }
 
 type Request struct {

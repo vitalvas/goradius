@@ -53,6 +53,7 @@ func TestCoA(t *testing.T) {
 
 	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
 
+	secret := []byte("testing123")
 	go func() {
 		buffer := make([]byte, 4096)
 		n, clientAddr, err := serverConn.ReadFromUDP(buffer)
@@ -68,6 +69,7 @@ func TestCoA(t *testing.T) {
 		assert.Equal(t, packet.CodeCoARequest, reqPkt.Code)
 
 		respPkt := packet.New(packet.CodeCoAACK, reqPkt.Identifier)
+		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -99,6 +101,7 @@ func TestDisconnect(t *testing.T) {
 
 	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
 
+	secret := []byte("testing123")
 	go func() {
 		buffer := make([]byte, 4096)
 		n, clientAddr, err := serverConn.ReadFromUDP(buffer)
@@ -114,6 +117,7 @@ func TestDisconnect(t *testing.T) {
 		assert.Equal(t, packet.CodeDisconnectRequest, reqPkt.Code)
 
 		respPkt := packet.New(packet.CodeDisconnectACK, reqPkt.Identifier)
+		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -205,6 +209,7 @@ func TestAccessRequest(t *testing.T) {
 
 	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
 
+	secret := []byte("testing123")
 	go func() {
 		buffer := make([]byte, 4096)
 		n, clientAddr, err := serverConn.ReadFromUDP(buffer)
@@ -220,6 +225,7 @@ func TestAccessRequest(t *testing.T) {
 		assert.Equal(t, packet.CodeAccessRequest, reqPkt.Code)
 
 		respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
+		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -251,6 +257,7 @@ func TestAccountingRequest(t *testing.T) {
 
 	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
 
+	secret := []byte("testing123")
 	go func() {
 		buffer := make([]byte, 4096)
 		n, clientAddr, err := serverConn.ReadFromUDP(buffer)
@@ -266,6 +273,7 @@ func TestAccountingRequest(t *testing.T) {
 		assert.Equal(t, packet.CodeAccountingRequest, reqPkt.Code)
 
 		respPkt := packet.New(packet.CodeAccountingResponse, reqPkt.Identifier)
+		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()

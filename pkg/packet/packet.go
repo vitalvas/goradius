@@ -1,6 +1,7 @@
 package packet
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
 	"fmt"
@@ -246,18 +247,12 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 }
 
 // SetAuthenticator sets the packet authenticator
-// INTERNAL: This method is for internal library use only and may be removed in future versions.
-// Authenticators are managed automatically by the server.
 func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 	p.Authenticator = auth
 }
 
 // CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
-// INTERNAL: This method is for internal library use only and may be removed in future versions.
-// Authenticators are managed automatically by the server.
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
-	// Response Authenticator = MD5(Code + ID + Length + Request Authenticator + Response Attributes + Secret)
-
 	// Build the packet bytes for hashing
 	packetBytes := make([]byte, int(p.Length))
 
@@ -284,11 +279,7 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 }
 
 // CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
-// INTERNAL: This method is for internal library use only and may be removed in future versions.
-// Authenticators are managed automatically by the server/client.
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
-	// Request Authenticator = MD5(Code + ID + Length + Null Authenticator + Attributes + Secret)
-
 	// Build the packet bytes for hashing
 	packetBytes := make([]byte, int(p.Length))
 
@@ -312,6 +303,78 @@ func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLeng
 	packetBytes = append(packetBytes, secret...)
 	hash := md5.Sum(packetBytes)
 	return hash
+}
+
+// CalculateMessageAuthenticator calculates the Message-Authenticator attribute value (RFC 2869)
+func (p *Packet) CalculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
+	packetBytes := make([]byte, int(p.Length))
+
+	packetBytes[0] = byte(p.Code)
+	packetBytes[1] = p.Identifier
+	packetBytes[2] = byte(p.Length >> 8)
+	packetBytes[3] = byte(p.Length)
+
+	if p.Code == CodeAccessRequest || p.Code == CodeAccountingRequest {
+		copy(packetBytes[4:20], p.Authenticator[:])
+	} else {
+		copy(packetBytes[4:20], requestAuthenticator[:])
+	}
+
+	offset := PacketHeaderLength
+	for _, attr := range p.Attributes {
+		packetBytes[offset] = attr.Type
+		packetBytes[offset+1] = attr.Length
+
+		if attr.Type == 80 {
+			for i := 0; i < 16; i++ {
+				packetBytes[offset+2+i] = 0
+			}
+			offset += int(attr.Length)
+		} else {
+			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
+			offset += int(attr.Length)
+		}
+	}
+
+	mac := hmac.New(md5.New, secret)
+	mac.Write(packetBytes)
+	var result [16]byte
+	copy(result[:], mac.Sum(nil))
+	return result
+}
+
+// VerifyMessageAuthenticator verifies the Message-Authenticator attribute (RFC 2869)
+func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) bool {
+	var messageAuth []byte
+	for _, attr := range p.Attributes {
+		if attr.Type == 80 {
+			messageAuth = attr.Value
+			break
+		}
+	}
+
+	if messageAuth == nil {
+		return false
+	}
+
+	if len(messageAuth) != 16 {
+		return false
+	}
+
+	expected := p.CalculateMessageAuthenticator(secret, requestAuthenticator)
+
+	return hmac.Equal(messageAuth, expected[:])
+}
+
+// AddMessageAuthenticator adds a Message-Authenticator attribute to the packet
+func (p *Packet) AddMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) {
+	placeholder := make([]byte, 16)
+	attr := NewAttribute(80, placeholder)
+	p.AddAttribute(attr)
+
+	mac := p.CalculateMessageAuthenticator(secret, requestAuthenticator)
+
+	p.Attributes[len(p.Attributes)-1].Value = mac[:]
 }
 
 // IsValid performs basic validation of the packet

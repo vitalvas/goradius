@@ -165,6 +165,7 @@ func TestServerHandlePacket(t *testing.T) {
 	// Create a test packet
 	pkt := packet.New(packet.CodeAccessRequest, 1)
 	pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+	pkt.AddMessageAuthenticator([]byte("testing123"), pkt.Authenticator)
 
 	// Set response for handler
 	respPkt := packet.New(packet.CodeAccessAccept, 1)
@@ -335,6 +336,7 @@ func TestServerMiddleware(t *testing.T) {
 
 	pkt := packet.New(packet.CodeAccessRequest, 1)
 	pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+	pkt.AddMessageAuthenticator([]byte("testing123"), pkt.Authenticator)
 	data, err := pkt.Encode()
 	require.NoError(t, err)
 

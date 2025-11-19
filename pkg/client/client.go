@@ -11,17 +11,21 @@ import (
 )
 
 type Client struct {
-	addr    string
-	secret  []byte
-	dict    *dictionary.Dictionary
-	timeout time.Duration
+	addr                 string
+	secret               []byte
+	dict                 *dictionary.Dictionary
+	timeout              time.Duration
+	useMessageAuth       bool
+	verifyMessageAuth    bool
 }
 
 type Config struct {
-	Addr       string
-	Secret     []byte
-	Dictionary *dictionary.Dictionary
-	Timeout    time.Duration
+	Addr                       string
+	Secret                     []byte
+	Dictionary                 *dictionary.Dictionary
+	Timeout                    time.Duration
+	UseMessageAuthenticator    *bool
+	VerifyMessageAuthenticator *bool
 }
 
 func New(cfg Config) (*Client, error) {
@@ -29,11 +33,23 @@ func New(cfg Config) (*Client, error) {
 		cfg.Timeout = 3 * time.Second
 	}
 
+	useMessageAuth := true
+	if cfg.UseMessageAuthenticator != nil {
+		useMessageAuth = *cfg.UseMessageAuthenticator
+	}
+
+	verifyMessageAuth := true
+	if cfg.VerifyMessageAuthenticator != nil {
+		verifyMessageAuth = *cfg.VerifyMessageAuthenticator
+	}
+
 	return &Client{
-		addr:    cfg.Addr,
-		secret:  cfg.Secret,
-		dict:    cfg.Dictionary,
-		timeout: cfg.Timeout,
+		addr:              cfg.Addr,
+		secret:            cfg.Secret,
+		dict:              cfg.Dictionary,
+		timeout:           cfg.Timeout,
+		useMessageAuth:    useMessageAuth,
+		verifyMessageAuth: verifyMessageAuth,
 	}, nil
 }
 
@@ -77,6 +93,12 @@ func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
 		respPkt.Dict = c.dict
 	}
 
+	if c.verifyMessageAuth {
+		if !respPkt.VerifyMessageAuthenticator(c.secret, pkt.Authenticator) {
+			return nil, fmt.Errorf("message authenticator verification failed")
+		}
+	}
+
 	return respPkt, nil
 }
 
@@ -102,6 +124,10 @@ func (c *Client) CoA(attributes map[string]interface{}) (*packet.Packet, error) 
 		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
+
+	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
+	}
 
 	return c.sendRequest(pkt)
 }
@@ -129,6 +155,10 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, 
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
 
+	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
+	}
+
 	return c.sendRequest(pkt)
 }
 
@@ -155,6 +185,10 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*packet.Packe
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
 
+	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
+	}
+
 	return c.sendRequest(pkt)
 }
 
@@ -180,6 +214,10 @@ func (c *Client) AccountingRequest(attributes map[string]interface{}) (*packet.P
 		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
+
+	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
+	}
 
 	return c.sendRequest(pkt)
 }

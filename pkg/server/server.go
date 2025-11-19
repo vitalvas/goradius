@@ -12,13 +12,15 @@ import (
 
 // Server is a simple RADIUS UDP server
 type Server struct {
-	addr        string
-	conn        *net.UDPConn
-	handler     Handler
-	dict        *dictionary.Dictionary
-	middlewares []Middleware
-	mu          sync.RWMutex
-	ready       chan struct{}
+	addr                    string
+	conn                    *net.UDPConn
+	handler                 Handler
+	dict                    *dictionary.Dictionary
+	middlewares             []Middleware
+	mu                      sync.RWMutex
+	ready                   chan struct{}
+	requireMessageAuth      bool
+	useMessageAuth          bool
 }
 
 func New(cfg Config) (*Server, error) {
@@ -31,11 +33,23 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 
+	requireMessageAuth := true
+	if cfg.RequireMessageAuthenticator != nil {
+		requireMessageAuth = *cfg.RequireMessageAuthenticator
+	}
+
+	useMessageAuth := true
+	if cfg.UseMessageAuthenticator != nil {
+		useMessageAuth = *cfg.UseMessageAuthenticator
+	}
+
 	return &Server{
-		addr:    cfg.Addr,
-		handler: cfg.Handler,
-		dict:    dict,
-		ready:   make(chan struct{}),
+		addr:               cfg.Addr,
+		handler:            cfg.Handler,
+		dict:               dict,
+		ready:              make(chan struct{}),
+		requireMessageAuth: requireMessageAuth,
+		useMessageAuth:     useMessageAuth,
 	}, nil
 }
 
@@ -134,8 +148,11 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		return
 	}
 
-	// For Access-Request, skip authenticator validation (radtest uses Message-Authenticator)
-	// In production, you'd want proper validation
+	if s.requireMessageAuth {
+		if !pkt.VerifyMessageAuthenticator(secretResp.Secret, pkt.Authenticator) {
+			return
+		}
+	}
 
 	// Handle RADIUS request
 	req := &Request{
@@ -152,6 +169,10 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	resp, err := handler.ServeRADIUS(req)
 	if err != nil || resp.packet == nil {
 		return
+	}
+
+	if s.useMessageAuth {
+		resp.packet.AddMessageAuthenticator(secretResp.Secret, pkt.Authenticator)
 	}
 
 	// Calculate response authenticator

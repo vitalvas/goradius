@@ -862,3 +862,113 @@ func TestRemoveAttributeByName(t *testing.T) {
 		assert.Equal(t, 0, removed)
 	})
 }
+
+func TestMessageAuthenticator(t *testing.T) {
+	secret := []byte("testing123")
+
+	t.Run("calculate and verify for Access-Request", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		// Set a request authenticator
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+		pkt.SetAuthenticator(reqAuth)
+
+		// Add Message-Authenticator
+		pkt.AddMessageAuthenticator(secret, reqAuth)
+
+		// Verify it
+		assert.True(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+
+	t.Run("calculate and verify for Access-Accept", func(t *testing.T) {
+		// Request authenticator from the original request
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+
+		pkt := New(CodeAccessAccept, 1)
+		pkt.AddAttribute(NewAttribute(18, []byte("Hello, World!"))) // Reply-Message
+
+		// Add Message-Authenticator
+		pkt.AddMessageAuthenticator(secret, reqAuth)
+
+		// Verify it
+		assert.True(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+
+	t.Run("verify fails with wrong secret", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+		pkt.SetAuthenticator(reqAuth)
+
+		// Add Message-Authenticator with correct secret
+		pkt.AddMessageAuthenticator(secret, reqAuth)
+
+		// Try to verify with wrong secret
+		wrongSecret := []byte("wrongsecret")
+		assert.False(t, pkt.VerifyMessageAuthenticator(wrongSecret, reqAuth))
+	})
+
+	t.Run("verify fails with tampered packet", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+		pkt.SetAuthenticator(reqAuth)
+
+		// Add Message-Authenticator
+		pkt.AddMessageAuthenticator(secret, reqAuth)
+
+		// Tamper with an attribute
+		pkt.AddAttribute(NewAttribute(6, []byte("1"))) // Service-Type
+
+		// Verification should fail
+		assert.False(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+
+	t.Run("verify fails with no Message-Authenticator", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+
+		// No Message-Authenticator added
+		assert.False(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+
+	t.Run("verify fails with invalid length", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		// Add Message-Authenticator with wrong length
+		pkt.AddAttribute(NewAttribute(80, []byte("short")))
+
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+
+		assert.False(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+
+	t.Run("calculate with multiple attributes", func(t *testing.T) {
+		pkt := New(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 0, 2, 1})) // NAS-IP-Address
+		pkt.AddAttribute(NewAttribute(5, []byte{0, 0, 0, 1}))   // NAS-Port
+
+		var reqAuth [16]byte
+		copy(reqAuth[:], []byte("1234567890123456"))
+		pkt.SetAuthenticator(reqAuth)
+
+		// Add Message-Authenticator
+		pkt.AddMessageAuthenticator(secret, reqAuth)
+
+		// Verify it
+		assert.True(t, pkt.VerifyMessageAuthenticator(secret, reqAuth))
+	})
+}
