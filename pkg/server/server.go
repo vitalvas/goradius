@@ -84,9 +84,13 @@ func (s *Server) ListenAndServe() error {
 
 		n, clientAddr, err := s.conn.ReadFromUDP(buffer)
 		if err != nil {
-			// Return buffer to pool on error
 			bufferPool.Put(bufPtr)
-			continue
+
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
+
+			return err
 		}
 
 		// Copy data to new slice before passing to goroutine

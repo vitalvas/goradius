@@ -128,7 +128,7 @@ func (p *Packet) GetAttributes(attrType uint8) []*Attribute {
 // GetVendorAttribute returns the first vendor attribute with the specified vendor ID and type
 func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorAttribute, bool) {
 	for _, attr := range p.Attributes {
-		if attr.Type == 26 { // Vendor-Specific
+		if attr.Type == AttributeTypeVendorSpecific {
 			if va, err := ParseVSA(attr); err == nil {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					return va, true
@@ -143,7 +143,7 @@ func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorA
 func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint8) []*VendorAttribute {
 	var attrs []*VendorAttribute
 	for _, attr := range p.Attributes {
-		if attr.Type == 26 { // Vendor-Specific
+		if attr.Type == AttributeTypeVendorSpecific {
 			if va, err := ParseVSA(attr); err == nil {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					attrs = append(attrs, va)
@@ -249,7 +249,7 @@ func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroM
 		packetBytes[offset] = attr.Type
 		packetBytes[offset+1] = attr.Length
 
-		if zeroMessageAuth && attr.Type == 80 {
+		if zeroMessageAuth && attr.Type == AttributeTypeMessageAuthenticator {
 			offset += int(attr.Length)
 		} else {
 			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
@@ -317,7 +317,7 @@ func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticat
 func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) bool {
 	var messageAuth []byte
 	for _, attr := range p.Attributes {
-		if attr.Type == 80 {
+		if attr.Type == AttributeTypeMessageAuthenticator {
 			messageAuth = attr.Value
 			break
 		}
@@ -339,7 +339,7 @@ func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator 
 // AddMessageAuthenticator adds a Message-Authenticator attribute to the packet
 func (p *Packet) AddMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) {
 	placeholder := make([]byte, 16)
-	attr := NewAttribute(80, placeholder)
+	attr := NewAttribute(AttributeTypeMessageAuthenticator, placeholder)
 	p.AddAttribute(attr)
 
 	mac := p.calculateMessageAuthenticator(secret, requestAuthenticator)
@@ -715,8 +715,7 @@ func (p *Packet) ListAttributes() []string {
 	for _, attr := range p.Attributes {
 		var name string
 
-		if attr.Type == 26 {
-			// VSA - Vendor-Specific Attribute
+		if attr.Type == AttributeTypeVendorSpecific {
 			va, err := ParseVSA(attr)
 			if err != nil {
 				continue
