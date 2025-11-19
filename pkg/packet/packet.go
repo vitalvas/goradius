@@ -236,17 +236,15 @@ func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 
 // CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
-	// Build the packet bytes for hashing
-	packetBytes := make([]byte, int(p.Length))
+	// Pre-allocate with capacity for secret to avoid reallocation
+	packetBytes := make([]byte, int(p.Length), int(p.Length)+len(secret))
 
-	// Header: Code + ID + Length + Request Authenticator
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
 	packetBytes[2] = byte(p.Length >> 8)
 	packetBytes[3] = byte(p.Length)
 	copy(packetBytes[4:20], requestAuthenticator[:])
 
-	// Attributes
 	offset := PacketHeaderLength
 	for _, attr := range p.Attributes {
 		packetBytes[offset] = attr.Type
@@ -255,7 +253,6 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 		offset += int(attr.Length)
 	}
 
-	// Append secret and calculate MD5 hash
 	packetBytes = append(packetBytes, secret...)
 	hash := md5.Sum(packetBytes)
 	return hash
@@ -263,17 +260,14 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 
 // CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
-	// Build the packet bytes for hashing
-	packetBytes := make([]byte, int(p.Length))
+	// Pre-allocate with capacity for secret to avoid reallocation
+	packetBytes := make([]byte, int(p.Length), int(p.Length)+len(secret))
 
-	// Header: Code + ID + Length + Null Authenticator (16 zero bytes)
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
 	packetBytes[2] = byte(p.Length >> 8)
 	packetBytes[3] = byte(p.Length)
-	// Authenticator field is already zero-initialized
 
-	// Attributes
 	offset := PacketHeaderLength
 	for _, attr := range p.Attributes {
 		packetBytes[offset] = attr.Type
@@ -282,7 +276,6 @@ func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLeng
 		offset += int(attr.Length)
 	}
 
-	// Append secret and calculate MD5 hash
 	packetBytes = append(packetBytes, secret...)
 	hash := md5.Sum(packetBytes)
 	return hash
@@ -467,11 +460,9 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 	var attrName string
 	var tag uint8
 
-	// Parse the name format (attribute:tag)
 	parts := strings.SplitN(name, ":", 2)
 	attrName = parts[0]
 
-	// Check if there's a tag
 	if len(parts) == 2 {
 		if tagValue := parts[1]; tagValue != "" {
 			if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
@@ -480,35 +471,26 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 		}
 	}
 
-	// Use unified lookup to find the attribute
 	attrDef, exists := p.Dict.LookupByAttributeName(attrName)
 	if !exists {
 		return fmt.Errorf("attribute %q not found in dictionary", attrName)
 	}
 
-	// Filter out attributes that don't match the packet type
 	if !p.isAttributeAllowed(attrDef) {
-		// Silently skip attributes not allowed in this packet type
 		return nil
 	}
 
-	// Find the vendor ID for this attribute using O(1) lookup
 	vendorID, exists := p.Dict.LookupVendorIDByAttributeName(attrName)
 	if !exists {
 		return fmt.Errorf("vendor not found for attribute %q", attrName)
 	}
 
-	// Get the vendor definition
 	vendor, exists := p.Dict.LookupVendorByID(vendorID)
 	if !exists {
 		return fmt.Errorf("vendor ID %d not found for attribute %q", vendorID, attrName)
 	}
 
-	// Handle enumerated values
 	processedValue := p.processEnumeratedValue(value, attrDef)
-
-	// Handle array attributes - check if value is a slice
-	// This handles both attributes marked as Array=true and user-provided slices
 	p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
 	return nil
 }
@@ -521,10 +503,8 @@ func (p *Packet) isAttributeAllowed(attrDef *dictionary.AttributeDefinition) boo
 	case dictionary.AttributeTypeReply:
 		return p.Code.IsReply()
 	case dictionary.AttributeTypeRequestReply:
-		// Can be used in both requests and replies
 		return true
 	default:
-		// Unknown type - allow by default
 		return true
 	}
 }

@@ -72,29 +72,21 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// Check for duplicates against unified attribute index
 	for _, attr := range vendor.Attributes {
 		if _, exists := d.allAttrByName[attr.Name]; exists {
 			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
 		}
 	}
 
-	// All checks passed, add the vendor
 	d.vendorByID[vendor.ID] = vendor
 
-	// Initialize nested map for this vendor if needed
 	if d.vendorAttrByID[vendor.ID] == nil {
 		d.vendorAttrByID[vendor.ID] = make(map[uint32]*AttributeDefinition)
 	}
 
 	for _, attr := range vendor.Attributes {
-		// Add to nested map (zero string allocation on lookup)
 		d.vendorAttrByID[vendor.ID][attr.ID] = attr
-
-		// Add to unified attribute index
 		d.allAttrByName[attr.Name] = attr
-
-		// Add to reverse lookup (attribute name -> vendor ID)
 		d.attrNameToVendorID[attr.Name] = vendor.ID
 	}
 
