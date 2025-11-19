@@ -2,31 +2,43 @@ package dictionary
 
 import (
 	"fmt"
+	"sync"
 )
 
-// Dictionary provides fast lookup for RADIUS attributes
+// Dictionary provides fast lookup for RADIUS attributes.
+// It is safe for concurrent reads after initialization is complete.
+// All Add* methods acquire write locks and should be called during initialization only.
 type Dictionary struct {
-	// Fast lookup maps for standard attributes
+	mu sync.RWMutex
+
+	// Standard attributes indices
 	standardByID   map[uint32]*AttributeDefinition
 	standardByName map[string]*AttributeDefinition
 
-	// Fast lookup maps for vendor attributes
-	// vendorByID maps vendor ID to vendor definition
+	// Vendor metadata (VendorDefinition.Name is for documentation only)
 	vendorByID map[uint32]*VendorDefinition
-	// vendorAttrByID maps "vendorID:attrID" to attribute definition
-	vendorAttrByID map[string]*AttributeDefinition
-	// vendorAttrByName maps "vendorName:attrName" to attribute definition
-	vendorAttrByName map[string]*AttributeDefinition
+
+	// Vendor attributes by ID (nested maps - zero string allocation on lookup)
+	vendorAttrByID map[uint32]map[uint32]*AttributeDefinition // vendorID -> attrID -> attr
+
+	// Unified attribute lookup by name (standard + vendor attributes)
+	// Vendor attribute names are globally unique, enforced in AddVendor
+	allAttrByName map[string]*AttributeDefinition
+
+	// Reverse lookup: attribute name -> vendor ID (for vendor attributes only)
+	// This enables O(1) vendor lookup instead of O(n*m) iteration
+	attrNameToVendorID map[string]uint32
 }
 
 // New creates a new empty dictionary with fast lookup indices
 func New() *Dictionary {
 	return &Dictionary{
-		standardByID:     make(map[uint32]*AttributeDefinition),
-		standardByName:   make(map[string]*AttributeDefinition),
-		vendorByID:       make(map[uint32]*VendorDefinition),
-		vendorAttrByID:   make(map[string]*AttributeDefinition),
-		vendorAttrByName: make(map[string]*AttributeDefinition),
+		standardByID:       make(map[uint32]*AttributeDefinition),
+		standardByName:     make(map[string]*AttributeDefinition),
+		vendorByID:         make(map[uint32]*VendorDefinition),
+		vendorAttrByID:     make(map[uint32]map[uint32]*AttributeDefinition),
+		allAttrByName:      make(map[string]*AttributeDefinition),
+		attrNameToVendorID: make(map[string]uint32),
 	}
 }
 
@@ -34,20 +46,13 @@ func New() *Dictionary {
 // AddStandardAttributes adds standard RFC attributes to the dictionary.
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
-	// Check for duplicates within the new attributes and against existing attributes
-	for _, attr := range attrs {
-		// Check if name already exists in standard attributes
-		if _, exists := d.standardByName[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q: already exists as standard attribute", attr.Name)
-		}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-		// Check if name conflicts with any vendor attribute
-		for _, vendor := range d.vendorByID {
-			for _, vendorAttr := range vendor.Attributes {
-				if vendorAttr.Name == attr.Name {
-					return fmt.Errorf("duplicate attribute name %q: conflicts with vendor %s attribute", attr.Name, vendor.Name)
-				}
-			}
+	// Check for duplicates against unified attribute index
+	for _, attr := range attrs {
+		if _, exists := d.allAttrByName[attr.Name]; exists {
+			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
 		}
 	}
 
@@ -55,6 +60,7 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	for _, attr := range attrs {
 		d.standardByID[attr.ID] = attr
 		d.standardByName[attr.Name] = attr
+		d.allAttrByName[attr.Name] = attr
 	}
 
 	return nil
@@ -63,33 +69,33 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 // AddVendor adds a vendor and its attributes to the dictionary.
 // Returns an error if any vendor attribute name conflicts with existing standard or vendor attributes.
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
-	// Check for duplicates in vendor attributes against all existing attributes
-	for _, attr := range vendor.Attributes {
-		// Check if name conflicts with standard attributes
-		if _, exists := d.standardByName[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q: conflicts with standard attribute", attr.Name)
-		}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-		// Check if name conflicts with existing vendor attributes
-		for _, existingVendor := range d.vendorByID {
-			for _, existingAttr := range existingVendor.Attributes {
-				if existingAttr.Name == attr.Name {
-					return fmt.Errorf("duplicate attribute name %q: conflicts with vendor %s attribute", attr.Name, existingVendor.Name)
-				}
-			}
+	// Check for duplicates against unified attribute index
+	for _, attr := range vendor.Attributes {
+		if _, exists := d.allAttrByName[attr.Name]; exists {
+			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
 		}
 	}
 
 	// All checks passed, add the vendor
 	d.vendorByID[vendor.ID] = vendor
 
-	for _, attr := range vendor.Attributes {
-		// Create composite keys for fast lookup
-		idKey := fmt.Sprintf("%d:%d", vendor.ID, attr.ID)
-		nameKey := fmt.Sprintf("%s:%s", vendor.Name, attr.Name)
+	// Initialize nested map for this vendor if needed
+	if d.vendorAttrByID[vendor.ID] == nil {
+		d.vendorAttrByID[vendor.ID] = make(map[uint32]*AttributeDefinition)
+	}
 
-		d.vendorAttrByID[idKey] = attr
-		d.vendorAttrByName[nameKey] = attr
+	for _, attr := range vendor.Attributes {
+		// Add to nested map (zero string allocation on lookup)
+		d.vendorAttrByID[vendor.ID][attr.ID] = attr
+
+		// Add to unified attribute index
+		d.allAttrByName[attr.Name] = attr
+
+		// Add to reverse lookup (attribute name -> vendor ID)
+		d.attrNameToVendorID[attr.Name] = vendor.ID
 	}
 
 	return nil
@@ -97,38 +103,63 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 
 // LookupStandardByID finds a standard attribute by ID
 func (d *Dictionary) LookupStandardByID(id uint32) (*AttributeDefinition, bool) {
+	d.mu.RLock()
 	attr, exists := d.standardByID[id]
+	d.mu.RUnlock()
 	return attr, exists
 }
 
 // LookupStandardByName finds a standard attribute by name
 func (d *Dictionary) LookupStandardByName(name string) (*AttributeDefinition, bool) {
+	d.mu.RLock()
 	attr, exists := d.standardByName[name]
+	d.mu.RUnlock()
 	return attr, exists
 }
 
 // LookupVendorByID finds a vendor by ID
 func (d *Dictionary) LookupVendorByID(vendorID uint32) (*VendorDefinition, bool) {
+	d.mu.RLock()
 	vendor, exists := d.vendorByID[vendorID]
+	d.mu.RUnlock()
 	return vendor, exists
 }
 
 // LookupVendorAttributeByID finds a vendor attribute by vendor ID and attribute ID
 func (d *Dictionary) LookupVendorAttributeByID(vendorID, attrID uint32) (*AttributeDefinition, bool) {
-	key := fmt.Sprintf("%d:%d", vendorID, attrID)
-	attr, exists := d.vendorAttrByID[key]
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	if attrs, ok := d.vendorAttrByID[vendorID]; ok {
+		if attr, ok := attrs[attrID]; ok {
+			return attr, true
+		}
+	}
+	return nil, false
+}
+
+// LookupByAttributeName finds an attribute by name (works for both standard and vendor attributes)
+func (d *Dictionary) LookupByAttributeName(name string) (*AttributeDefinition, bool) {
+	d.mu.RLock()
+	attr, exists := d.allAttrByName[name]
+	d.mu.RUnlock()
 	return attr, exists
 }
 
-// LookupVendorAttributeByName finds a vendor attribute by vendor name and attribute name
-func (d *Dictionary) LookupVendorAttributeByName(vendorName, attrName string) (*AttributeDefinition, bool) {
-	key := fmt.Sprintf("%s:%s", vendorName, attrName)
-	attr, exists := d.vendorAttrByName[key]
-	return attr, exists
+// LookupVendorIDByAttributeName finds the vendor ID for a vendor attribute by its name.
+// Returns (vendorID, true) if the attribute is a vendor attribute, or (0, false) if not found or is a standard attribute.
+func (d *Dictionary) LookupVendorIDByAttributeName(name string) (uint32, bool) {
+	d.mu.RLock()
+	vendorID, exists := d.attrNameToVendorID[name]
+	d.mu.RUnlock()
+	return vendorID, exists
 }
 
 // GetAllVendors returns all vendors in the dictionary
 func (d *Dictionary) GetAllVendors() []*VendorDefinition {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	vendors := make([]*VendorDefinition, 0, len(d.vendorByID))
 	for _, vendor := range d.vendorByID {
 		vendors = append(vendors, vendor)

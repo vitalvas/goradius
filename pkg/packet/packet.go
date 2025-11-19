@@ -202,38 +202,15 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 		return removed
 	}
 
-	// Try vendor attribute
-	// Parse vendor:attribute format
-	parts := strings.SplitN(name, ":", 2)
-	if len(parts) != 2 {
+	// Try vendor attribute using unified lookup
+	attrDef, exists := p.Dict.LookupByAttributeName(name)
+	if !exists {
 		return 0
 	}
 
-	vendorName := parts[0]
-	attrName := parts[1]
-
-	// Lookup vendor
-	vendors := p.Dict.GetAllVendors()
-	var vendorID uint32
-	var vendorAttrID uint8
-	found := false
-
-	for _, vendor := range vendors {
-		if vendor.Name == vendorName {
-			vendorID = vendor.ID
-			// Look for the attribute in this vendor
-			for _, attr := range vendor.Attributes {
-				if attr.Name == attrName {
-					vendorAttrID = uint8(attr.ID)
-					found = true
-					break
-				}
-			}
-			break
-		}
-	}
-
-	if !found {
+	// Find the vendor ID for this attribute using O(1) lookup
+	vendorID, exists := p.Dict.LookupVendorIDByAttributeName(name)
+	if !exists {
 		return 0
 	}
 
@@ -241,7 +218,7 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 	for i := len(p.Attributes) - 1; i >= 0; i-- {
 		if p.Attributes[i].Type == 26 { // VSA
 			va, err := ParseVSA(p.Attributes[i])
-			if err == nil && va.VendorID == vendorID && va.VendorType == vendorAttrID {
+			if err == nil && va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
 				p.Length -= uint16(p.Attributes[i].Length)
 				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 				removed++
@@ -503,28 +480,37 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 		}
 	}
 
-	// Search all vendors for this attribute name
-	vendors := p.Dict.GetAllVendors()
-	for _, vendor := range vendors {
-		for _, attrDef := range vendor.Attributes {
-			if attrDef.Name == attrName {
-				// Filter out attributes that don't match the packet type
-				if !p.isAttributeAllowed(attrDef) {
-					return nil
-				}
-
-				// Handle enumerated values
-				processedValue := p.processEnumeratedValue(value, attrDef)
-
-				// Handle array attributes - check if value is a slice
-				// This handles both attributes marked as Array=true and user-provided slices
-				p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
-				return nil
-			}
-		}
+	// Use unified lookup to find the attribute
+	attrDef, exists := p.Dict.LookupByAttributeName(attrName)
+	if !exists {
+		return fmt.Errorf("attribute %q not found in dictionary", attrName)
 	}
 
-	return fmt.Errorf("attribute %q not found in dictionary", name)
+	// Filter out attributes that don't match the packet type
+	if !p.isAttributeAllowed(attrDef) {
+		// Silently skip attributes not allowed in this packet type
+		return nil
+	}
+
+	// Find the vendor ID for this attribute using O(1) lookup
+	vendorID, exists := p.Dict.LookupVendorIDByAttributeName(attrName)
+	if !exists {
+		return fmt.Errorf("vendor not found for attribute %q", attrName)
+	}
+
+	// Get the vendor definition
+	vendor, exists := p.Dict.LookupVendorByID(vendorID)
+	if !exists {
+		return fmt.Errorf("vendor ID %d not found for attribute %q", vendorID, attrName)
+	}
+
+	// Handle enumerated values
+	processedValue := p.processEnumeratedValue(value, attrDef)
+
+	// Handle array attributes - check if value is a slice
+	// This handles both attributes marked as Array=true and user-provided slices
+	p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
+	return nil
 }
 
 // isAttributeAllowed checks if an attribute can be used in the current packet type
@@ -823,42 +809,46 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 		return result
 	}
 
-	// Try to find as vendor attribute
-	vendors := p.Dict.GetAllVendors()
-	for _, vendor := range vendors {
-		if attrDef, exists := p.Dict.LookupVendorAttributeByName(vendor.Name, name); exists {
-			for _, attr := range p.Attributes {
-				if attr.Type == 26 {
-					va, err := ParseVSA(attr)
-					if err != nil {
-						continue
+	// Try to find as vendor attribute using unified lookup
+	if attrDef, exists := p.Dict.LookupByAttributeName(name); exists {
+		// Find vendor ID for this attribute using O(1) lookup
+		vendorID, exists := p.Dict.LookupVendorIDByAttributeName(name)
+		if !exists {
+			return []AttributeValue{}
+		}
+
+		// Search packet attributes for this vendor attribute
+		for _, pktAttr := range p.Attributes {
+			if pktAttr.Type == 26 {
+				va, err := ParseVSA(pktAttr)
+				if err != nil {
+					continue
+				}
+
+				if va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
+					// Only use tag if the attribute definition supports tagging
+					tag := uint8(0)
+					value := va.Value
+					if attrDef.HasTag && va.Tag > 0 {
+						tag = va.Tag
+						value = va.GetValue() // Strips tag byte
 					}
 
-					if va.VendorID == vendor.ID && va.VendorType == uint8(attrDef.ID) {
-						// Only use tag if the attribute definition supports tagging
-						tag := uint8(0)
-						value := va.Value
-						if attrDef.HasTag && va.Tag > 0 {
-							tag = va.Tag
-							value = va.GetValue() // Strips tag byte
-						}
-
-						result = append(result, AttributeValue{
-							Name:       attrDef.Name,
-							Type:       attr.Type,
-							DataType:   attrDef.DataType,
-							Value:      value,
-							Tag:        tag,
-							IsVSA:      true,
-							VendorID:   va.VendorID,
-							VendorType: va.VendorType,
-							Multiline:  attrDef.Multiline,
-						})
-					}
+					result = append(result, AttributeValue{
+						Name:       attrDef.Name,
+						Type:       pktAttr.Type,
+						DataType:   attrDef.DataType,
+						Value:      value,
+						Tag:        tag,
+						IsVSA:      true,
+						VendorID:   va.VendorID,
+						VendorType: va.VendorType,
+						Multiline:  attrDef.Multiline,
+					})
 				}
 			}
-			return result
 		}
+		return result
 	}
 
 	return []AttributeValue{}

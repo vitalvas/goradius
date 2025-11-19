@@ -14,7 +14,8 @@ func TestNew(t *testing.T) {
 	assert.NotNil(t, dict.standardByName)
 	assert.NotNil(t, dict.vendorByID)
 	assert.NotNil(t, dict.vendorAttrByID)
-	assert.NotNil(t, dict.vendorAttrByName)
+	assert.NotNil(t, dict.allAttrByName)
+	assert.NotNil(t, dict.attrNameToVendorID)
 }
 
 func TestAddStandardAttributes(t *testing.T) {
@@ -136,8 +137,8 @@ func TestAddVendor(t *testing.T) {
 	assert.Equal(t, "ERX-Service-Activate", attr.Name)
 	assert.True(t, attr.HasTag)
 
-	// Verify vendor attribute lookup by name
-	attr, exists = dict.LookupVendorAttributeByName("ERX", "ERX-Primary-Dns")
+	// Verify vendor attribute lookup by name (using unified lookup)
+	attr, exists = dict.LookupByAttributeName("ERX-Primary-Dns")
 	assert.True(t, exists)
 	assert.Equal(t, uint32(13), attr.ID)
 	assert.Equal(t, DataTypeIPAddr, attr.DataType)
@@ -196,7 +197,7 @@ func TestLookupVendorAttributeByID(t *testing.T) {
 	}
 }
 
-func TestLookupVendorAttributeByName(t *testing.T) {
+func TestLookupByAttributeName(t *testing.T) {
 	dict := New()
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
@@ -207,19 +208,17 @@ func TestLookupVendorAttributeByName(t *testing.T) {
 	})
 
 	tests := []struct {
-		name       string
-		vendorName string
-		attrName   string
-		exists     bool
+		name     string
+		attrName string
+		exists   bool
 	}{
-		{"existing attribute", "ERX", "Test-Attr", true},
-		{"wrong vendor", "Cisco", "Test-Attr", false},
-		{"wrong attribute", "ERX", "NonExistent", false},
+		{"existing vendor attribute", "Test-Attr", true},
+		{"non-existent attribute", "NonExistent", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, exists := dict.LookupVendorAttributeByName(tt.vendorName, tt.attrName)
+			_, exists := dict.LookupByAttributeName(tt.attrName)
 			assert.Equal(t, tt.exists, exists)
 		})
 	}
@@ -388,13 +387,12 @@ func TestStandardAttributeConflictsWithVendorAttribute(t *testing.T) {
 
 	// Try to add standard attribute with same name
 	attrs := []*AttributeDefinition{
-		{ID: 1, Name: "Test-Attribute", DataType: DataTypeString}, // Conflicts with ERX!
+		{ID: 1, Name: "Test-Attribute", DataType: DataTypeString}, // Conflicts!
 	}
 	err := dict.AddStandardAttributes(attrs)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
 	assert.Contains(t, err.Error(), "Test-Attribute")
-	assert.Contains(t, err.Error(), "vendor ERX")
 }
 
 func TestDuplicateVendorAttributeName(t *testing.T) {
@@ -420,7 +418,6 @@ func TestDuplicateVendorAttributeName(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
 	assert.Contains(t, err.Error(), "Shared-Attribute")
-	assert.Contains(t, err.Error(), "vendor ERX")
 }
 
 func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
@@ -437,13 +434,12 @@ func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
 		ID:   4874,
 		Name: "ERX",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "User-Name", DataType: DataTypeString}, // Conflicts with standard!
+			{ID: 1, Name: "User-Name", DataType: DataTypeString}, // Conflicts!
 		},
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
 	assert.Contains(t, err.Error(), "User-Name")
-	assert.Contains(t, err.Error(), "standard attribute")
 }
 
 func TestAttributeType(t *testing.T) {

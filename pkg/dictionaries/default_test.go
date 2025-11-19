@@ -37,8 +37,8 @@ func TestNewDefault(t *testing.T) {
 			assert.Equal(t, "Juniper-Local-User-Name", juniperAttr.Name)
 		}
 
-		// Verify lookup by name also works
-		juniperAttrByName, ok := dict.LookupVendorAttributeByName("Juniper", "Juniper-User-Permissions")
+		// Verify lookup by name also works (using unified lookup)
+		juniperAttrByName, ok := dict.LookupByAttributeName("Juniper-User-Permissions")
 		assert.True(t, ok, "Juniper-User-Permissions should be found by name")
 		if ok {
 			assert.Equal(t, uint32(10), juniperAttrByName.ID)

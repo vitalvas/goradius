@@ -676,16 +676,16 @@ func TestRemoveAttributeByName(t *testing.T) {
 		pkt := NewWithDictionary(CodeAccessAccept, 2, dict)
 
 		// Add multiple ERX-Service-Activate attributes
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1")
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2")
-		pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+		require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1"))
+		require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2"))
+		require.NoError(t, pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8"))
 
 		// Verify they were added
 		services := pkt.GetAttribute("ERX-Service-Activate")
 		assert.Len(t, services, 2)
 
 		// Remove all ERX-Service-Activate attributes
-		removed := pkt.RemoveAttributeByName("ERX:ERX-Service-Activate")
+		removed := pkt.RemoveAttributeByName("ERX-Service-Activate")
 		assert.Equal(t, 2, removed)
 
 		// Verify they were removed
