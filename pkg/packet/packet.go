@@ -418,6 +418,10 @@ func (p *Packet) AddAttributeByName(name string, value interface{}) error {
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		// Filter out attributes that don't match the packet type
+		if !p.isAttributeAllowed(attrDef) {
+			return nil
+		}
 		p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
 		return nil
 	}
@@ -438,6 +442,10 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, se
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		// Filter out attributes that don't match the packet type
+		if !p.isAttributeAllowed(attrDef) {
+			return nil
+		}
 		p.addStandardAttribute(name, value, attrDef, secret, authenticator)
 		return nil
 	}
@@ -500,6 +508,11 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 	for _, vendor := range vendors {
 		for _, attrDef := range vendor.Attributes {
 			if attrDef.Name == attrName {
+				// Filter out attributes that don't match the packet type
+				if !p.isAttributeAllowed(attrDef) {
+					return nil
+				}
+
 				// Handle enumerated values
 				processedValue := p.processEnumeratedValue(value, attrDef)
 
@@ -512,6 +525,22 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 	}
 
 	return fmt.Errorf("attribute %q not found in dictionary", name)
+}
+
+// isAttributeAllowed checks if an attribute can be used in the current packet type
+func (p *Packet) isAttributeAllowed(attrDef *dictionary.AttributeDefinition) bool {
+	switch attrDef.Type {
+	case dictionary.AttributeTypeRequest:
+		return p.Code.IsRequest()
+	case dictionary.AttributeTypeReply:
+		return p.Code.IsReply()
+	case dictionary.AttributeTypeRequestReply:
+		// Can be used in both requests and replies
+		return true
+	default:
+		// Unknown type - allow by default
+		return true
+	}
 }
 
 // processEnumeratedValue converts string enumerated values to integers

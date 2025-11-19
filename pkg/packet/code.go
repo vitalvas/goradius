@@ -84,3 +84,27 @@ func (c Code) IsValid() bool {
 		return false
 	}
 }
+
+// IsRequest returns true if the code represents a request packet
+func (c Code) IsRequest() bool {
+	switch c {
+	case CodeAccessRequest, CodeAccountingRequest, CodeStatusServer,
+		CodeDisconnectRequest, CodeCoARequest:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsReply returns true if the code represents a reply packet
+func (c Code) IsReply() bool {
+	switch c {
+	case CodeAccessAccept, CodeAccessReject, CodeAccessChallenge,
+		CodeAccountingResponse, CodeStatusClient,
+		CodeDisconnectACK, CodeDisconnectNAK,
+		CodeCoAACK, CodeCoANAK:
+		return true
+	default:
+		return false
+	}
+}

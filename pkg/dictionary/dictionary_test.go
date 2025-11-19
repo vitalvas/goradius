@@ -445,3 +445,92 @@ func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
 	assert.Contains(t, err.Error(), "User-Name")
 	assert.Contains(t, err.Error(), "standard attribute")
 }
+
+func TestAttributeType(t *testing.T) {
+	dict := New()
+
+	attrs := []*AttributeDefinition{
+		{
+			ID:       1,
+			Name:     "User-Name",
+			DataType: DataTypeString,
+			Type:     AttributeTypeRequestReply, // Can be used in both requests and replies
+		},
+		{
+			ID:       2,
+			Name:     "User-Password",
+			DataType: DataTypeString,
+			Type:     AttributeTypeRequest, // Only in requests
+		},
+		{
+			ID:       8,
+			Name:     "Framed-IP-Address",
+			DataType: DataTypeIPAddr,
+			Type:     AttributeTypeReply, // Only in replies
+		},
+		{
+			ID:       4,
+			Name:     "NAS-IP-Address",
+			DataType: DataTypeIPAddr,
+			// Type not specified - should default to AttributeTypeRequestReply (0)
+		},
+	}
+
+	require.NoError(t, dict.AddStandardAttributes(attrs))
+
+	// Verify User-Name is RequestReply
+	attr, exists := dict.LookupStandardByID(1)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeRequestReply, attr.Type)
+
+	// Verify User-Password is Request only
+	attr, exists = dict.LookupStandardByID(2)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeRequest, attr.Type)
+
+	// Verify Framed-IP-Address is Reply only
+	attr, exists = dict.LookupStandardByID(8)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeReply, attr.Type)
+
+	// Verify NAS-IP-Address defaults to RequestReply (0)
+	attr, exists = dict.LookupStandardByID(4)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeRequestReply, attr.Type)
+}
+
+func TestVendorAttributeType(t *testing.T) {
+	dict := New()
+
+	vendor := &VendorDefinition{
+		ID:   2636,
+		Name: "Juniper",
+		Attributes: []*AttributeDefinition{
+			{
+				ID:       1,
+				Name:     "Juniper-Local-User-Name",
+				DataType: DataTypeString,
+				Type:     AttributeTypeReply, // Reply only
+			},
+			{
+				ID:       10,
+				Name:     "Juniper-User-Permissions",
+				DataType: DataTypeString,
+				Type:     AttributeTypeRequest, // Request only
+			},
+		},
+	}
+
+	require.NoError(t, dict.AddVendor(vendor))
+
+	// Verify Juniper-Local-User-Name is Reply only
+	attr, exists := dict.LookupVendorAttributeByID(2636, 1)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeReply, attr.Type)
+
+	// Verify Juniper-User-Permissions is Request only
+	attr, exists = dict.LookupVendorAttributeByID(2636, 10)
+	assert.True(t, exists)
+	assert.Equal(t, AttributeTypeRequest, attr.Type)
+}
+
