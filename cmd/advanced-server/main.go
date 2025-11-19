@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionaries"
@@ -174,27 +175,33 @@ func main() {
 	dict.AddVendor(dictionaries.ERXVendorDefinition)
 
 	// Create server
-	srv, err := server.New(":1812", &advancedHandler{}, dict)
+	srv, err := server.New(server.Config{
+		Addr:       ":1812",
+		Handler:    &advancedHandler{},
+		Dictionary: dict,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Add middlewares (order matters!)
-	srv.Use(loggingMiddleware)        // Outermost: logs everything
-	srv.Use(statisticsMiddleware)     // Tracks statistics
-	srv.Use(validationMiddleware)     // Validates requests
-	srv.Use(attributeListMiddleware)  // Lists attributes (innermost before handler)
+	srv.Use(auditMiddleware(os.Stdout)) // Audit logging in JSON format
+	srv.Use(loggingMiddleware)          // Outermost: logs everything
+	srv.Use(statisticsMiddleware)       // Tracks statistics
+	srv.Use(validationMiddleware)       // Validates requests
+	srv.Use(attributeListMiddleware)    // Lists attributes (innermost before handler)
 
 	fmt.Println("=======================================================")
 	fmt.Println("Advanced RADIUS Server with Middleware")
 	fmt.Println("=======================================================")
 	fmt.Println("Listening on :1812")
 	fmt.Println("Middlewares enabled:")
-	fmt.Println("  1. Logging - Logs all requests and responses")
-	fmt.Println("  2. Statistics - Tracks request counts")
-	fmt.Println("  3. Validation - Validates required attributes")
-	fmt.Println("  4. Attribute List - Shows all request attributes")
+	fmt.Println("  1. Audit - JSON audit logging to stdout")
+	fmt.Println("  2. Logging - Logs all requests and responses")
+	fmt.Println("  3. Statistics - Tracks request counts")
+	fmt.Println("  4. Validation - Validates required attributes")
+	fmt.Println("  5. Attribute List - Shows all request attributes")
 	fmt.Println("=======================================================")
 
-	log.Fatal(srv.Serve())
+	log.Fatal(srv.ListenAndServe())
 }

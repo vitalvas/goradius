@@ -59,10 +59,14 @@ func TestNew(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
-	assert.NotNil(t, srv.conn)
+	assert.Equal(t, ":0", srv.addr)
 	assert.Equal(t, handler, srv.handler)
 	assert.Equal(t, dict, srv.dict)
 
@@ -73,7 +77,15 @@ func TestNewInvalidAddress(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
 
-	_, err := New("invalid:address:format", handler, dict)
+	srv, err := New(Config{
+		Addr:       "invalid:address:format",
+		Handler:    handler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, srv)
+
+	err = srv.ListenAndServe()
 	assert.Error(t, err)
 }
 
@@ -81,7 +93,11 @@ func TestServerClose(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 
 	err = srv.Close()
@@ -94,12 +110,16 @@ func TestServerServeStop(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 
 	// Start server in background
 	go func() {
-		srv.Serve()
+		srv.ListenAndServe()
 	}()
 
 	// Give server time to start
@@ -118,20 +138,24 @@ func TestServerHandlePacket(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 	defer srv.Close()
 
 	// Start server in background
 	go func() {
-		srv.Serve()
+		srv.ListenAndServe()
 	}()
 
 	// Give server time to start
 	time.Sleep(100 * time.Millisecond)
 
 	// Get server address
-	serverAddr := srv.conn.LocalAddr().(*net.UDPAddr)
+	serverAddr := srv.Addr().(*net.UDPAddr)
 
 	// Create client connection
 	clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -180,29 +204,50 @@ func TestServerWithDictionary(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 	defer srv.Close()
 
 	assert.Equal(t, dict, srv.dict)
 }
 
+func TestServerNilDictionary(t *testing.T) {
+	handler := &testHandler{}
+
+	srv, err := New(Config{
+		Addr:    ":0",
+		Handler: handler,
+	})
+	require.NoError(t, err)
+	defer srv.Close()
+
+	assert.NotNil(t, srv.dict)
+}
+
 func TestServerNilHandler(t *testing.T) {
 	dict := dictionary.New()
 
-	srv, err := New(":0", nil, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    nil,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 	defer srv.Close()
 
 	// Server should not crash with nil handler
 	go func() {
-		srv.Serve()
+		srv.ListenAndServe()
 	}()
 
 	time.Sleep(100 * time.Millisecond)
 
 	// Send a packet (should be ignored)
-	serverAddr := srv.conn.LocalAddr().(*net.UDPAddr)
+	serverAddr := srv.Addr().(*net.UDPAddr)
 	clientConn, err := net.DialUDP("udp", nil, serverAddr)
 	require.NoError(t, err)
 	defer clientConn.Close()
@@ -221,7 +266,11 @@ func TestServerMiddleware(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := New(":0", handler, dict)
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -273,13 +322,13 @@ func TestServerMiddleware(t *testing.T) {
 
 	// Start server
 	go func() {
-		srv.Serve()
+		srv.ListenAndServe()
 	}()
 
 	time.Sleep(100 * time.Millisecond)
 
 	// Send request
-	serverAddr := srv.conn.LocalAddr().(*net.UDPAddr)
+	serverAddr := srv.Addr().(*net.UDPAddr)
 	clientConn, err := net.DialUDP("udp", nil, serverAddr)
 	require.NoError(t, err)
 	defer clientConn.Close()

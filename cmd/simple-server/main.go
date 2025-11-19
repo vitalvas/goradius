@@ -90,11 +90,15 @@ func main() {
 	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
 	dict.AddVendor(dictionaries.ERXVendorDefinition)
 
-	srv, err := server.New(":1812", &simpleHandler{}, dict)
+	srv, err := server.New(server.Config{
+		Addr:       ":1812",
+		Handler:    &simpleHandler{},
+		Dictionary: dict,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println("RADIUS server listening on :1812")
-	log.Fatal(srv.Serve())
+	log.Fatal(srv.ListenAndServe())
 }

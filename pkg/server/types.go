@@ -4,8 +4,15 @@ import (
 	"context"
 	"net"
 
+	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
 )
+
+type Config struct {
+	Addr       string
+	Handler    Handler
+	Dictionary *dictionary.Dictionary
+}
 
 type Request struct {
 	Context    context.Context
@@ -49,6 +56,22 @@ func (r *Response) Code() packet.Code {
 		return 0
 	}
 	return r.packet.Code
+}
+
+// GetAttribute returns all values for the given attribute name
+func (r *Response) GetAttribute(name string) []packet.AttributeValue {
+	if r.packet == nil {
+		return []packet.AttributeValue{}
+	}
+	return r.packet.GetAttribute(name)
+}
+
+// ListAttributes returns a list of unique attribute names found in the response
+func (r *Response) ListAttributes() []string {
+	if r.packet == nil {
+		return []string{}
+	}
+	return r.packet.ListAttributes()
 }
 
 type SecretRequest struct {

@@ -3,40 +3,58 @@ package server
 import (
 	"context"
 	"net"
+	"sync"
 
+	"github.com/vitalvas/goradius/pkg/dictionaries"
 	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
 )
 
 // Server is a simple RADIUS UDP server
 type Server struct {
+	addr        string
 	conn        *net.UDPConn
 	handler     Handler
 	dict        *dictionary.Dictionary
 	middlewares []Middleware
+	mu          sync.RWMutex
+	ready       chan struct{}
 }
 
-// New creates a new RADIUS server
-func New(addr string, handler Handler, dict *dictionary.Dictionary) (*Server, error) {
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+func New(cfg Config) (*Server, error) {
+	dict := cfg.Dictionary
+	if dict == nil {
+		var err error
+		dict, err = dictionaries.NewDefault()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Server{
+		addr:    cfg.Addr,
+		handler: cfg.Handler,
+		dict:    dict,
+		ready:   make(chan struct{}),
+	}, nil
+}
+
+func (s *Server) ListenAndServe() error {
+	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &Server{
-		conn:    conn,
-		handler: handler,
-		dict:    dict,
-	}, nil
-}
+	s.mu.Lock()
+	s.conn = conn
+	close(s.ready)
+	s.mu.Unlock()
 
-// Serve starts the server
-func (s *Server) Serve() error {
 	buffer := make([]byte, 4096)
 
 	for {
@@ -49,8 +67,23 @@ func (s *Server) Serve() error {
 	}
 }
 
+func (s *Server) Addr() net.Addr {
+	<-s.ready
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.conn == nil {
+		return nil
+	}
+	return s.conn.LocalAddr()
+}
+
 // Close stops the server
 func (s *Server) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn == nil {
+		return nil
+	}
 	return s.conn.Close()
 }
 
