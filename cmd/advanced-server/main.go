@@ -6,8 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/vitalvas/goradius/pkg/dictionaries"
-	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
 	"github.com/vitalvas/goradius/pkg/server"
 )
@@ -169,16 +167,10 @@ func statisticsMiddleware(next server.Handler) server.Handler {
 }
 
 func main() {
-	// Create dictionary with standard RFC definitions and vendor extensions
-	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-	dict.AddVendor(dictionaries.ERXVendorDefinition)
-
 	// Create server
 	srv, err := server.New(server.Config{
-		Addr:       ":1812",
-		Handler:    &advancedHandler{},
-		Dictionary: dict,
+		Addr:    ":1812",
+		Handler: &advancedHandler{},
 	})
 	if err != nil {
 		log.Fatal(err)

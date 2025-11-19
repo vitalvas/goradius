@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/vitalvas/goradius/pkg/dictionaries"
-	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
 	"github.com/vitalvas/goradius/pkg/server"
 )
@@ -85,15 +83,9 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 }
 
 func main() {
-	// Create dictionary with standard RFC definitions
-	dict := dictionary.New()
-	dict.AddStandardAttributes(dictionaries.StandardRFCAttributes)
-	dict.AddVendor(dictionaries.ERXVendorDefinition)
-
 	srv, err := server.New(server.Config{
-		Addr:       ":1812",
-		Handler:    &simpleHandler{},
-		Dictionary: dict,
+		Addr:    ":1812",
+		Handler: &simpleHandler{},
 	})
 	if err != nil {
 		log.Fatal(err)
