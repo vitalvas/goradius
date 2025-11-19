@@ -25,6 +25,8 @@ type Packet struct {
 	Authenticator [AuthenticatorLength]byte
 	Attributes    []*Attribute
 	Dict          *dictionary.Dictionary // Optional dictionary for attribute lookups
+
+	vsaCache map[int]*VendorAttribute
 }
 
 // AttributeValue contains a single attribute value with type information
@@ -125,11 +127,30 @@ func (p *Packet) GetAttributes(attrType uint8) []*Attribute {
 	return attrs
 }
 
+// getParsedVSA returns a cached parsed VSA or parses and caches it
+func (p *Packet) getParsedVSA(index int, attr *Attribute) (*VendorAttribute, error) {
+	if p.vsaCache == nil {
+		p.vsaCache = make(map[int]*VendorAttribute)
+	}
+
+	if va, exists := p.vsaCache[index]; exists {
+		return va, nil
+	}
+
+	va, err := ParseVSA(attr)
+	if err != nil {
+		return nil, err
+	}
+
+	p.vsaCache[index] = va
+	return va, nil
+}
+
 // GetVendorAttribute returns the first vendor attribute with the specified vendor ID and type
 func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorAttribute, bool) {
-	for _, attr := range p.Attributes {
+	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
-			if va, err := ParseVSA(attr); err == nil {
+			if va, err := p.getParsedVSA(i, attr); err == nil {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					return va, true
 				}
@@ -142,9 +163,9 @@ func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorA
 // GetVendorAttributes returns all vendor attributes with the specified vendor ID and type
 func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint8) []*VendorAttribute {
 	var attrs []*VendorAttribute
-	for _, attr := range p.Attributes {
+	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
-			if va, err := ParseVSA(attr); err == nil {
+			if va, err := p.getParsedVSA(i, attr); err == nil {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					attrs = append(attrs, va)
 				}
@@ -216,12 +237,23 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 
 	// Remove all VSAs matching this vendor and attribute ID
 	for i := len(p.Attributes) - 1; i >= 0; i-- {
-		if p.Attributes[i].Type == 26 { // VSA
-			va, err := ParseVSA(p.Attributes[i])
+		if p.Attributes[i].Type == AttributeTypeVendorSpecific {
+			va, err := p.getParsedVSA(i, p.Attributes[i])
 			if err == nil && va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
 				p.Length -= uint16(p.Attributes[i].Length)
 				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 				removed++
+
+				delete(p.vsaCache, i)
+				newCache := make(map[int]*VendorAttribute)
+				for idx, cached := range p.vsaCache {
+					if idx > i {
+						newCache[idx-1] = cached
+					} else {
+						newCache[idx] = cached
+					}
+				}
+				p.vsaCache = newCache
 			}
 		}
 	}
@@ -424,7 +456,10 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, se
 
 // addStandardAttribute handles standard attribute addition with full feature support
 func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
-	// Handle tagged attributes by extracting the tag
+	if attrDef == nil {
+		return
+	}
+
 	var tag uint8
 
 	if strings.Contains(name, ":") && attrDef.HasTag {
@@ -602,7 +637,10 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 // addArrayAttribute handles array attributes (multiple values for same attribute)
 // If value is a slice, it adds each element as a separate attribute instance
 func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
-	// Check if value is a slice/array
+	if attrDef == nil {
+		return
+	}
+
 	values := []interface{}{value}
 
 	// Try to convert to slice for array handling
@@ -653,7 +691,10 @@ func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, valu
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
 func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
-	// Check if value is a slice/array
+	if vendor == nil || attrDef == nil {
+		return
+	}
+
 	values := []interface{}{value}
 
 	// Try to convert to slice for array handling
@@ -712,11 +753,11 @@ func (p *Packet) ListAttributes() []string {
 	seen := make(map[string]bool)
 	var result []string
 
-	for _, attr := range p.Attributes {
+	for i, attr := range p.Attributes {
 		var name string
 
 		if attr.Type == AttributeTypeVendorSpecific {
-			va, err := ParseVSA(attr)
+			va, err := p.getParsedVSA(i, attr)
 			if err != nil {
 				continue
 			}
@@ -791,9 +832,9 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 		}
 
 		// Search packet attributes for this vendor attribute
-		for _, pktAttr := range p.Attributes {
-			if pktAttr.Type == 26 {
-				va, err := ParseVSA(pktAttr)
+		for i, pktAttr := range p.Attributes {
+			if pktAttr.Type == AttributeTypeVendorSpecific {
+				va, err := p.getParsedVSA(i, pktAttr)
 				if err != nil {
 					continue
 				}

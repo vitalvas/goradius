@@ -43,10 +43,16 @@ func (h *testHandler) ServeSecret(_ SecretRequest) (SecretResponse, error) {
 	return h.secretResp, h.secretErr
 }
 
-func (h *testHandler) ServeRADIUS(_ *Request) (Response, error) {
+func (h *testHandler) ServeRADIUS(req *Request) (Response, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.radiusCalled = true
+
+	if h.radiusResp.packet != nil {
+		respPkt := packet.New(h.radiusResp.packet.Code, req.packet.Identifier)
+		return Response{packet: respPkt}, h.radiusErr
+	}
+
 	return h.radiusResp, h.radiusErr
 }
 
@@ -582,4 +588,228 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 	})
 
 	srv.Close()
+}
+
+func TestServerStressWithHighPacketRate(t *testing.T) {
+	secret := []byte("testing123")
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 0)},
+	}
+
+	srv, err := New(Config{
+		Addr:    "127.0.0.1:0",
+		Handler: handler,
+	})
+	assert.NoError(t, err)
+
+	go srv.ListenAndServe()
+	defer srv.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := srv.Addr().(*net.UDPAddr)
+
+	numPackets := 1000
+	var wg sync.WaitGroup
+	errors := make(chan error, numPackets)
+
+	for i := 0; i < numPackets; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			pkt := packet.New(packet.CodeAccessRequest, uint8(id%256))
+			pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+
+			data, err := pkt.Encode()
+			if err != nil {
+				errors <- err
+				return
+			}
+
+			conn, err := net.DialUDP("udp", nil, addr)
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer conn.Close()
+
+			conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+			if _, err := conn.Write(data); err != nil {
+				errors <- err
+				return
+			}
+
+			buffer := make([]byte, 4096)
+			n, err := conn.Read(buffer)
+			if err != nil {
+				errors <- err
+				return
+			}
+
+			_, err = packet.Decode(buffer[:n])
+			if err != nil {
+				errors <- err
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	errorCount := 0
+	for err := range errors {
+		if err != nil {
+			t.Logf("Error: %v", err)
+			errorCount++
+		}
+	}
+
+	assert.Less(t, errorCount, numPackets/10, "Too many errors in stress test")
+}
+
+func TestServerConcurrentPackets(t *testing.T) {
+	secret := []byte("testing123")
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 0)},
+	}
+
+	srv, err := New(Config{
+		Addr:    "127.0.0.1:0",
+		Handler: handler,
+	})
+	assert.NoError(t, err)
+
+	go srv.ListenAndServe()
+	defer srv.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := srv.Addr().(*net.UDPAddr)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			pkt := packet.New(packet.CodeAccessRequest, uint8(id))
+			pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+
+			data, _ := pkt.Encode()
+
+			conn, _ := net.DialUDP("udp", nil, addr)
+			defer conn.Close()
+
+			conn.SetDeadline(time.Now().Add(2 * time.Second))
+			conn.Write(data)
+
+			buffer := make([]byte, 4096)
+			conn.Read(buffer)
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func TestServerBufferSafety(t *testing.T) {
+	secret := []byte("testing123")
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 0)},
+	}
+
+	srv, err := New(Config{
+		Addr:    "127.0.0.1:0",
+		Handler: handler,
+	})
+	assert.NoError(t, err)
+
+	go srv.ListenAndServe()
+	defer srv.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := srv.Addr().(*net.UDPAddr)
+
+	packets := make([]*packet.Packet, 50)
+	for i := range packets {
+		pkt := packet.New(packet.CodeAccessRequest, uint8(i))
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+		packets[i] = pkt
+	}
+
+	var wg sync.WaitGroup
+	for i, pkt := range packets {
+		wg.Add(1)
+		go func(_ int, p *packet.Packet) {
+			defer wg.Done()
+
+			data, _ := p.Encode()
+
+			conn, _ := net.DialUDP("udp", nil, addr)
+			defer conn.Close()
+
+			conn.SetDeadline(time.Now().Add(2 * time.Second))
+			conn.Write(data)
+
+			buffer := make([]byte, 4096)
+			n, err := conn.Read(buffer)
+			if err != nil {
+				return
+			}
+
+			respPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				return
+			}
+
+			assert.Equal(t, p.Identifier, respPkt.Identifier)
+		}(i, pkt)
+	}
+
+	wg.Wait()
+}
+
+func BenchmarkServerThroughput(b *testing.B) {
+	secret := []byte("testing123")
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 0)},
+	}
+
+	srv, _ := New(Config{
+		Addr:    "127.0.0.1:0",
+		Handler: handler,
+	})
+
+	go srv.ListenAndServe()
+	defer srv.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := srv.Addr().(*net.UDPAddr)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		conn, _ := net.DialUDP("udp", nil, addr)
+		defer conn.Close()
+
+		pkt := packet.New(packet.CodeAccessRequest, 1)
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+		data, _ := pkt.Encode()
+
+		buffer := make([]byte, 4096)
+
+		for pb.Next() {
+			conn.SetDeadline(time.Now().Add(2 * time.Second))
+			conn.Write(data)
+			conn.Read(buffer)
+		}
+	})
 }

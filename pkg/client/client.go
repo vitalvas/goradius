@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionary"
@@ -11,12 +12,15 @@ import (
 )
 
 type Client struct {
-	addr                 string
-	secret               []byte
-	dict                 *dictionary.Dictionary
-	timeout              time.Duration
-	useMessageAuth       bool
-	verifyMessageAuth    bool
+	addr              string
+	secret            []byte
+	dict              *dictionary.Dictionary
+	timeout           time.Duration
+	useMessageAuth    bool
+	verifyMessageAuth bool
+
+	conn *net.UDPConn
+	mu   sync.Mutex
 }
 
 type Config struct {
@@ -53,7 +57,14 @@ func New(cfg Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
+func (c *Client) getConnection() (*net.UDPConn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		return c.conn, nil
+	}
+
 	udpAddr, err := net.ResolveUDPAddr("udp", c.addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve address: %w", err)
@@ -63,7 +74,28 @@ func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
-	defer conn.Close()
+
+	c.conn = conn
+	return conn, nil
+}
+
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		err := c.conn.Close()
+		c.conn = nil
+		return err
+	}
+	return nil
+}
+
+func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
+	conn, err := c.getConnection()
+	if err != nil {
+		return nil, err
+	}
 
 	if err := conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)

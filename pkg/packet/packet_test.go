@@ -1202,3 +1202,23 @@ func BenchmarkE2EAuthenticationFlowMinimal(b *testing.B) {
 		_, _ = Decode(respData)
 	}
 }
+
+func BenchmarkVSAParsingWithCache(b *testing.B) {
+	pkt := New(CodeAccessRequest, 1)
+
+	for i := 0; i < 10; i++ {
+		va := NewVendorAttribute(4874, uint8(i+1), []byte("test-value"))
+		pkt.AddVendorAttribute(va)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 5; j++ {
+			pkt.GetVendorAttribute(4874, 1)
+			pkt.GetVendorAttribute(4874, 5)
+			pkt.GetVendorAttributes(4874, 1)
+		}
+	}
+}
