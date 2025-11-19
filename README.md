@@ -9,6 +9,7 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 - **RFC 2866**: RADIUS Accounting
 - **RFC 2868**: Tunnel Protocol Support (Tagged Attributes)
 - **RFC 2869**: RADIUS Extensions
+- **RFC 3576**: Dynamic Authorization Extensions (CoA/Disconnect)
 - Full packet encoding/decoding with validation
 - Support for all standard RADIUS packet types
 - Comprehensive attribute handling with type safety
@@ -36,8 +37,18 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 - Simple UDP RADIUS server
 - Concurrent request handling with goroutines
 - Flexible handler interface
+- Middleware support for request processing
 - Per-client secret management
 - Dictionary-based attribute validation
+
+### Client Features
+- Full RADIUS client implementation
+- Access-Request for authentication
+- Accounting-Request for accounting
+- Dynamic Authorization (CoA/Disconnect) for session management
+- Configurable timeout support
+- Attribute-based request building
+- Response validation
 
 ### Packet Features
 - Dictionary-based attribute manipulation
@@ -79,9 +90,9 @@ GoRADIUS centers around three layers:
 
 - **`pkg/packet`**: RADIUS packet encoding, decoding, and attribute handling
 - **`pkg/server`**: Simple RADIUS UDP server implementation
+- **`pkg/client`**: Full RADIUS client (Access, Accounting, CoA/Disconnect)
 - **`pkg/dictionary`**: In-memory attribute dictionary with fast lookups
 - **`pkg/dictionaries`**: Built-in RFC and vendor dictionary definitions
-- **`pkg/log`**: Logging interface
 
 ### Key Components
 
@@ -106,8 +117,18 @@ GoRADIUS centers around three layers:
 #### Server (pkg/server)
 - UDP RADIUS server
 - Handler interface for request processing
+- Middleware support
 - Secret management per client
 - Response helper functions
+
+#### Client (pkg/client)
+- Access-Request for authentication
+- Accounting-Request for accounting (Start, Stop, Interim-Update)
+- CoA (Change-of-Authorization) request support
+- Disconnect request support
+- Configurable timeout
+- Dictionary-based attribute handling
+- Automatic authenticator generation
 
 #### Built-in Dictionaries (pkg/dictionaries)
 - Standard RFC attributes (RFC 2865, 2866, etc.)
@@ -136,6 +157,7 @@ This library implements the following RFCs:
 - **RFC 2866**: RADIUS Accounting
 - **RFC 2868**: RADIUS Attributes for Tunnel Protocol Support
 - **RFC 2869**: RADIUS Extensions
+- **RFC 3576**: Dynamic Authorization Extensions to RADIUS
 
 ## Performance
 
@@ -161,22 +183,26 @@ This is an active RADIUS library implementation with the following status:
 - ✅ Standard attribute handling
 - ✅ Vendor-Specific Attributes (VSAs)
 - ✅ Dictionary system with fast lookups
-- ✅ UDP server
+- ✅ UDP server with middleware support
 - ✅ Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 - ✅ Tagged attributes (RFC 2868)
 - ✅ Authenticator calculation and verification
+- ✅ Full RADIUS client (Access-Request, Accounting-Request, CoA/Disconnect)
 
 **Not Yet Implemented:**
 - ❌ TCP transport
 - ❌ TLS support
-- ❌ RADIUS client
 - ❌ Message-Authenticator attribute (RFC 2869)
-- ❌ Dynamic Authorization (CoA/Disconnect) - RFC 3576
 - ❌ EAP support
+- ❌ Client retransmission logic
 
 ## Examples
 
-See `cmd/simple-server/main.go` for a working example of a basic RADIUS server.
+### Server
+See `cmd/simple-server/main.go` for a working example of a basic RADIUS server with middleware support.
+
+### Client
+See `cmd/radclient/main.go` for a command-line tool that sends CoA and Disconnect requests.
 
 ## Documentation
 

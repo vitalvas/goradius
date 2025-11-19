@@ -131,3 +131,55 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, 
 
 	return c.sendRequest(pkt)
 }
+
+func (c *Client) AccessRequest(attributes map[string]interface{}) (*packet.Packet, error) {
+	identifier := make([]byte, 1)
+	if _, err := rand.Read(identifier); err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
+	pkt := packet.New(packet.CodeAccessRequest, identifier[0])
+	if c.dict != nil {
+		pkt.Dict = c.dict
+	}
+
+	for name, value := range attributes {
+		if err := pkt.AddAttributeByName(name, value); err != nil {
+			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
+		}
+	}
+
+	authenticator := make([]byte, 16)
+	if _, err := rand.Read(authenticator); err != nil {
+		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
+	}
+	pkt.SetAuthenticator([16]byte(authenticator))
+
+	return c.sendRequest(pkt)
+}
+
+func (c *Client) AccountingRequest(attributes map[string]interface{}) (*packet.Packet, error) {
+	identifier := make([]byte, 1)
+	if _, err := rand.Read(identifier); err != nil {
+		return nil, fmt.Errorf("failed to generate identifier: %w", err)
+	}
+
+	pkt := packet.New(packet.CodeAccountingRequest, identifier[0])
+	if c.dict != nil {
+		pkt.Dict = c.dict
+	}
+
+	for name, value := range attributes {
+		if err := pkt.AddAttributeByName(name, value); err != nil {
+			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
+		}
+	}
+
+	authenticator := make([]byte, 16)
+	if _, err := rand.Read(authenticator); err != nil {
+		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
+	}
+	pkt.SetAuthenticator([16]byte(authenticator))
+
+	return c.sendRequest(pkt)
+}
