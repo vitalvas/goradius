@@ -174,6 +174,77 @@ func (p *Packet) RemoveAttributes(attrType uint8) int {
 	return removed
 }
 
+// RemoveAttributeByName removes all attributes with the specified name using dictionary lookup
+func (p *Packet) RemoveAttributeByName(name string) int {
+	if p.Dict == nil {
+		return 0
+	}
+
+	removed := 0
+
+	// Try standard attribute first
+	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		// Remove all standard attributes of this type
+		for i := len(p.Attributes) - 1; i >= 0; i-- {
+			if p.Attributes[i].Type == uint8(attrDef.ID) {
+				p.Length -= uint16(p.Attributes[i].Length)
+				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
+				removed++
+			}
+		}
+		return removed
+	}
+
+	// Try vendor attribute
+	// Parse vendor:attribute format
+	parts := strings.SplitN(name, ":", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+
+	vendorName := parts[0]
+	attrName := parts[1]
+
+	// Lookup vendor
+	vendors := p.Dict.GetAllVendors()
+	var vendorID uint32
+	var vendorAttrID uint8
+	found := false
+
+	for _, vendor := range vendors {
+		if vendor.Name == vendorName {
+			vendorID = vendor.ID
+			// Look for the attribute in this vendor
+			for _, attr := range vendor.Attributes {
+				if attr.Name == attrName {
+					vendorAttrID = uint8(attr.ID)
+					found = true
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		return 0
+	}
+
+	// Remove all VSAs matching this vendor and attribute ID
+	for i := len(p.Attributes) - 1; i >= 0; i-- {
+		if p.Attributes[i].Type == 26 { // VSA
+			va, err := ParseVSA(p.Attributes[i])
+			if err == nil && va.VendorID == vendorID && va.VendorType == vendorAttrID {
+				p.Length -= uint16(p.Attributes[i].Length)
+				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
+				removed++
+			}
+		}
+	}
+
+	return removed
+}
+
 // SetAuthenticator sets the packet authenticator
 // INTERNAL: This method is for internal library use only and may be removed in future versions.
 // Authenticators are managed automatically by the server.
@@ -271,35 +342,43 @@ func (p *Packet) IsValid() error {
 }
 
 // AddAttributeByName adds an attribute to the packet using dictionary lookup with full feature support
-func (p *Packet) AddAttributeByName(name string, value interface{}) {
+func (p *Packet) AddAttributeByName(name string, value interface{}) error {
 	if p.Dict == nil {
-		return
+		return fmt.Errorf("no dictionary loaded")
 	}
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
 		p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
-		return
+		return nil
 	}
 
 	// Handle vendor attributes
-	p.addVendorAttributeByName(name, value, nil, [16]byte{})
+	if err := p.addVendorAttributeByName(name, value, nil, [16]byte{}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
-func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, secret []byte, authenticator [16]byte) {
+func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, secret []byte, authenticator [16]byte) error {
 	if p.Dict == nil {
-		return
+		return fmt.Errorf("no dictionary loaded")
 	}
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
 		p.addStandardAttribute(name, value, attrDef, secret, authenticator)
-		return
+		return nil
 	}
 
 	// Handle vendor attributes
-	p.addVendorAttributeByName(name, value, secret, authenticator)
+	if err := p.addVendorAttributeByName(name, value, secret, authenticator); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // addStandardAttribute handles standard attribute addition with full feature support
@@ -330,7 +409,7 @@ func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *d
 // Supports formats:
 //   - "AttributeName" - vendor attribute without tag
 //   - "AttributeName:tag" - vendor attribute with tag (tag is a number)
-func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) {
+func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) error {
 	var attrName string
 	var tag uint8
 
@@ -358,10 +437,12 @@ func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret
 				// Handle array attributes - check if value is a slice
 				// This handles both attributes marked as Array=true and user-provided slices
 				p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
-				return
+				return nil
 			}
 		}
 	}
+
+	return fmt.Errorf("attribute %q not found in dictionary", name)
 }
 
 // processEnumeratedValue converts string enumerated values to integers

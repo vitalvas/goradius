@@ -40,18 +40,62 @@ func (r *Response) SetCode(code packet.Code) {
 	}
 }
 
-// SetAttribute adds a single attribute to the response packet
-func (r *Response) SetAttribute(name string, value interface{}) {
-	if r.packet != nil {
-		r.packet.AddAttributeByName(name, value)
+// SetAttribute sets a single attribute in the response packet.
+// If the attribute already exists, it is removed first and then the new value is added.
+// This ensures only one instance of the attribute exists.
+// Returns an error if the attribute is not found in the dictionary.
+func (r *Response) SetAttribute(name string, value interface{}) error {
+	if r.packet == nil {
+		return nil
 	}
+
+	r.packet.RemoveAttributeByName(name)
+	return r.packet.AddAttributeByName(name, value)
 }
 
-// SetAttributes adds multiple attributes to the response packet
-func (r *Response) SetAttributes(attrs map[string]interface{}) {
-	if r.packet != nil {
-		for name, value := range attrs {
-			r.packet.AddAttributeByName(name, value)
+// SetAttributes sets multiple attributes in the response packet.
+// For each attribute, if it already exists, it is removed first and then the new value is added.
+// This ensures only one instance of each attribute exists.
+// Returns an error if any attribute is not found in the dictionary.
+func (r *Response) SetAttributes(attrs map[string]interface{}) error {
+	if r.packet == nil {
+		return nil
+	}
+
+	for name, value := range attrs {
+		r.packet.RemoveAttributeByName(name)
+		if err := r.packet.AddAttributeByName(name, value); err != nil {
+			return err
 		}
 	}
+
+	return nil
+}
+
+// AddAttribute adds a single attribute to the response packet.
+// If the attribute already exists, the new value is appended (multiple values).
+// Returns an error if the attribute is not found in the dictionary.
+func (r *Response) AddAttribute(name string, value interface{}) error {
+	if r.packet == nil {
+		return nil
+	}
+
+	return r.packet.AddAttributeByName(name, value)
+}
+
+// AddAttributes adds multiple attributes to the response packet.
+// For each attribute, if it already exists, the new value is appended (multiple values).
+// Returns an error if any attribute is not found in the dictionary.
+func (r *Response) AddAttributes(attrs map[string]interface{}) error {
+	if r.packet == nil {
+		return nil
+	}
+
+	for name, value := range attrs {
+		if err := r.packet.AddAttributeByName(name, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

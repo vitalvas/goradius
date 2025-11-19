@@ -69,9 +69,16 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 		"Framed-IP-Address":       "192.0.2.11",
 	}
 
-	resp.SetAttributes(attrs)
-	resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat")
-	// resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat-v2")
+	if err := resp.SetAttributes(attrs); err != nil {
+		return resp, fmt.Errorf("failed to set attributes: %w", err)
+	}
+
+	if err := resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat"); err != nil {
+		return resp, fmt.Errorf("failed to set Framed-Pool: %w", err)
+	}
+	// if err := resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat-v2"); err != nil {
+	//     return resp, fmt.Errorf("failed to set Framed-Pool: %w", err)
+	// }
 
 	// expected response SetAttributes + SetAttribute
 	return resp, nil

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vitalvas/goradius/pkg/dictionaries"
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
 
@@ -781,5 +782,83 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 		assert.Equal(t, "8.8.4.4", attrs[1].String())
 		assert.Equal(t, uint8(0), attrs[2].Tag)
 		assert.Equal(t, "1.1.1.1", attrs[2].String())
+	})
+}
+
+func TestRemoveAttributeByName(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	t.Run("remove standard attribute", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+
+		// Add multiple Reply-Message attributes
+		pkt.AddAttributeByName("Reply-Message", "Message 1")
+		pkt.AddAttributeByName("Reply-Message", "Message 2")
+		pkt.AddAttributeByName("Reply-Message", "Message 3")
+		pkt.AddAttributeByName("Session-Timeout", 3600)
+
+		// Verify all were added
+		msgs := pkt.GetAttribute("Reply-Message")
+		assert.Len(t, msgs, 3)
+
+		// Remove all Reply-Message attributes
+		removed := pkt.RemoveAttributeByName("Reply-Message")
+		assert.Equal(t, 3, removed)
+
+		// Verify they were removed
+		msgs = pkt.GetAttribute("Reply-Message")
+		assert.Len(t, msgs, 0)
+
+		// Verify other attributes still exist
+		timeout := pkt.GetAttribute("Session-Timeout")
+		assert.Len(t, timeout, 1)
+	})
+
+	t.Run("remove vendor attribute", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessAccept, 2, dict)
+
+		// Add multiple ERX-Service-Activate attributes
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1")
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2")
+		pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+
+		// Verify they were added
+		services := pkt.GetAttribute("ERX-Service-Activate")
+		assert.Len(t, services, 2)
+
+		// Remove all ERX-Service-Activate attributes
+		removed := pkt.RemoveAttributeByName("ERX:ERX-Service-Activate")
+		assert.Equal(t, 2, removed)
+
+		// Verify they were removed
+		services = pkt.GetAttribute("ERX-Service-Activate")
+		assert.Len(t, services, 0)
+
+		// Verify other vendor attributes still exist
+		dns := pkt.GetAttribute("ERX-Primary-Dns")
+		assert.Len(t, dns, 1)
+	})
+
+	t.Run("remove non-existent attribute", func(t *testing.T) {
+		pkt := NewWithDictionary(CodeAccessAccept, 3, dict)
+
+		pkt.AddAttributeByName("Reply-Message", "Test")
+
+		// Try to remove attribute that doesn't exist
+		removed := pkt.RemoveAttributeByName("Session-Timeout")
+		assert.Equal(t, 0, removed)
+
+		// Verify existing attributes weren't affected
+		msgs := pkt.GetAttribute("Reply-Message")
+		assert.Len(t, msgs, 1)
+	})
+
+	t.Run("remove with no dictionary", func(t *testing.T) {
+		pkt := New(CodeAccessAccept, 4)
+
+		// Try to remove without dictionary
+		removed := pkt.RemoveAttributeByName("Reply-Message")
+		assert.Equal(t, 0, removed)
 	})
 }

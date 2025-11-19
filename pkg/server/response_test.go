@@ -88,7 +88,8 @@ func TestResponseSetAttribute(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
-	resp.SetAttribute("Reply-Message", "Welcome!")
+	err := resp.SetAttribute("Reply-Message", "Welcome!")
+	require.NoError(t, err)
 
 	assert.Len(t, resp.packet.Attributes,1)
 
@@ -117,7 +118,8 @@ func TestResponseSetAttributes(t *testing.T) {
 		"ERX-Primary-Dns":    "8.8.8.8",
 	}
 
-	resp.SetAttributes(attrs)
+	err := resp.SetAttributes(attrs)
+	require.NoError(t, err)
 
 	// Should have 4 attributes
 	assert.Len(t, resp.packet.Attributes,4)
@@ -130,20 +132,22 @@ func TestResponseSetCodeNilPacket(_ *testing.T) {
 	resp.SetCode(packet.CodeAccessAccept)
 }
 
-func TestResponseSetAttributeNilPacket(_ *testing.T) {
+func TestResponseSetAttributeNilPacket(t *testing.T) {
 	resp := Response{packet: nil}
 
-	// Should not crash
-	resp.SetAttribute("Reply-Message", "test")
+	// Should not crash and return nil
+	err := resp.SetAttribute("Reply-Message", "test")
+	assert.NoError(t, err)
 }
 
-func TestResponseSetAttributesNilPacket(_ *testing.T) {
+func TestResponseSetAttributesNilPacket(t *testing.T) {
 	resp := Response{packet: nil}
 
-	// Should not crash
-	resp.SetAttributes(map[string]interface{}{
+	// Should not crash and return nil
+	err := resp.SetAttributes(map[string]interface{}{
 		"Reply-Message": "test",
 	})
+	assert.NoError(t, err)
 }
 
 func TestResponseMultipleAttributes(t *testing.T) {
@@ -158,13 +162,18 @@ func TestResponseMultipleAttributes(t *testing.T) {
 
 	resp := NewResponse(req)
 
-	// Add attributes one by one
-	resp.SetAttribute("Reply-Message", "First message")
-	resp.SetAttribute("Reply-Message", "Second message")
-	resp.SetAttribute("Session-Timeout", 3600)
+	// Set attributes - SetAttribute now overwrites, so only last value remains
+	require.NoError(t, resp.SetAttribute("Reply-Message", "First message"))
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Second message")) // This overwrites the first
+	require.NoError(t, resp.SetAttribute("Session-Timeout", 3600))
 
-	// Should have 3 attributes
-	assert.Len(t, resp.packet.Attributes,3)
+	// Should have 2 attributes (Reply-Message with last value + Session-Timeout)
+	assert.Len(t, resp.packet.Attributes, 2)
+
+	// Verify Reply-Message has only the last value
+	msgs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "Second message", msgs[0].String())
 }
 
 func TestResponseFullWorkflow(t *testing.T) {
@@ -190,11 +199,11 @@ func TestResponseFullWorkflow(t *testing.T) {
 	resp.SetCode(packet.CodeAccessAccept)
 
 	// Add attributes
-	resp.SetAttributes(map[string]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string]interface{}{
 		"Reply-Message":      "Access granted",
 		"Session-Timeout":    3600,
 		"Framed-IP-Address":  "192.0.2.10",
-	})
+	}))
 
 	// Verify response
 	assert.Equal(t, packet.CodeAccessAccept, resp.packet.Code)
@@ -210,4 +219,251 @@ func TestResponseFullWorkflow(t *testing.T) {
 	data, err := resp.packet.Encode()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
+}
+
+func TestResponseSetAttributeOverwrites(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Set attribute first time
+	require.NoError(t, resp.SetAttribute("Reply-Message", "First message"))
+
+	// Set attribute second time - should overwrite
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Second message"))
+
+	// Verify only one instance exists
+	attrs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "Second message", attrs[0].String())
+}
+
+func TestResponseSetAttributesOverwrites(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Set attributes first time
+	require.NoError(t, resp.SetAttributes(map[string]interface{}{
+		"Reply-Message": "First message",
+		"Session-Timeout": 3600,
+	}))
+
+	// Set attributes second time - should overwrite
+	require.NoError(t, resp.SetAttributes(map[string]interface{}{
+		"Reply-Message": "Second message",
+		"Session-Timeout": 7200,
+	}))
+
+	// Verify only one instance of each exists
+	replyMsgs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, replyMsgs, 1)
+	assert.Equal(t, "Second message", replyMsgs[0].String())
+
+	timeouts := resp.packet.GetAttribute("Session-Timeout")
+	assert.Len(t, timeouts, 1)
+	assert.Equal(t, "7200", timeouts[0].String())
+}
+
+func TestResponseAddAttributeAppends(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Add attribute first time
+	require.NoError(t, resp.AddAttribute("Reply-Message", "First message"))
+
+	// Add attribute second time - should append
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Second message"))
+
+	// Add attribute third time - should append
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Third message"))
+
+	// Verify all three instances exist
+	attrs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, attrs, 3)
+	assert.Equal(t, "First message", attrs[0].String())
+	assert.Equal(t, "Second message", attrs[1].String())
+	assert.Equal(t, "Third message", attrs[2].String())
+}
+
+func TestResponseAddAttributesAppends(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Add attributes first time
+	require.NoError(t, resp.AddAttributes(map[string]interface{}{
+		"Reply-Message": "First message",
+	}))
+
+	// Add attributes second time - should append
+	require.NoError(t, resp.AddAttributes(map[string]interface{}{
+		"Reply-Message": "Second message",
+	}))
+
+	// Verify both instances exist
+	attrs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, attrs, 2)
+}
+
+func TestResponseSetThenAddAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Set attribute (should have only one)
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Set message"))
+
+	// Add attribute (should append)
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Added message"))
+
+	// Verify two instances exist
+	attrs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, attrs, 2)
+	assert.Equal(t, "Set message", attrs[0].String())
+	assert.Equal(t, "Added message", attrs[1].String())
+}
+
+func TestResponseAddThenSetAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Add attribute multiple times
+	require.NoError(t, resp.AddAttribute("Reply-Message", "First message"))
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Second message"))
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Third message"))
+
+	// Set attribute (should remove all and add one)
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Final message"))
+
+	// Verify only one instance exists
+	attrs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "Final message", attrs[0].String())
+}
+
+func TestResponseSetAttributeNotInDictionary(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Try to set an attribute that doesn't exist in the dictionary
+	err = resp.SetAttribute("NonExistent-Attribute", "value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in dictionary")
+}
+
+func TestResponseSetAttributesNotInDictionary(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Try to set attributes where one doesn't exist in the dictionary
+	err = resp.SetAttributes(map[string]interface{}{
+		"Reply-Message":        "Valid attribute",
+		"NonExistent-Attribute": "Invalid attribute",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in dictionary")
+}
+
+func TestResponseAddAttributeNotInDictionary(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Try to add an attribute that doesn't exist in the dictionary
+	err = resp.AddAttribute("NonExistent-Attribute", "value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in dictionary")
+}
+
+func TestResponseAddAttributesNotInDictionary(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	// Create a test request
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Try to add attributes where one doesn't exist in the dictionary
+	err = resp.AddAttributes(map[string]interface{}{
+		"Reply-Message":        "Valid attribute",
+		"NonExistent-Attribute": "Invalid attribute",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in dictionary")
+}
+
+func TestResponseNoDictionary(t *testing.T) {
+	// Create a test request without dictionary
+	pkt := packet.New(packet.CodeAccessRequest, 1)
+	req := &Request{packet: pkt}
+
+	// Create response
+	resp := NewResponse(req)
+
+	// Try to set an attribute without a dictionary
+	err := resp.SetAttribute("Reply-Message", "value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no dictionary loaded")
 }

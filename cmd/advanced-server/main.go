@@ -44,13 +44,15 @@ func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, err
 	}
 
 	// Add response attributes
-	resp.SetAttributes(map[string]interface{}{
+	if err := resp.SetAttributes(map[string]interface{}{
 		"Reply-Message":           "Access granted via advanced server",
 		"Session-Timeout":         3600,
 		"Framed-IP-Address":       "192.0.2.100",
 		"ERX-Primary-Dns":         "8.8.8.8",
 		"ERX-Ingress-Policy-Name": "premium-user-policy",
-	})
+	}); err != nil {
+		return resp, fmt.Errorf("failed to set response attributes: %w", err)
+	}
 
 	return resp, nil
 }
@@ -109,7 +111,9 @@ func validationMiddleware(next server.Handler) server.Handler {
 				// Return Access-Reject
 				resp := server.NewResponse(req)
 				resp.SetCode(packet.CodeAccessReject)
-				resp.SetAttribute("Reply-Message", "User-Name is required")
+				if err := resp.SetAttribute("Reply-Message", "User-Name is required"); err != nil {
+					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
+				}
 				return resp, nil
 			}
 
@@ -118,7 +122,9 @@ func validationMiddleware(next server.Handler) server.Handler {
 				fmt.Println("[Middleware:Validation] ERROR: User-Name cannot be empty")
 				resp := server.NewResponse(req)
 				resp.SetCode(packet.CodeAccessReject)
-				resp.SetAttribute("Reply-Message", "User-Name cannot be empty")
+				if err := resp.SetAttribute("Reply-Message", "User-Name cannot be empty"); err != nil {
+					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
+				}
 				return resp, nil
 			}
 
