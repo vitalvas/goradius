@@ -234,10 +234,37 @@ func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 	p.Authenticator = auth
 }
 
-// CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
-func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
+// buildPacketBytes builds packet bytes for authentication/integrity calculations
+func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroMessageAuth bool) []byte {
+	packetBytes := make([]byte, int(p.Length))
+
+	packetBytes[0] = byte(p.Code)
+	packetBytes[1] = p.Identifier
+	packetBytes[2] = byte(p.Length >> 8)
+	packetBytes[3] = byte(p.Length)
+	copy(packetBytes[4:20], authenticator[:])
+
+	offset := PacketHeaderLength
+	for _, attr := range p.Attributes {
+		packetBytes[offset] = attr.Type
+		packetBytes[offset+1] = attr.Length
+
+		if zeroMessageAuth && attr.Type == 80 {
+			offset += int(attr.Length)
+		} else {
+			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
+			offset += int(attr.Length)
+		}
+	}
+
+	return packetBytes
+}
+
+// calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret)
+func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
 	// Pre-allocate with capacity for secret to avoid reallocation
-	packetBytes := make([]byte, int(p.Length), int(p.Length)+len(secret))
+	capacity := int(p.Length) + len(secret)
+	packetBytes := make([]byte, int(p.Length), capacity)
 
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
@@ -254,63 +281,30 @@ func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthentica
 	}
 
 	packetBytes = append(packetBytes, secret...)
-	hash := md5.Sum(packetBytes)
-	return hash
+	return md5.Sum(packetBytes)
+}
+
+// CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
+func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
+	return p.calculateAuthenticator(secret, requestAuthenticator)
 }
 
 // CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
-	// Pre-allocate with capacity for secret to avoid reallocation
-	packetBytes := make([]byte, int(p.Length), int(p.Length)+len(secret))
-
-	packetBytes[0] = byte(p.Code)
-	packetBytes[1] = p.Identifier
-	packetBytes[2] = byte(p.Length >> 8)
-	packetBytes[3] = byte(p.Length)
-
-	offset := PacketHeaderLength
-	for _, attr := range p.Attributes {
-		packetBytes[offset] = attr.Type
-		packetBytes[offset+1] = attr.Length
-		copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
-		offset += int(attr.Length)
-	}
-
-	packetBytes = append(packetBytes, secret...)
-	hash := md5.Sum(packetBytes)
-	return hash
+	var nullAuth [AuthenticatorLength]byte
+	return p.calculateAuthenticator(secret, nullAuth)
 }
 
-// CalculateMessageAuthenticator calculates the Message-Authenticator attribute value (RFC 2869)
-func (p *Packet) CalculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
-	packetBytes := make([]byte, int(p.Length))
-
-	packetBytes[0] = byte(p.Code)
-	packetBytes[1] = p.Identifier
-	packetBytes[2] = byte(p.Length >> 8)
-	packetBytes[3] = byte(p.Length)
-
+// calculateMessageAuthenticator calculates the Message-Authenticator attribute value (RFC 2869)
+func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
+	var auth [AuthenticatorLength]byte
 	if p.Code == CodeAccessRequest || p.Code == CodeAccountingRequest {
-		copy(packetBytes[4:20], p.Authenticator[:])
+		auth = p.Authenticator
 	} else {
-		copy(packetBytes[4:20], requestAuthenticator[:])
+		auth = requestAuthenticator
 	}
 
-	offset := PacketHeaderLength
-	for _, attr := range p.Attributes {
-		packetBytes[offset] = attr.Type
-		packetBytes[offset+1] = attr.Length
-
-		if attr.Type == 80 {
-			for i := 0; i < 16; i++ {
-				packetBytes[offset+2+i] = 0
-			}
-			offset += int(attr.Length)
-		} else {
-			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
-			offset += int(attr.Length)
-		}
-	}
+	packetBytes := p.buildPacketBytes(auth, true)
 
 	mac := hmac.New(md5.New, secret)
 	mac.Write(packetBytes)
@@ -337,7 +331,7 @@ func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator 
 		return false
 	}
 
-	expected := p.CalculateMessageAuthenticator(secret, requestAuthenticator)
+	expected := p.calculateMessageAuthenticator(secret, requestAuthenticator)
 
 	return hmac.Equal(messageAuth, expected[:])
 }
@@ -348,7 +342,7 @@ func (p *Packet) AddMessageAuthenticator(secret []byte, requestAuthenticator [Au
 	attr := NewAttribute(80, placeholder)
 	p.AddAttribute(attr)
 
-	mac := p.CalculateMessageAuthenticator(secret, requestAuthenticator)
+	mac := p.calculateMessageAuthenticator(secret, requestAuthenticator)
 
 	p.Attributes[len(p.Attributes)-1].Value = mac[:]
 }
