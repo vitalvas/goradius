@@ -333,3 +333,268 @@ func TestAccountingRequestWithInvalidAttribute(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
 }
+
+// Benchmarks
+
+func BenchmarkClientNew(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = New(Config{
+			Addr:       "127.0.0.1:1812",
+			Secret:     []byte("testing123"),
+			Dictionary: dict,
+		})
+	}
+}
+
+func BenchmarkClientAccessRequest(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Mock server
+	serverConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer serverConn.Close()
+
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+
+			reqPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				continue
+			}
+
+			respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
+			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}
+	}()
+
+	client, _ := New(Config{
+		Addr:       serverAddr.String(),
+		Secret:     secret,
+		Dictionary: dict,
+		Timeout:    2 * time.Second,
+	})
+
+	attrs := map[string]interface{}{
+		"User-Name":     "testuser",
+		"User-Password": "testpass",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = client.AccessRequest(attrs)
+	}
+}
+
+func BenchmarkClientAccessRequestParallel(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Mock server
+	serverConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer serverConn.Close()
+
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+
+			reqPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				continue
+			}
+
+			respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
+			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}
+	}()
+
+	client, _ := New(Config{
+		Addr:       serverAddr.String(),
+		Secret:     secret,
+		Dictionary: dict,
+		Timeout:    2 * time.Second,
+	})
+
+	attrs := map[string]interface{}{
+		"User-Name":     "testuser",
+		"User-Password": "testpass",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = client.AccessRequest(attrs)
+		}
+	})
+}
+
+func BenchmarkClientAccountingRequest(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Mock server
+	serverConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer serverConn.Close()
+
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+
+			reqPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				continue
+			}
+
+			respPkt := packet.New(packet.CodeAccountingResponse, reqPkt.Identifier)
+			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}
+	}()
+
+	client, _ := New(Config{
+		Addr:       serverAddr.String(),
+		Secret:     secret,
+		Dictionary: dict,
+		Timeout:    2 * time.Second,
+	})
+
+	attrs := map[string]interface{}{
+		"User-Name":         "testuser",
+		"Acct-Status-Type":  uint32(1),
+		"Acct-Session-Id":   "session123",
+		"NAS-IP-Address":    "192.0.2.1",
+		"Acct-Session-Time": uint32(100),
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = client.AccountingRequest(attrs)
+	}
+}
+
+func BenchmarkClientCoA(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Mock server
+	serverConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer serverConn.Close()
+
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+
+			reqPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				continue
+			}
+
+			respPkt := packet.New(packet.CodeCoAACK, reqPkt.Identifier)
+			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}
+	}()
+
+	client, _ := New(Config{
+		Addr:       serverAddr.String(),
+		Secret:     secret,
+		Dictionary: dict,
+		Timeout:    2 * time.Second,
+	})
+
+	attrs := map[string]interface{}{
+		"User-Name":       "testuser",
+		"Session-Timeout": uint32(3600),
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = client.CoA(attrs)
+	}
+}
+
+func BenchmarkClientDisconnect(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Mock server
+	serverConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer serverConn.Close()
+
+	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
+
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+
+			reqPkt, err := packet.Decode(buffer[:n])
+			if err != nil {
+				continue
+			}
+
+			respPkt := packet.New(packet.CodeDisconnectACK, reqPkt.Identifier)
+			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}
+	}()
+
+	client, _ := New(Config{
+		Addr:       serverAddr.String(),
+		Secret:     secret,
+		Dictionary: dict,
+		Timeout:    2 * time.Second,
+	})
+
+	attrs := map[string]interface{}{
+		"User-Name": "testuser",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = client.Disconnect(attrs)
+	}
+}

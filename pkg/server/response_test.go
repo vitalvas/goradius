@@ -467,3 +467,134 @@ func TestResponseNoDictionary(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no dictionary loaded")
 }
+
+// Benchmarks
+
+func BenchmarkResponseSetAttribute(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = resp.SetAttribute("Session-Timeout", uint32(3600))
+	}
+}
+
+func BenchmarkResponseSetAttributes(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+
+	attrs := map[string]interface{}{
+		"Session-Timeout":     uint32(3600),
+		"Framed-IP-Address":   "10.0.0.1",
+		"Framed-IP-Netmask":   "255.255.255.0",
+		"Service-Type":        uint32(2),
+		"Framed-MTU":          uint32(1500),
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		resp := NewResponse(req)
+		_ = resp.SetAttributes(attrs)
+	}
+}
+
+func BenchmarkResponseAddAttribute(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = resp.AddAttribute("Reply-Message", "Welcome")
+	}
+}
+
+func BenchmarkResponseAddAttributes(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+
+	attrs := map[string]interface{}{
+		"Reply-Message": "Welcome",
+		"Session-Timeout": uint32(3600),
+		"Framed-IP-Address": "10.0.0.1",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		resp := NewResponse(req)
+		_ = resp.AddAttributes(attrs)
+	}
+}
+
+func BenchmarkResponseSetCode(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		resp.SetCode(packet.CodeAccessAccept)
+	}
+}
+
+func BenchmarkResponseGetAttribute(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+	_ = resp.SetAttribute("Session-Timeout", uint32(3600))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = resp.GetAttribute("Session-Timeout")
+		}
+	})
+}
+
+func BenchmarkResponseListAttributes(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+	_ = resp.SetAttribute("Session-Timeout", uint32(3600))
+	_ = resp.SetAttribute("Framed-IP-Address", "10.0.0.1")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = resp.ListAttributes()
+		}
+	})
+}
+
+func BenchmarkCompleteResponseCreation(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		resp := NewResponse(req)
+		resp.SetCode(packet.CodeAccessAccept)
+		_ = resp.SetAttribute("Session-Timeout", uint32(3600))
+		_ = resp.SetAttribute("Framed-IP-Address", "10.0.0.1")
+		_ = resp.SetAttribute("Framed-IP-Netmask", "255.255.255.0")
+		_ = resp.AddAttribute("Reply-Message", "Authentication successful")
+	}
+}

@@ -23,6 +23,19 @@ type testHandler struct {
 	radiusErr    error
 }
 
+type combinedTestHandler struct {
+	secretResp    SecretResponse
+	radiusHandler Handler
+}
+
+func (h *combinedTestHandler) ServeSecret(_ SecretRequest) (SecretResponse, error) {
+	return h.secretResp, nil
+}
+
+func (h *combinedTestHandler) ServeRADIUS(req *Request) (Response, error) {
+	return h.radiusHandler.ServeRADIUS(req)
+}
+
 func (h *testHandler) ServeSecret(_ SecretRequest) (SecretResponse, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -361,4 +374,212 @@ func TestServerMiddleware(t *testing.T) {
 	assert.Equal(t, "middleware2-before", executionOrder[1])
 	assert.Equal(t, "middleware2-after", executionOrder[2])
 	assert.Equal(t, "middleware1-after", executionOrder[3])
+}
+
+// Benchmarks
+
+func BenchmarkServerHandlePacket(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+	}
+
+	srv, _ := New(Config{
+		Addr:       ":0",
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	// Create Access-Request packet
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+	reqPkt.SetAuthenticator(reqAuth)
+	reqPkt.AddMessageAuthenticator(secret, reqAuth)
+
+	data, _ := reqPkt.Encode()
+
+	// Create UDP connection for testing
+	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	defer conn.Close()
+	srv.conn = conn
+	close(srv.ready)
+
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Create fresh response packet for each iteration
+			respPkt := packet.NewWithDictionary(packet.CodeAccessAccept, 1, dict)
+			_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+			handler.SetRadiusResponse(Response{packet: respPkt})
+
+			// Copy data for concurrent access
+			dataCopy := make([]byte, len(data))
+			copy(dataCopy, data)
+			srv.handlePacket(dataCopy, clientAddr)
+		}
+	})
+}
+
+func BenchmarkNewResponse(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{
+		packet: reqPkt,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = NewResponse(req)
+	}
+}
+
+func BenchmarkServerBuildHandler(b *testing.B) {
+	handler := &testHandler{}
+
+	srv := &Server{
+		handler: handler,
+	}
+
+	// Add multiple middlewares
+	for i := 0; i < 5; i++ {
+		srv.Use(func(next Handler) Handler {
+			return HandlerFunc(func(r *Request) (Response, error) {
+				return next.ServeRADIUS(r)
+			})
+		})
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = srv.buildHandler()
+	}
+}
+
+func BenchmarkE2EServerRequestResponse(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Use a handler function that creates fresh response each time
+	handler := HandlerFunc(func(req *Request) (Response, error) {
+		respPkt := packet.NewWithDictionary(packet.CodeAccessAccept, req.packet.Identifier, dict)
+		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		return Response{packet: respPkt}, nil
+	})
+
+	// Wrap handlers to combine secret and radius handling
+	combinedHandler := &combinedTestHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusHandler: handler,
+	}
+
+	srv, _ := New(Config{
+		Addr:       ":0",
+		Handler:    combinedHandler,
+		Dictionary: dict,
+	})
+
+	// Start server
+	go srv.ListenAndServe()
+	time.Sleep(10 * time.Millisecond) // Wait for server to start
+
+	addr := srv.Addr().(*net.UDPAddr)
+	clientConn, _ := net.DialUDP("udp", nil, addr)
+	defer clientConn.Close()
+	defer srv.Close()
+
+	// Pre-create request packet
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+	reqPkt.SetAuthenticator(reqAuth)
+	reqPkt.AddMessageAuthenticator(secret, reqAuth)
+
+	reqData, _ := reqPkt.Encode()
+
+	// Reuse response buffer
+	respData := make([]byte, 4096)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		// Send request
+		clientConn.Write(reqData)
+
+		// Receive response
+		clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, _ = clientConn.Read(respData)
+	}
+}
+
+func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	// Use a handler function that creates fresh response each time
+	handler := HandlerFunc(func(req *Request) (Response, error) {
+		respPkt := packet.NewWithDictionary(packet.CodeAccessAccept, req.packet.Identifier, dict)
+		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		return Response{packet: respPkt}, nil
+	})
+
+	// Wrap handlers to combine secret and radius handling
+	combinedHandler := &combinedTestHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusHandler: handler,
+	}
+
+	srv, _ := New(Config{
+		Addr:       ":0",
+		Handler:    combinedHandler,
+		Dictionary: dict,
+	})
+
+	// Start server
+	go srv.ListenAndServe()
+	time.Sleep(10 * time.Millisecond)
+
+	// Pre-create request packet
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
+	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+	reqPkt.SetAuthenticator(reqAuth)
+	reqPkt.AddMessageAuthenticator(secret, reqAuth)
+
+	reqData, _ := reqPkt.Encode()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		addr := srv.Addr().(*net.UDPAddr)
+		clientConn, _ := net.DialUDP("udp", nil, addr)
+		defer clientConn.Close()
+
+		// Reuse response buffer
+		respData := make([]byte, 4096)
+
+		for pb.Next() {
+			clientConn.Write(reqData)
+
+			clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			_, _ = clientConn.Read(respData)
+		}
+	})
+
+	srv.Close()
 }
