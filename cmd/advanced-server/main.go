@@ -43,12 +43,12 @@ func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, err
 	}
 
 	// Add response attributes
-	if err := resp.SetAttributes(map[string]interface{}{
-		"Reply-Message":           "Access granted via advanced server",
-		"Session-Timeout":         3600,
-		"Framed-IP-Address":       "192.0.2.100",
-		"ERX-Primary-Dns":         "8.8.8.8",
-		"ERX-Ingress-Policy-Name": "premium-user-policy",
+	if err := resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":           {"Access granted via advanced server"},
+		"Session-Timeout":         {3600},
+		"Framed-IP-Address":       {"192.0.2.100"},
+		"ERX-Primary-Dns":         {"8.8.8.8"},
+		"ERX-Ingress-Policy-Name": {"premium-user-policy"},
 	}); err != nil {
 		return resp, fmt.Errorf("failed to set response attributes: %w", err)
 	}

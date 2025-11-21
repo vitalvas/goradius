@@ -111,11 +111,11 @@ func TestResponseSetAttributes(t *testing.T) {
 
 	resp := NewResponse(req)
 
-	attrs := map[string]interface{}{
-		"Reply-Message":      "Access granted",
-		"Framed-IP-Address":  "192.0.2.10",
-		"Session-Timeout":    3600,
-		"ERX-Primary-Dns":    "8.8.8.8",
+	attrs := map[string][]interface{}{
+		"Reply-Message":      {"Access granted"},
+		"Framed-IP-Address":  {"192.0.2.10"},
+		"Session-Timeout":    {3600},
+		"ERX-Primary-Dns":    {"8.8.8.8"},
 	}
 
 	err := resp.SetAttributes(attrs)
@@ -144,10 +144,45 @@ func TestResponseSetAttributesNilPacket(t *testing.T) {
 	resp := Response{packet: nil}
 
 	// Should not crash and return nil
-	err := resp.SetAttributes(map[string]interface{}{
-		"Reply-Message": "test",
+	err := resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message": {"test"},
 	})
 	assert.NoError(t, err)
+}
+
+func TestResponseSetAttributesWithMultipleValues(t *testing.T) {
+	dict := dictionary.New()
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{
+		Context: context.Background(),
+		packet:  reqPkt,
+	}
+
+	resp := NewResponse(req)
+
+	// Set multiple values for the same attribute using array syntax
+	err := resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message": {"First message", "Second message", "Third message"},
+		"Session-Timeout": {3600},
+	})
+	require.NoError(t, err)
+
+	// Verify we have 4 attributes total (3 Reply-Message + 1 Session-Timeout)
+	assert.Len(t, resp.packet.Attributes, 4)
+
+	// Verify all Reply-Message values are present
+	msgs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "First message", msgs[0].String())
+	assert.Equal(t, "Second message", msgs[1].String())
+	assert.Equal(t, "Third message", msgs[2].String())
+
+	// Verify Session-Timeout
+	timeouts := resp.packet.GetAttribute("Session-Timeout")
+	assert.Len(t, timeouts, 1)
+	assert.Equal(t, "3600", timeouts[0].String())
 }
 
 func TestResponseMultipleAttributes(t *testing.T) {
@@ -199,10 +234,10 @@ func TestResponseFullWorkflow(t *testing.T) {
 	resp.SetCode(packet.CodeAccessAccept)
 
 	// Add attributes
-	require.NoError(t, resp.SetAttributes(map[string]interface{}{
-		"Reply-Message":      "Access granted",
-		"Session-Timeout":    3600,
-		"Framed-IP-Address":  "192.0.2.10",
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":      {"Access granted"},
+		"Session-Timeout":    {3600},
+		"Framed-IP-Address":  {"192.0.2.10"},
 	}))
 
 	// Verify response
@@ -256,15 +291,15 @@ func TestResponseSetAttributesOverwrites(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Set attributes first time
-	require.NoError(t, resp.SetAttributes(map[string]interface{}{
-		"Reply-Message": "First message",
-		"Session-Timeout": 3600,
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message": {"First message"},
+		"Session-Timeout": {3600},
 	}))
 
 	// Set attributes second time - should overwrite
-	require.NoError(t, resp.SetAttributes(map[string]interface{}{
-		"Reply-Message": "Second message",
-		"Session-Timeout": 7200,
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message": {"Second message"},
+		"Session-Timeout": {7200},
 	}))
 
 	// Verify only one instance of each exists
@@ -317,18 +352,53 @@ func TestResponseAddAttributesAppends(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Add attributes first time
-	require.NoError(t, resp.AddAttributes(map[string]interface{}{
-		"Reply-Message": "First message",
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message": {"First message"},
 	}))
 
 	// Add attributes second time - should append
-	require.NoError(t, resp.AddAttributes(map[string]interface{}{
-		"Reply-Message": "Second message",
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message": {"Second message"},
 	}))
 
 	// Verify both instances exist
 	attrs := resp.packet.GetAttribute("Reply-Message")
 	assert.Len(t, attrs, 2)
+}
+
+func TestResponseAddAttributesWithMultipleValues(t *testing.T) {
+	dict := dictionary.New()
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{
+		Context: context.Background(),
+		packet:  reqPkt,
+	}
+
+	resp := NewResponse(req)
+
+	// Add multiple values for the same attribute using array syntax
+	err := resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message": {"First message", "Second message", "Third message"},
+		"Session-Timeout": {3600},
+	})
+	require.NoError(t, err)
+
+	// Verify we have 4 attributes total (3 Reply-Message + 1 Session-Timeout)
+	assert.Len(t, resp.packet.Attributes, 4)
+
+	// Verify all Reply-Message values are present
+	msgs := resp.packet.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "First message", msgs[0].String())
+	assert.Equal(t, "Second message", msgs[1].String())
+	assert.Equal(t, "Third message", msgs[2].String())
+
+	// Verify Session-Timeout
+	timeouts := resp.packet.GetAttribute("Session-Timeout")
+	assert.Len(t, timeouts, 1)
+	assert.Equal(t, "3600", timeouts[0].String())
 }
 
 func TestResponseSetThenAddAttribute(t *testing.T) {
@@ -409,9 +479,9 @@ func TestResponseSetAttributesNotInDictionary(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Try to set attributes where one doesn't exist in the dictionary
-	err = resp.SetAttributes(map[string]interface{}{
-		"Reply-Message":        "Valid attribute",
-		"NonExistent-Attribute": "Invalid attribute",
+	err = resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":        {"Valid attribute"},
+		"NonExistent-Attribute": {"Invalid attribute"},
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
@@ -446,9 +516,9 @@ func TestResponseAddAttributesNotInDictionary(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Try to add attributes where one doesn't exist in the dictionary
-	err = resp.AddAttributes(map[string]interface{}{
-		"Reply-Message":        "Valid attribute",
-		"NonExistent-Attribute": "Invalid attribute",
+	err = resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":        {"Valid attribute"},
+		"NonExistent-Attribute": {"Invalid attribute"},
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
@@ -488,12 +558,12 @@ func BenchmarkResponseSetAttributes(b *testing.B) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{packet: reqPkt}
 
-	attrs := map[string]interface{}{
-		"Session-Timeout":     uint32(3600),
-		"Framed-IP-Address":   "10.0.0.1",
-		"Framed-IP-Netmask":   "255.255.255.0",
-		"Service-Type":        uint32(2),
-		"Framed-MTU":          uint32(1500),
+	attrs := map[string][]interface{}{
+		"Session-Timeout":     {uint32(3600)},
+		"Framed-IP-Address":   {"10.0.0.1"},
+		"Framed-IP-Netmask":   {"255.255.255.0"},
+		"Service-Type":        {uint32(2)},
+		"Framed-MTU":          {uint32(1500)},
 	}
 
 	b.ResetTimer()
@@ -522,10 +592,10 @@ func BenchmarkResponseAddAttributes(b *testing.B) {
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
 	req := &Request{packet: reqPkt}
 
-	attrs := map[string]interface{}{
-		"Reply-Message": "Welcome",
-		"Session-Timeout": uint32(3600),
-		"Framed-IP-Address": "10.0.0.1",
+	attrs := map[string][]interface{}{
+		"Reply-Message": {"Welcome"},
+		"Session-Timeout": {uint32(3600)},
+		"Framed-IP-Address": {"10.0.0.1"},
 	}
 
 	b.ResetTimer()

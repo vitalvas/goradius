@@ -54,17 +54,17 @@ func (r *Response) SetAttribute(name string, value interface{}) error {
 }
 
 // SetAttributes sets multiple attributes in the response packet.
-// For each attribute, if it already exists, it is removed first and then the new value is added.
-// This ensures only one instance of each attribute exists.
+// For each attribute, if it already exists, it is removed first and then the new values are added.
+// Each attribute can have multiple values (array).
 // Returns an error if any attribute is not found in the dictionary.
-func (r *Response) SetAttributes(attrs map[string]interface{}) error {
+func (r *Response) SetAttributes(attrs map[string][]interface{}) error {
 	if r.packet == nil {
 		return nil
 	}
 
-	for name, value := range attrs {
+	for name, values := range attrs {
 		r.packet.RemoveAttributeByName(name)
-		if err := r.packet.AddAttributeByName(name, value); err != nil {
+		if err := r.packet.AddAttributeByName(name, values); err != nil {
 			return err
 		}
 	}
@@ -84,15 +84,16 @@ func (r *Response) AddAttribute(name string, value interface{}) error {
 }
 
 // AddAttributes adds multiple attributes to the response packet.
-// For each attribute, if it already exists, the new value is appended (multiple values).
+// For each attribute, if it already exists, the new values are appended (multiple values).
+// Each attribute can have multiple values (array).
 // Returns an error if any attribute is not found in the dictionary.
-func (r *Response) AddAttributes(attrs map[string]interface{}) error {
+func (r *Response) AddAttributes(attrs map[string][]interface{}) error {
 	if r.packet == nil {
 		return nil
 	}
 
-	for name, value := range attrs {
-		if err := r.packet.AddAttributeByName(name, value); err != nil {
+	for name, values := range attrs {
+		if err := r.packet.AddAttributeByName(name, values); err != nil {
 			return err
 		}
 	}

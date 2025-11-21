@@ -58,13 +58,13 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 		resp.SetCode(packet.CodeAccountingResponse)
 	}
 
-	attrs := map[string]interface{}{
-		"Reply-Message":           "Hello, RADIUS client!",
-		"ERX-Service-Activate:1":  "ipoe-parking",
-		"ERX-Service-Activate:3":  "svc-ipoe-policer(52428800, 52428800)",
-		"ERX-Primary-Dns":         "8.8.8.8",
-		"ERX-Ingress-Policy-Name": "svc-ipoe-filter",
-		"Framed-IP-Address":       "192.0.2.11",
+	attrs := map[string][]interface{}{
+		"Reply-Message":           {"Hello, RADIUS client!"},
+		"ERX-Service-Activate:1":  {"ipoe-parking"},
+		"ERX-Service-Activate:3":  {"svc-ipoe-policer(52428800, 52428800)"},
+		"ERX-Primary-Dns":         {"8.8.8.8"},
+		"ERX-Ingress-Policy-Name": {"svc-ipoe-filter"},
+		"Framed-IP-Address":       {"192.0.2.11"},
 	}
 
 	if err := resp.SetAttributes(attrs); err != nil {
