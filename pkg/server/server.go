@@ -20,15 +20,15 @@ var bufferPool = sync.Pool{
 
 // Server is a simple RADIUS UDP server
 type Server struct {
-	addr                    string
-	conn                    *net.UDPConn
-	handler                 Handler
-	dict                    *dictionary.Dictionary
-	middlewares             []Middleware
-	mu                      sync.RWMutex
-	ready                   chan struct{}
-	requireMessageAuth      bool
-	useMessageAuth          bool
+	addr               string
+	conn               *net.UDPConn
+	handler            Handler
+	dict               *dictionary.Dictionary
+	middlewares        []Middleware
+	mu                 sync.RWMutex
+	ready              chan struct{}
+	requireMessageAuth bool
+	useMessageAuth     bool
 }
 
 func New(cfg Config) (*Server, error) {

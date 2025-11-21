@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/dictionaries"
+	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
 )
 
@@ -485,7 +485,7 @@ func BenchmarkE2EServerRequestResponse(b *testing.B) {
 
 	// Wrap handlers to combine secret and radius handling
 	combinedHandler := &combinedTestHandler{
-		secretResp: SecretResponse{Secret: secret},
+		secretResp:    SecretResponse{Secret: secret},
 		radiusHandler: handler,
 	}
 
@@ -544,7 +544,7 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 
 	// Wrap handlers to combine secret and radius handling
 	combinedHandler := &combinedTestHandler{
-		secretResp: SecretResponse{Secret: secret},
+		secretResp:    SecretResponse{Secret: secret},
 		radiusHandler: handler,
 	}
 

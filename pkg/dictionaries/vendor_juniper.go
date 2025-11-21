@@ -25,10 +25,10 @@ var JuniperVendorDefinition = &dictionary.VendorDefinition{
 			Name:     "Juniper-CTP-Group",
 			DataType: dictionary.DataTypeInteger,
 			Values: map[string]uint32{
-				"Read_Only":         1,
-				"Admin":             2,
-				"Privileged_Admin":  3,
-				"Auditor":           4,
+				"Read_Only":        1,
+				"Admin":            2,
+				"Privileged_Admin": 3,
+				"Auditor":          4,
 			},
 		},
 		{

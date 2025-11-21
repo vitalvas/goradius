@@ -28,9 +28,9 @@ func TestAddStandardAttributes(t *testing.T) {
 			DataType: DataTypeString,
 		},
 		{
-			ID:       2,
-			Name:     "User-Password",
-			DataType: DataTypeString,
+			ID:         2,
+			Name:       "User-Password",
+			DataType:   DataTypeString,
 			Encryption: EncryptionUserPassword,
 		},
 		{
@@ -84,9 +84,9 @@ func TestLookupStandardByName(t *testing.T) {
 	})
 
 	tests := []struct {
-		name   string
+		name     string
 		attrName string
-		exists bool
+		exists   bool
 	}{
 		{"existing attribute", "User-Name", true},
 		{"non-existing attribute", "NonExistent", false},
@@ -283,8 +283,8 @@ func TestAttributeWithEnumeratedValues(t *testing.T) {
 			Name:     "Service-Type",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
-				"Login":  1,
-				"Framed": 2,
+				"Login":    1,
+				"Framed":   2,
 				"Callback": 3,
 			},
 		},
@@ -529,4 +529,3 @@ func TestVendorAttributeType(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, AttributeTypeRequest, attr.Type)
 }
-

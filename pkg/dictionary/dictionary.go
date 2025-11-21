@@ -42,7 +42,6 @@ func New() *Dictionary {
 	}
 }
 
-
 // AddStandardAttributes adds standard RFC attributes to the dictionary.
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {

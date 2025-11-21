@@ -100,3 +100,13 @@ func (r *Response) AddAttributes(attrs map[string][]interface{}) error {
 
 	return nil
 }
+
+// DeleteAttribute removes all instances of the specified attribute from the response packet.
+// Returns the number of attributes removed.
+func (r *Response) DeleteAttribute(name string) int {
+	if r.packet == nil {
+		return 0
+	}
+
+	return r.packet.RemoveAttributeByName(name)
+}
