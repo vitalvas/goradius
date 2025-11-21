@@ -776,6 +776,382 @@ func TestResponseDeleteAttributeVSA(t *testing.T) {
 	assert.Len(t, dns, 0)
 }
 
+// High Priority: Delete-related combinations
+
+func TestResponseSetAttributeThenDelete(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Set → Delete
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Test message"))
+	require.NoError(t, resp.SetAttribute("Session-Timeout", 3600))
+
+	removed := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 1, removed)
+
+	// Verify only Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 1)
+	attrs := resp.GetAttribute("Session-Timeout")
+	assert.Len(t, attrs, 1)
+}
+
+func TestResponseAddAttributeThenDelete(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Add → Delete
+	require.NoError(t, resp.AddAttribute("Reply-Message", "First"))
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Second"))
+	require.NoError(t, resp.AddAttribute("Session-Timeout", 3600))
+
+	removed := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 2, removed)
+
+	// Verify only Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 1)
+	attrs := resp.GetAttribute("Session-Timeout")
+	assert.Len(t, attrs, 1)
+}
+
+func TestResponseDeleteThenSetAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Delete → Set
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Old message"))
+	resp.DeleteAttribute("Reply-Message")
+	require.NoError(t, resp.SetAttribute("Reply-Message", "New message"))
+
+	// Verify only new message exists
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "New message", msgs[0].String())
+}
+
+func TestResponseDeleteThenDelete(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Delete → Delete (verify idempotent)
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Test"))
+	require.NoError(t, resp.AddAttribute("Session-Timeout", 3600))
+
+	removed1 := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 1, removed1)
+
+	removed2 := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 0, removed2, "Second delete should return 0")
+
+	// Verify Session-Timeout still exists
+	assert.Len(t, resp.packet.Attributes, 1)
+}
+
+// Medium Priority: Bulk operations
+
+func TestResponseSetAttributeThenSetAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Set → SetS
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Single"))
+	require.NoError(t, resp.SetAttribute("Session-Timeout", 1800))
+
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":     {"Bulk message"},
+		"Framed-IP-Address": {"192.0.2.1"},
+	}))
+
+	// Reply-Message should be overwritten, Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 3)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "Bulk message", msgs[0].String())
+}
+
+func TestResponseSetAttributesThenSetAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// SetS → Set
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Bulk 1", "Bulk 2"},
+		"Session-Timeout": {3600},
+	}))
+
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Single"))
+
+	// Reply-Message should be overwritten to single, Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 2)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "Single", msgs[0].String())
+}
+
+func TestResponseAddAttributeThenAddAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Add → AddS
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Single"))
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Bulk 1", "Bulk 2"},
+		"Session-Timeout": {3600},
+	}))
+
+	// All Reply-Messages should be present
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "Single", msgs[0].String())
+	assert.Equal(t, "Bulk 1", msgs[1].String())
+	assert.Equal(t, "Bulk 2", msgs[2].String())
+}
+
+func TestResponseAddAttributesThenAddAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// AddS → Add
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Bulk 1", "Bulk 2"},
+		"Session-Timeout": {3600},
+	}))
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Single"))
+
+	// All Reply-Messages should be present
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "Bulk 1", msgs[0].String())
+	assert.Equal(t, "Bulk 2", msgs[1].String())
+	assert.Equal(t, "Single", msgs[2].String())
+}
+
+func TestResponseSetAttributesThenDelete(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// SetS → Del
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Msg 1", "Msg 2"},
+		"Session-Timeout": {3600},
+	}))
+
+	removed := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 2, removed)
+
+	// Only Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 1)
+	attrs := resp.GetAttribute("Session-Timeout")
+	assert.Len(t, attrs, 1)
+}
+
+func TestResponseAddAttributesThenDelete(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// AddS → Del
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Msg 1", "Msg 2", "Msg 3"},
+		"Session-Timeout": {3600},
+	}))
+
+	removed := resp.DeleteAttribute("Reply-Message")
+	assert.Equal(t, 3, removed)
+
+	// Only Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 1)
+	attrs := resp.GetAttribute("Session-Timeout")
+	assert.Len(t, attrs, 1)
+}
+
+// Low Priority: Cross bulk/single combinations
+
+func TestResponseSetAttributeThenAddAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Set → AddS
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Single"))
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":     {"Bulk 1", "Bulk 2"},
+		"Framed-IP-Address": {"192.0.2.1"},
+	}))
+
+	// All Reply-Messages should be present
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "Single", msgs[0].String())
+	assert.Equal(t, "Bulk 1", msgs[1].String())
+	assert.Equal(t, "Bulk 2", msgs[2].String())
+}
+
+func TestResponseSetAttributesThenAddAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// SetS → Add
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Bulk 1", "Bulk 2"},
+		"Session-Timeout": {3600},
+	}))
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Single"))
+
+	// All Reply-Messages should be present
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "Bulk 1", msgs[0].String())
+	assert.Equal(t, "Bulk 2", msgs[1].String())
+	assert.Equal(t, "Single", msgs[2].String())
+}
+
+func TestResponseAddAttributeThenSetAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Add → SetS
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Single"))
+	require.NoError(t, resp.AddAttribute("Session-Timeout", 1800))
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":     {"Bulk"},
+		"Framed-IP-Address": {"192.0.2.1"},
+	}))
+
+	// Reply-Message overwritten, Session-Timeout remains, Framed-IP added
+	assert.Len(t, resp.packet.Attributes, 3)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "Bulk", msgs[0].String())
+}
+
+func TestResponseAddAttributesThenSetAttribute(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// AddS → Set
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":   {"Bulk 1", "Bulk 2"},
+		"Session-Timeout": {3600},
+	}))
+	require.NoError(t, resp.SetAttribute("Reply-Message", "Single"))
+
+	// Reply-Message overwritten to single, Session-Timeout remains
+	assert.Len(t, resp.packet.Attributes, 2)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 1)
+	assert.Equal(t, "Single", msgs[0].String())
+}
+
+func TestResponseDeleteThenSetAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Del → SetS
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Old"))
+	require.NoError(t, resp.AddAttribute("Session-Timeout", 1800))
+	resp.DeleteAttribute("Reply-Message")
+
+	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+		"Reply-Message":     {"New 1", "New 2"},
+		"Framed-IP-Address": {"192.0.2.1"},
+	}))
+
+	// New Reply-Messages + Session-Timeout + Framed-IP
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 2)
+	assert.Equal(t, "New 1", msgs[0].String())
+	assert.Equal(t, "New 2", msgs[1].String())
+}
+
+func TestResponseDeleteThenAddAttributes(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	req := &Request{packet: pkt}
+	resp := NewResponse(req)
+
+	// Del → AddS
+	require.NoError(t, resp.AddAttribute("Reply-Message", "Old"))
+	require.NoError(t, resp.AddAttribute("Session-Timeout", 1800))
+	resp.DeleteAttribute("Reply-Message")
+
+	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+		"Reply-Message":     {"New 1", "New 2"},
+		"Framed-IP-Address": {"192.0.2.1"},
+	}))
+
+	// New Reply-Messages + Session-Timeout + Framed-IP
+	assert.Len(t, resp.packet.Attributes, 4)
+	msgs := resp.GetAttribute("Reply-Message")
+	assert.Len(t, msgs, 2)
+	assert.Equal(t, "New 1", msgs[0].String())
+	assert.Equal(t, "New 2", msgs[1].String())
+}
+
 // Benchmarks
 
 func BenchmarkResponseSetAttribute(b *testing.B) {
