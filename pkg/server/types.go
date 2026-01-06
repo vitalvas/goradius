@@ -14,6 +14,7 @@ type Config struct {
 	Dictionary                  *dictionary.Dictionary
 	RequireMessageAuthenticator *bool
 	UseMessageAuthenticator     *bool
+	RequireRequestAuthenticator *bool // Validate Request Authenticator for non-Access-Request packets
 }
 
 type Request struct {

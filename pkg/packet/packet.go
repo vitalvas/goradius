@@ -293,7 +293,7 @@ func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroM
 }
 
 // calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret)
-func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
+func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte, zeroMessageAuth bool) [AuthenticatorLength]byte {
 	// Pre-allocate with capacity for secret to avoid reallocation
 	capacity := int(p.Length) + len(secret)
 	packetBytes := make([]byte, int(p.Length), capacity)
@@ -308,8 +308,14 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 	for _, attr := range p.Attributes {
 		packetBytes[offset] = attr.Type
 		packetBytes[offset+1] = attr.Length
-		copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
-		offset += int(attr.Length)
+		// Zero out Message-Authenticator when calculating Request Authenticator
+		if zeroMessageAuth && attr.Type == AttributeTypeMessageAuthenticator {
+			// Leave as zeros (already zeroed by make)
+			offset += int(attr.Length)
+		} else {
+			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
+			offset += int(attr.Length)
+		}
 	}
 
 	packetBytes = append(packetBytes, secret...)
@@ -318,13 +324,15 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 
 // CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
-	return p.calculateAuthenticator(secret, requestAuthenticator)
+	return p.calculateAuthenticator(secret, requestAuthenticator, false)
 }
 
-// CalculateRequestAuthenticator calculates the Request Authenticator for Access-Request packets
+// CalculateRequestAuthenticator calculates the Request Authenticator for Accounting-Request, CoA-Request, and Disconnect-Request packets
+// For these packet types, the authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+// Message-Authenticator is zeroed during calculation per RFC 2869
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
 	var nullAuth [AuthenticatorLength]byte
-	return p.calculateAuthenticator(secret, nullAuth)
+	return p.calculateAuthenticator(secret, nullAuth, true)
 }
 
 // calculateMessageAuthenticator calculates the Message-Authenticator attribute value (RFC 2869)
@@ -586,8 +594,13 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 
 	encrypted := make([]byte, len(padded))
 
+	// Create a buffer for MD5 input to avoid mutating secret slice
+	hashInput := make([]byte, len(secret)+16)
+	copy(hashInput, secret)
+
 	// First block: XOR with MD5(secret + authenticator)
-	hash1 := md5.Sum(append(secret, authenticator[:]...))
+	copy(hashInput[len(secret):], authenticator[:])
+	hash1 := md5.Sum(hashInput)
 	for i := 0; i < 16; i++ {
 		encrypted[i] = padded[i] ^ hash1[i]
 	}
@@ -596,7 +609,8 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 	for block := 1; block < len(padded)/16; block++ {
 		offset := block * 16
 		prevBlock := encrypted[offset-16 : offset]
-		hash := md5.Sum(append(secret, prevBlock...))
+		copy(hashInput[len(secret):], prevBlock)
+		hash := md5.Sum(hashInput)
 
 		for i := 0; i < 16; i++ {
 			encrypted[offset+i] = padded[offset+i] ^ hash[i]
@@ -608,22 +622,65 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 
 // encryptTunnelPassword implements Tunnel-Password encryption (RFC 2868, Section 3.5)
 func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byte) []byte {
-	// Tunnel-Password encryption is similar to User-Password but with a salt
-	// 1. Generate 2-byte random salt
-	// 2. Prepend salt to password
-	// 3. Apply User-Password style encryption
+	// Tunnel-Password encryption (RFC 2868):
+	// Format: Salt (2 bytes, unencrypted) + encrypted(1-byte length + password + padding)
+	// Salt: first byte must have high bit set to 1
+	// Encryption: XOR with MD5(secret + authenticator + salt) for first block,
+	//             XOR with MD5(secret + previous encrypted block) for subsequent blocks
 
-	// Generate random salt
+	// Generate random salt with high bit set on first byte
 	salt := make([]byte, 2)
-	rand.Read(salt)
+	if _, err := rand.Read(salt); err != nil {
+		// Fallback to zero salt if random fails (should not happen)
+		salt[0] = 0x80
+		salt[1] = 0x00
+	}
+	salt[0] |= 0x80 // Set high bit as required by RFC 2868
 
-	// Prepend salt to password
-	salt = append(salt, password...)
+	// Build plaintext: 1-byte length + password, padded to 16-byte boundary
+	plainLen := 1 + len(password)
+	paddedLen := ((plainLen + 15) / 16) * 16
+	if paddedLen == 0 {
+		paddedLen = 16
+	}
+	plaintext := make([]byte, paddedLen)
+	plaintext[0] = byte(len(password))
+	copy(plaintext[1:], password)
 
-	// Apply User-Password encryption to the salted password
-	encrypted := encryptUserPassword(salt, secret, authenticator)
+	encrypted := make([]byte, paddedLen)
 
-	return encrypted
+	// Create hash input buffer: secret + authenticator + salt for first block
+	hashInput := make([]byte, len(secret)+16+2)
+	copy(hashInput, secret)
+	copy(hashInput[len(secret):], authenticator[:])
+	copy(hashInput[len(secret)+16:], salt)
+
+	// First block: XOR with MD5(secret + authenticator + salt)
+	hash := md5.Sum(hashInput)
+	for i := 0; i < 16; i++ {
+		encrypted[i] = plaintext[i] ^ hash[i]
+	}
+
+	// Subsequent blocks: XOR with MD5(secret + previous encrypted block)
+	hashInputSubseq := make([]byte, len(secret)+16)
+	copy(hashInputSubseq, secret)
+	for block := 1; block < paddedLen/16; block++ {
+		offset := block * 16
+		prevBlock := encrypted[offset-16 : offset]
+		copy(hashInputSubseq[len(secret):], prevBlock)
+		hash = md5.Sum(hashInputSubseq)
+
+		for i := 0; i < 16; i++ {
+			encrypted[offset+i] = plaintext[offset+i] ^ hash[i]
+		}
+	}
+
+	// Result: salt (unencrypted) + encrypted data
+	result := make([]byte, 2+len(encrypted))
+	copy(result, salt)
+	copy(result[2:], encrypted)
+
+	return result
 }
 
 // encryptAscendSecret implements Ascend-Secret encryption

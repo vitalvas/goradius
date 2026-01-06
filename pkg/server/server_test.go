@@ -774,6 +774,283 @@ func TestServerBufferSafety(t *testing.T) {
 	wg.Wait()
 }
 
+func TestServerRequestAuthenticatorValidation(t *testing.T) {
+	t.Run("disabled_accepts_invalid_authenticator", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+		}
+
+		// RequireRequestAuthenticator defaults to false
+		srv, err := New(Config{
+			Addr:       ":0",
+			Handler:    handler,
+			Dictionary: dict,
+		})
+		require.NoError(t, err)
+		defer srv.Close()
+
+		go srv.ListenAndServe()
+		time.Sleep(100 * time.Millisecond)
+
+		serverAddr := srv.Addr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", nil, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		// Create Accounting-Request with INVALID (random) Request Authenticator
+		pkt := packet.New(packet.CodeAccountingRequest, 1)
+		pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+		// Set random authenticator (invalid for Accounting-Request per RFC 2866)
+		var randomAuth [16]byte
+		copy(randomAuth[:], []byte("invalidauthenti"))
+		pkt.SetAuthenticator(randomAuth)
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+
+		respPkt := packet.New(packet.CodeAccountingResponse, 1)
+		handler.SetRadiusResponse(Response{packet: respPkt})
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		buffer := make([]byte, 4096)
+		clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, err := clientConn.Read(buffer)
+		require.NoError(t, err, "Should accept packet when RequireRequestAuthenticator is false")
+
+		respReceived, err := packet.Decode(buffer[:n])
+		require.NoError(t, err)
+		assert.Equal(t, packet.CodeAccountingResponse, respReceived.Code)
+	})
+
+	t.Run("enabled_rejects_invalid_authenticator", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+		}
+
+		requireRequestAuth := true
+		srv, err := New(Config{
+			Addr:                        ":0",
+			Handler:                     handler,
+			Dictionary:                  dict,
+			RequireRequestAuthenticator: &requireRequestAuth,
+		})
+		require.NoError(t, err)
+		defer srv.Close()
+
+		go srv.ListenAndServe()
+		time.Sleep(100 * time.Millisecond)
+
+		serverAddr := srv.Addr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", nil, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		// Create Accounting-Request with INVALID (random) Request Authenticator
+		pkt := packet.New(packet.CodeAccountingRequest, 1)
+		pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+		var randomAuth [16]byte
+		copy(randomAuth[:], []byte("invalidauthenti"))
+		pkt.SetAuthenticator(randomAuth)
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+
+		respPkt := packet.New(packet.CodeAccountingResponse, 1)
+		handler.SetRadiusResponse(Response{packet: respPkt})
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		buffer := make([]byte, 4096)
+		clientConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		_, err = clientConn.Read(buffer)
+		assert.Error(t, err, "Should timeout/reject packet when RequireRequestAuthenticator is true")
+	})
+
+	t.Run("enabled_accepts_valid_authenticator", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+		}
+
+		requireRequestAuth := true
+		requireMessageAuth := false // Disable Message-Authenticator for this test
+		srv, err := New(Config{
+			Addr:                        ":0",
+			Handler:                     handler,
+			Dictionary:                  dict,
+			RequireRequestAuthenticator: &requireRequestAuth,
+			RequireMessageAuthenticator: &requireMessageAuth,
+		})
+		require.NoError(t, err)
+		defer srv.Close()
+
+		go srv.ListenAndServe()
+		time.Sleep(100 * time.Millisecond)
+
+		serverAddr := srv.Addr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", nil, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		// Create Accounting-Request with VALID computed Request Authenticator
+		// RFC 2866: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+		pkt := packet.New(packet.CodeAccountingRequest, 1)
+		pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+		// Calculate and set correct Request Authenticator per RFC 2866
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+
+		respPkt := packet.New(packet.CodeAccountingResponse, 1)
+		handler.SetRadiusResponse(Response{packet: respPkt})
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		buffer := make([]byte, 4096)
+		clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, err := clientConn.Read(buffer)
+		require.NoError(t, err, "Should accept packet with valid Request Authenticator")
+
+		respReceived, err := packet.Decode(buffer[:n])
+		require.NoError(t, err)
+		assert.Equal(t, packet.CodeAccountingResponse, respReceived.Code)
+	})
+
+	t.Run("both_enabled_accepts_valid_packet", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+		}
+
+		requireRequestAuth := true
+		requireMessageAuth := true
+		srv, err := New(Config{
+			Addr:                        ":0",
+			Handler:                     handler,
+			Dictionary:                  dict,
+			RequireRequestAuthenticator: &requireRequestAuth,
+			RequireMessageAuthenticator: &requireMessageAuth,
+		})
+		require.NoError(t, err)
+		defer srv.Close()
+
+		go srv.ListenAndServe()
+		time.Sleep(100 * time.Millisecond)
+
+		serverAddr := srv.Addr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", nil, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		// Create Accounting-Request with both valid Request Authenticator and Message-Authenticator
+		pkt := packet.New(packet.CodeAccountingRequest, 1)
+		pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+
+		// Add Message-Authenticator placeholder (affects packet length for Request Authenticator calculation)
+		pkt.AddMessageAuthenticator(secret, [16]byte{})
+
+		// Calculate Request Authenticator with Message-Authenticator placeholder included
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+
+		// Recalculate Message-Authenticator with the computed Request Authenticator
+		pkt.RemoveAttributes(packet.AttributeTypeMessageAuthenticator)
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+
+		respPkt := packet.New(packet.CodeAccountingResponse, 1)
+		handler.SetRadiusResponse(Response{packet: respPkt})
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		buffer := make([]byte, 4096)
+		clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, err := clientConn.Read(buffer)
+		require.NoError(t, err, "Should accept packet with both valid Request Authenticator and Message-Authenticator")
+
+		respReceived, err := packet.Decode(buffer[:n])
+		require.NoError(t, err)
+		assert.Equal(t, packet.CodeAccountingResponse, respReceived.Code)
+	})
+
+	t.Run("both_enabled_rejects_invalid_message_auth", func(t *testing.T) {
+		dict := dictionary.New()
+		require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+		}
+
+		requireRequestAuth := true
+		requireMessageAuth := true
+		srv, err := New(Config{
+			Addr:                        ":0",
+			Handler:                     handler,
+			Dictionary:                  dict,
+			RequireRequestAuthenticator: &requireRequestAuth,
+			RequireMessageAuthenticator: &requireMessageAuth,
+		})
+		require.NoError(t, err)
+		defer srv.Close()
+
+		go srv.ListenAndServe()
+		time.Sleep(100 * time.Millisecond)
+
+		serverAddr := srv.Addr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", nil, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		// Create Accounting-Request with valid Request Authenticator but INVALID Message-Authenticator
+		pkt := packet.New(packet.CodeAccountingRequest, 1)
+		pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+
+		// Calculate valid Request Authenticator first (without Message-Authenticator)
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+
+		// Add INVALID Message-Authenticator (wrong secret)
+		pkt.AddMessageAuthenticator([]byte("wrongsecret"), pkt.Authenticator)
+
+		respPkt := packet.New(packet.CodeAccountingResponse, 1)
+		handler.SetRadiusResponse(Response{packet: respPkt})
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		buffer := make([]byte, 4096)
+		clientConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		_, err = clientConn.Read(buffer)
+		assert.Error(t, err, "Should reject packet with invalid Message-Authenticator")
+	})
+}
+
 func BenchmarkServerThroughput(b *testing.B) {
 	secret := []byte("testing123")
 	handler := &testHandler{

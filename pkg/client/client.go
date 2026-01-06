@@ -1,10 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionary"
@@ -18,9 +18,6 @@ type Client struct {
 	timeout           time.Duration
 	useMessageAuth    bool
 	verifyMessageAuth bool
-
-	conn *net.UDPConn
-	mu   sync.Mutex
 }
 
 type Config struct {
@@ -57,14 +54,12 @@ func New(cfg Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) getConnection() (*net.UDPConn, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *Client) Close() error {
+	return nil
+}
 
-	if c.conn != nil {
-		return c.conn, nil
-	}
-
+func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
+	// Create a new connection for each request to ensure concurrency safety
 	udpAddr, err := net.ResolveUDPAddr("udp", c.addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve address: %w", err)
@@ -74,28 +69,7 @@ func (c *Client) getConnection() (*net.UDPConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
-
-	c.conn = conn
-	return conn, nil
-}
-
-func (c *Client) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.conn != nil {
-		err := c.conn.Close()
-		c.conn = nil
-		return err
-	}
-	return nil
-}
-
-func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
-	conn, err := c.getConnection()
-	if err != nil {
-		return nil, err
-	}
+	defer conn.Close()
 
 	if err := conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
@@ -119,6 +93,17 @@ func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
 	respPkt, err := packet.Decode(buffer[:n])
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Verify response identifier matches request identifier (RFC 2865)
+	if respPkt.Identifier != pkt.Identifier {
+		return nil, fmt.Errorf("response identifier mismatch: expected %d, got %d", pkt.Identifier, respPkt.Identifier)
+	}
+
+	// Verify response authenticator (RFC 2865)
+	expectedAuth := respPkt.CalculateResponseAuthenticator(c.secret, pkt.Authenticator)
+	if !bytes.Equal(respPkt.Authenticator[:], expectedAuth[:]) {
+		return nil, fmt.Errorf("response authenticator verification failed")
 	}
 
 	if c.dict != nil {
@@ -151,13 +136,18 @@ func (c *Client) CoA(attributes map[string]interface{}) (*packet.Packet, error) 
 		}
 	}
 
-	authenticator := make([]byte, 16)
-	if _, err := rand.Read(authenticator); err != nil {
-		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
-	}
-	pkt.SetAuthenticator([16]byte(authenticator))
-
+	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+	// Add Message-Authenticator placeholder first if needed (affects packet length)
 	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
+	}
+
+	// Calculate and set the computed Request Authenticator
+	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
+
+	// Recalculate Message-Authenticator with the computed Request Authenticator
+	if c.useMessageAuth {
+		pkt.RemoveAttributes(packet.AttributeTypeMessageAuthenticator)
 		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
 	}
 
@@ -181,13 +171,18 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, 
 		}
 	}
 
-	authenticator := make([]byte, 16)
-	if _, err := rand.Read(authenticator); err != nil {
-		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
-	}
-	pkt.SetAuthenticator([16]byte(authenticator))
-
+	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+	// Add Message-Authenticator placeholder first if needed (affects packet length)
 	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
+	}
+
+	// Calculate and set the computed Request Authenticator
+	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
+
+	// Recalculate Message-Authenticator with the computed Request Authenticator
+	if c.useMessageAuth {
+		pkt.RemoveAttributes(packet.AttributeTypeMessageAuthenticator)
 		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
 	}
 
@@ -241,13 +236,18 @@ func (c *Client) AccountingRequest(attributes map[string]interface{}) (*packet.P
 		}
 	}
 
-	authenticator := make([]byte, 16)
-	if _, err := rand.Read(authenticator); err != nil {
-		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
-	}
-	pkt.SetAuthenticator([16]byte(authenticator))
-
+	// RFC 2866: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+	// Add Message-Authenticator placeholder first if needed (affects packet length)
 	if c.useMessageAuth {
+		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
+	}
+
+	// Calculate and set the computed Request Authenticator
+	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
+
+	// Recalculate Message-Authenticator with the computed Request Authenticator
+	if c.useMessageAuth {
+		pkt.RemoveAttributes(packet.AttributeTypeMessageAuthenticator)
 		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
 	}
 

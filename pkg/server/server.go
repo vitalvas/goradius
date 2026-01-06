@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"sync"
@@ -29,6 +30,7 @@ type Server struct {
 	ready              chan struct{}
 	requireMessageAuth bool
 	useMessageAuth     bool
+	requireRequestAuth bool
 }
 
 func New(cfg Config) (*Server, error) {
@@ -51,6 +53,11 @@ func New(cfg Config) (*Server, error) {
 		useMessageAuth = *cfg.UseMessageAuthenticator
 	}
 
+	requireRequestAuth := false
+	if cfg.RequireRequestAuthenticator != nil {
+		requireRequestAuth = *cfg.RequireRequestAuthenticator
+	}
+
 	return &Server{
 		addr:               cfg.Addr,
 		handler:            cfg.Handler,
@@ -58,6 +65,7 @@ func New(cfg Config) (*Server, error) {
 		ready:              make(chan struct{}),
 		requireMessageAuth: requireMessageAuth,
 		useMessageAuth:     useMessageAuth,
+		requireRequestAuth: requireRequestAuth,
 	}, nil
 }
 
@@ -168,6 +176,15 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	secretResp, err := s.handler.ServeSecret(secretReq)
 	if err != nil {
 		return
+	}
+
+	// Optionally validate Request Authenticator for non-Access-Request packets (RFC 2866, RFC 5176)
+	// Access-Request uses random authenticator, others use computed MD5
+	if s.requireRequestAuth && pkt.Code != packet.CodeAccessRequest {
+		expectedAuth := pkt.CalculateRequestAuthenticator(secretResp.Secret)
+		if !bytes.Equal(pkt.Authenticator[:], expectedAuth[:]) {
+			return
+		}
 	}
 
 	if s.requireMessageAuth {

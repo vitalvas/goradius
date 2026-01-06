@@ -70,6 +70,7 @@ func TestCoA(t *testing.T) {
 
 		respPkt := packet.New(packet.CodeCoAACK, reqPkt.Identifier)
 		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -118,6 +119,7 @@ func TestDisconnect(t *testing.T) {
 
 		respPkt := packet.New(packet.CodeDisconnectACK, reqPkt.Identifier)
 		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -226,6 +228,7 @@ func TestAccessRequest(t *testing.T) {
 
 		respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
 		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -274,6 +277,7 @@ func TestAccountingRequest(t *testing.T) {
 
 		respPkt := packet.New(packet.CodeAccountingResponse, reqPkt.Identifier)
 		respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 		respData, _ := respPkt.Encode()
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
@@ -375,6 +379,7 @@ func BenchmarkClientAccessRequest(b *testing.B) {
 
 			respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
 			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 			respData, _ := respPkt.Encode()
 			serverConn.WriteToUDP(respData, clientAddr)
 		}
@@ -424,6 +429,7 @@ func BenchmarkClientAccessRequestParallel(b *testing.B) {
 
 			respPkt := packet.New(packet.CodeAccessAccept, reqPkt.Identifier)
 			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 			respData, _ := respPkt.Encode()
 			serverConn.WriteToUDP(respData, clientAddr)
 		}
@@ -475,6 +481,7 @@ func BenchmarkClientAccountingRequest(b *testing.B) {
 
 			respPkt := packet.New(packet.CodeAccountingResponse, reqPkt.Identifier)
 			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 			respData, _ := respPkt.Encode()
 			serverConn.WriteToUDP(respData, clientAddr)
 		}
@@ -527,6 +534,7 @@ func BenchmarkClientCoA(b *testing.B) {
 
 			respPkt := packet.New(packet.CodeCoAACK, reqPkt.Identifier)
 			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 			respData, _ := respPkt.Encode()
 			serverConn.WriteToUDP(respData, clientAddr)
 		}
@@ -576,6 +584,7 @@ func BenchmarkClientDisconnect(b *testing.B) {
 
 			respPkt := packet.New(packet.CodeDisconnectACK, reqPkt.Identifier)
 			respPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
 			respData, _ := respPkt.Encode()
 			serverConn.WriteToUDP(respData, clientAddr)
 		}
