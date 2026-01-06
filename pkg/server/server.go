@@ -187,6 +187,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		}
 	}
 
+	// Verify Message-Authenticator per RFC 2869 Section 5.14
 	if s.requireMessageAuth {
 		if !pkt.VerifyMessageAuthenticator(secretResp.Secret, pkt.Authenticator) {
 			return
@@ -214,7 +215,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		resp.packet.AddMessageAuthenticator(secretResp.Secret, pkt.Authenticator)
 	}
 
-	// Calculate response authenticator
+	// Calculate response authenticator per RFC 2865 Section 3
 	resp.packet.SetAuthenticator(resp.packet.CalculateResponseAuthenticator(secretResp.Secret, pkt.Authenticator))
 
 	respData, err := resp.packet.Encode()

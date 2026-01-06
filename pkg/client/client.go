@@ -119,6 +119,7 @@ func (c *Client) sendRequest(pkt *packet.Packet) (*packet.Packet, error) {
 	return respPkt, nil
 }
 
+// CoA sends a Change-of-Authorization Request packet per RFC 5176
 func (c *Client) CoA(attributes map[string]interface{}) (*packet.Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
@@ -154,6 +155,7 @@ func (c *Client) CoA(attributes map[string]interface{}) (*packet.Packet, error) 
 	return c.sendRequest(pkt)
 }
 
+// Disconnect sends a Disconnect-Request packet per RFC 5176
 func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
@@ -189,6 +191,7 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*packet.Packet, 
 	return c.sendRequest(pkt)
 }
 
+// AccessRequest sends an Access-Request packet per RFC 2865
 func (c *Client) AccessRequest(attributes map[string]interface{}) (*packet.Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
@@ -206,6 +209,7 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*packet.Packe
 		}
 	}
 
+	// RFC 2865 Section 3: Request Authenticator is 16 octets of random data
 	authenticator := make([]byte, 16)
 	if _, err := rand.Read(authenticator); err != nil {
 		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
@@ -219,6 +223,7 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*packet.Packe
 	return c.sendRequest(pkt)
 }
 
+// AccountingRequest sends an Accounting-Request packet per RFC 2866
 func (c *Client) AccountingRequest(attributes map[string]interface{}) (*packet.Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {

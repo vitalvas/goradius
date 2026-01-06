@@ -292,7 +292,7 @@ func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroM
 	return packetBytes
 }
 
-// calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret)
+// calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret) per RFC 2865 Section 3
 func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte, zeroMessageAuth bool) [AuthenticatorLength]byte {
 	// Pre-allocate with capacity for secret to avoid reallocation
 	capacity := int(p.Length) + len(secret)
@@ -322,20 +322,23 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 	return md5.Sum(packetBytes)
 }
 
-// CalculateResponseAuthenticator calculates the Response Authenticator for Access-Accept, Access-Reject, and Access-Challenge packets
+// CalculateResponseAuthenticator calculates the Response Authenticator per RFC 2865 Section 3
+// ResponseAuth = MD5(Code + ID + Length + RequestAuth + Attributes + Secret)
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
 	return p.calculateAuthenticator(secret, requestAuthenticator, false)
 }
 
-// CalculateRequestAuthenticator calculates the Request Authenticator for Accounting-Request, CoA-Request, and Disconnect-Request packets
-// For these packet types, the authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
-// Message-Authenticator is zeroed during calculation per RFC 2869
+// CalculateRequestAuthenticator calculates the Request Authenticator for Accounting-Request (RFC 2866 Section 4.1),
+// CoA-Request and Disconnect-Request (RFC 5176 Section 2.3)
+// RequestAuth = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
+// Message-Authenticator is zeroed during calculation per RFC 2869 Section 5.14
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
 	var nullAuth [AuthenticatorLength]byte
 	return p.calculateAuthenticator(secret, nullAuth, true)
 }
 
-// calculateMessageAuthenticator calculates the Message-Authenticator attribute value (RFC 2869)
+// calculateMessageAuthenticator calculates the Message-Authenticator attribute value per RFC 2869 Section 5.14
+// MessageAuth = HMAC-MD5(packet with Message-Authenticator zeroed, secret)
 func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
 	var auth [AuthenticatorLength]byte
 	if p.Code == CodeAccessRequest || p.Code == CodeAccountingRequest {
@@ -353,7 +356,7 @@ func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticat
 	return result
 }
 
-// VerifyMessageAuthenticator verifies the Message-Authenticator attribute (RFC 2869)
+// VerifyMessageAuthenticator verifies the Message-Authenticator attribute per RFC 2869 Section 5.14
 func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) bool {
 	var messageAuth []byte
 	for _, attr := range p.Attributes {
