@@ -1,17 +1,18 @@
 package packet
 
+// RADIUS packet structure constants per RFC 2865 Section 3
 const (
-	// PacketHeaderLength is the length of the RADIUS packet header in bytes
+	// PacketHeaderLength is the length of the RADIUS packet header (Code + ID + Length + Authenticator)
 	PacketHeaderLength = 20
-	// MaxPacketLength is the maximum allowed RADIUS packet length
+	// MaxPacketLength is the maximum allowed RADIUS packet length per RFC 2865 Section 3
 	MaxPacketLength = 4096
-	// MinPacketLength is the minimum allowed RADIUS packet length
+	// MinPacketLength is the minimum allowed RADIUS packet length (header only)
 	MinPacketLength = PacketHeaderLength
-	// AuthenticatorLength is the length of the authenticator field
+	// AuthenticatorLength is the length of the authenticator field per RFC 2865 Section 3
 	AuthenticatorLength = 16
-	// AttributeHeaderLength is the length of attribute header (Type + Length)
+	// AttributeHeaderLength is the length of attribute header (Type + Length) per RFC 2865 Section 5
 	AttributeHeaderLength = 2
-	// VendorSpecificHeaderLength is the length of VSA header (Type + Length + Vendor-Id)
+	// VendorSpecificHeaderLength is the length of VSA header (Type + Length + Vendor-Id) per RFC 2865 Section 5.26
 	VendorSpecificHeaderLength = 6
 )
 

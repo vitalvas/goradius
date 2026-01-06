@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// Encode converts a Packet into its binary representation
+// Encode converts a Packet into its binary representation per RFC 2865 Section 3
 func (p *Packet) Encode() ([]byte, error) {
 	if err := p.IsValid(); err != nil {
 		return nil, fmt.Errorf("invalid packet: %w", err)
@@ -31,7 +31,7 @@ func (p *Packet) Encode() ([]byte, error) {
 	return data, nil
 }
 
-// Decode parses binary data into a Packet
+// Decode parses binary data into a Packet per RFC 2865 Section 3
 func Decode(data []byte) (*Packet, error) {
 	if len(data) < MinPacketLength {
 		return nil, fmt.Errorf("packet too short: %d bytes", len(data))

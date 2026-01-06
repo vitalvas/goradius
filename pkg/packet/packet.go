@@ -17,7 +17,8 @@ const (
 	ContinuationMarker = "<contd>"
 )
 
-// Packet represents a RADIUS packet as defined in RFC 2865
+// Packet represents a RADIUS packet as defined in RFC 2865 Section 3
+// Format: Code (1) + Identifier (1) + Length (2) + Authenticator (16) + Attributes (variable)
 type Packet struct {
 	Code          Code
 	Identifier    uint8

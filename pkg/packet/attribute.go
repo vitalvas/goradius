@@ -4,23 +4,25 @@ import (
 	"fmt"
 )
 
-// Attribute represents a RADIUS attribute
+// Attribute represents a RADIUS attribute per RFC 2865 Section 5
+// Format: Type (1) + Length (1) + Value (variable)
 type Attribute struct {
 	Type   uint8
 	Length uint8
 	Value  []byte
-	Tag    uint8 // For tagged attributes (0 = no tag)
+	Tag    uint8 // For tagged attributes per RFC 2868 (0 = no tag)
 }
 
-// VendorAttribute represents a vendor-specific attribute (VSA)
+// VendorAttribute represents a vendor-specific attribute (VSA) per RFC 2865 Section 5.26
+// Format: Vendor-Id (4) + Vendor-Type (1) + Vendor-Length (1) + Value (variable)
 type VendorAttribute struct {
 	VendorID   uint32
 	VendorType uint8
 	Value      []byte
-	Tag        uint8 // For tagged vendor attributes (0 = no tag)
+	Tag        uint8 // For tagged vendor attributes per RFC 2868 (0 = no tag)
 }
 
-// NewAttribute creates a new RADIUS attribute
+// NewAttribute creates a new RADIUS attribute per RFC 2865 Section 5
 func NewAttribute(attrType uint8, value []byte) *Attribute {
 	return &Attribute{
 		Type:   attrType,
@@ -29,9 +31,9 @@ func NewAttribute(attrType uint8, value []byte) *Attribute {
 	}
 }
 
-// NewTaggedAttribute creates a new tagged RADIUS attribute
+// NewTaggedAttribute creates a new tagged RADIUS attribute per RFC 2868
 func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
-	// For tagged attributes, the tag is the first byte of the value
+	// Per RFC 2868, the tag is the first byte of the value
 	taggedValue := make([]byte, len(value)+1)
 	taggedValue[0] = tag
 	copy(taggedValue[1:], value)
@@ -44,7 +46,7 @@ func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
 	}
 }
 
-// NewVendorAttribute creates a new vendor-specific attribute
+// NewVendorAttribute creates a new vendor-specific attribute per RFC 2865 Section 5.26
 func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *VendorAttribute {
 	return &VendorAttribute{
 		VendorID:   vendorID,
@@ -53,9 +55,9 @@ func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *Vendor
 	}
 }
 
-// NewTaggedVendorAttribute creates a new tagged vendor-specific attribute
+// NewTaggedVendorAttribute creates a new tagged vendor-specific attribute per RFC 2868
 func NewTaggedVendorAttribute(vendorID uint32, vendorType uint8, tag uint8, value []byte) *VendorAttribute {
-	// For tagged vendor attributes, the tag is the first byte of the value
+	// Per RFC 2868, the tag is the first byte of the value
 	taggedValue := make([]byte, len(value)+1)
 	taggedValue[0] = tag
 	copy(taggedValue[1:], value)
@@ -102,9 +104,9 @@ func (va *VendorAttribute) String() string {
 	return fmt.Sprintf("VendorID=%d, Type=%d, Value=%x", va.VendorID, va.VendorType, va.Value)
 }
 
-// ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific)
+// ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific) per RFC 2865 Section 5.26
 func (va *VendorAttribute) ToVSA() *Attribute {
-	// VSA format: Type(1) + Length(1) + Vendor-ID(4) + Vendor-Type(1) + Vendor-Length(1) + Vendor-Data
+	// Per RFC 2865 Section 5.26: Type(1) + Length(1) + Vendor-ID(4) + Vendor-Type(1) + Vendor-Length(1) + Vendor-Data
 	vendorLength := uint8(len(va.Value) + 2)  // +2 for Vendor-Type and Vendor-Length
 	vsaValue := make([]byte, 6+len(va.Value)) // 4 bytes Vendor-ID + 2 bytes header + data
 
@@ -130,7 +132,7 @@ func (va *VendorAttribute) ToVSA() *Attribute {
 	}
 }
 
-// ParseVSA parses a Vendor-Specific Attribute (Type 26) into VendorAttribute
+// ParseVSA parses a Vendor-Specific Attribute (Type 26) into VendorAttribute per RFC 2865 Section 5.26
 func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
 	if attr.Type != 26 {
 		return nil, fmt.Errorf("not a vendor-specific attribute (type %d)", attr.Type)

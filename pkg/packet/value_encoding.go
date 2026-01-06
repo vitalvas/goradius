@@ -9,24 +9,24 @@ import (
 	"github.com/vitalvas/goradius/pkg/dictionary"
 )
 
-// EncodeString encodes a string value for RADIUS attributes
+// EncodeString encodes a string value for RADIUS attributes per RFC 2865 Section 5
 func EncodeString(value string) []byte {
 	return []byte(value)
 }
 
-// DecodeString decodes a string value from RADIUS attributes
+// DecodeString decodes a string value from RADIUS attributes per RFC 2865 Section 5
 func DecodeString(data []byte) string {
 	return string(data)
 }
 
-// EncodeInteger encodes a 32-bit integer value for RADIUS attributes
+// EncodeInteger encodes a 32-bit integer value for RADIUS attributes per RFC 2865 Section 5
 func EncodeInteger(value uint32) []byte {
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint32(data, value)
 	return data
 }
 
-// DecodeInteger decodes a 32-bit integer value from RADIUS attributes
+// DecodeInteger decodes a 32-bit integer value from RADIUS attributes per RFC 2865 Section 5
 func DecodeInteger(data []byte) (uint32, error) {
 	if len(data) != 4 {
 		return 0, fmt.Errorf("invalid integer length: %d", len(data))
@@ -34,7 +34,7 @@ func DecodeInteger(data []byte) (uint32, error) {
 	return binary.BigEndian.Uint32(data), nil
 }
 
-// EncodeIPAddr encodes an IPv4 address for RADIUS attributes
+// EncodeIPAddr encodes an IPv4 address for RADIUS attributes per RFC 2865 Section 5
 func EncodeIPAddr(ip net.IP) ([]byte, error) {
 	ipv4 := ip.To4()
 	if ipv4 == nil {
@@ -43,7 +43,7 @@ func EncodeIPAddr(ip net.IP) ([]byte, error) {
 	return []byte(ipv4), nil
 }
 
-// DecodeIPAddr decodes an IPv4 address from RADIUS attributes
+// DecodeIPAddr decodes an IPv4 address from RADIUS attributes per RFC 2865 Section 5
 func DecodeIPAddr(data []byte) (net.IP, error) {
 	if len(data) != 4 {
 		return nil, fmt.Errorf("invalid IP address length: %d", len(data))
@@ -51,7 +51,7 @@ func DecodeIPAddr(data []byte) (net.IP, error) {
 	return net.IP(data), nil
 }
 
-// EncodeIPv6Addr encodes an IPv6 address for RADIUS attributes
+// EncodeIPv6Addr encodes an IPv6 address for RADIUS attributes per RFC 6929
 func EncodeIPv6Addr(ip net.IP) ([]byte, error) {
 	ipv6 := ip.To16()
 	if ipv6 == nil {
@@ -60,7 +60,7 @@ func EncodeIPv6Addr(ip net.IP) ([]byte, error) {
 	return []byte(ipv6), nil
 }
 
-// DecodeIPv6Addr decodes an IPv6 address from RADIUS attributes
+// DecodeIPv6Addr decodes an IPv6 address from RADIUS attributes per RFC 6929
 func DecodeIPv6Addr(data []byte) (net.IP, error) {
 	if len(data) != 16 {
 		return nil, fmt.Errorf("invalid IPv6 address length: %d", len(data))
@@ -68,13 +68,13 @@ func DecodeIPv6Addr(data []byte) (net.IP, error) {
 	return net.IP(data), nil
 }
 
-// EncodeDate encodes a Unix timestamp for RADIUS attributes
+// EncodeDate encodes a Unix timestamp for RADIUS attributes per RFC 2865 Section 5
 func EncodeDate(t time.Time) []byte {
 	timestamp := uint32(t.Unix())
 	return EncodeInteger(timestamp)
 }
 
-// DecodeDate decodes a Unix timestamp from RADIUS attributes
+// DecodeDate decodes a Unix timestamp from RADIUS attributes per RFC 2865 Section 5
 func DecodeDate(data []byte) (time.Time, error) {
 	timestamp, err := DecodeInteger(data)
 	if err != nil {
