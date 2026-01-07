@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -169,7 +170,6 @@ func statisticsMiddleware(next server.Handler) server.Handler {
 func main() {
 	// Create server
 	srv, err := server.New(server.Config{
-		Addr:    ":1812",
 		Handler: &advancedHandler{},
 	})
 	if err != nil {
@@ -183,6 +183,12 @@ func main() {
 	srv.Use(validationMiddleware)       // Validates requests
 	srv.Use(attributeListMiddleware)    // Lists attributes (innermost before handler)
 
+	// Create UDP listener
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("=======================================================")
 	fmt.Println("Advanced RADIUS Server with Middleware")
 	fmt.Println("=======================================================")
@@ -195,5 +201,6 @@ func main() {
 	fmt.Println("  5. Attribute List - Shows all request attributes")
 	fmt.Println("=======================================================")
 
-	log.Fatal(srv.ListenAndServe())
+	transport := server.NewUDPTransport(conn)
+	log.Fatal(srv.Serve(transport))
 }

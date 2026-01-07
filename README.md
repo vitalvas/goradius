@@ -16,6 +16,8 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 
 ### Transport Protocols
 - **UDP**: Standard RADIUS transport (RFC 2865)
+- **TCP**: RADIUS over TCP (RFC 6613)
+- **TLS**: RADIUS over TLS / RadSec (RFC 6614)
 
 ### Security Features
 - Request/response authenticator calculation and verification
@@ -35,12 +37,13 @@ A comprehensive Go library for implementing RADIUS (Remote Authentication Dial-I
 - Built-in RFC and vendor dictionaries (ERX, Ascend)
 
 ### Server Features
-- Simple UDP RADIUS server
+- Multi-transport RADIUS server (UDP, TCP, TLS)
 - Concurrent request handling with goroutines
 - Flexible handler interface
 - Middleware support for request processing
 - Per-client secret management
 - Dictionary-based attribute validation
+- Graceful shutdown with in-flight request completion
 
 ### Client Features
 - Full RADIUS client implementation
@@ -71,7 +74,7 @@ GoRADIUS targets developers who need to ship RADIUS integrations without becomin
 
 GoRADIUS centers around three layers:
 
-1. **Transport/server layer** that listens on UDP sockets, manages authenticators, and orchestrates retries.
+1. **Transport/server layer** that listens on network sockets (UDP, TCP, or TLS), manages authenticators, and orchestrates request handling.
 2. **Packet and dictionary layer** that owns encoding/decoding, attribute mapping, vendor logic, and validation.
 3. **Business logic layer** where developers plug custom handlers or client calls, only receiving/sending attribute sets.
 
@@ -117,11 +120,13 @@ GoRADIUS centers around three layers:
 - Enumerated values
 
 #### Server (pkg/server)
-- UDP RADIUS server
+- Multi-transport RADIUS server (UDP, TCP, TLS)
+- Transport interface for pluggable network backends
 - Handler interface for request processing
 - Middleware support
 - Secret management per client
 - Response helper functions
+- Graceful shutdown
 
 #### Client (pkg/client)
 - Access-Request for authentication
@@ -160,6 +165,8 @@ This library implements the following RFCs:
 - **RFC 2868**: RADIUS Attributes for Tunnel Protocol Support
 - **RFC 2869**: RADIUS Extensions
 - **RFC 3576**: Dynamic Authorization Extensions to RADIUS
+- **RFC 6613**: RADIUS over TCP
+- **RFC 6614**: TLS Encryption for RADIUS (RadSec)
 
 ## Performance
 
@@ -187,7 +194,7 @@ This is an active RADIUS library implementation with the following status:
 - ✅ Standard attribute handling
 - ✅ Vendor-Specific Attributes (VSAs)
 - ✅ Dictionary system with fast lookups
-- ✅ UDP server with middleware support
+- ✅ Multi-transport server (UDP, TCP, TLS/RadSec) with middleware support
 - ✅ Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 - ✅ Tagged attributes (RFC 2868)
 - ✅ Authenticator calculation and verification
@@ -195,8 +202,6 @@ This is an active RADIUS library implementation with the following status:
 - ✅ Full RADIUS client (Access-Request, Accounting-Request, CoA/Disconnect)
 
 **Not Yet Implemented:**
-- ❌ TCP transport
-- ❌ TLS support
 - ❌ EAP support
 - ❌ Client retransmission logic
 

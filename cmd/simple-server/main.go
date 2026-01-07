@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 
 	"github.com/vitalvas/goradius/pkg/packet"
 	"github.com/vitalvas/goradius/pkg/server"
@@ -95,7 +96,6 @@ func validationMiddleware(next server.Handler) server.Handler {
 
 func main() {
 	srv, err := server.New(server.Config{
-		Addr:    ":1812",
 		Handler: &simpleHandler{},
 	})
 	if err != nil {
@@ -104,6 +104,13 @@ func main() {
 
 	srv.Use(validationMiddleware)
 
+	// Create UDP listener
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println("RADIUS server listening on :1812")
-	log.Fatal(srv.ListenAndServe())
+	transport := server.NewUDPTransport(conn)
+	log.Fatal(srv.Serve(transport))
 }

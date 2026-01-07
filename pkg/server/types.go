@@ -10,7 +10,6 @@ import (
 )
 
 type Config struct {
-	Addr                        string
 	Handler                     Handler
 	Dictionary                  *dictionary.Dictionary
 	RequireMessageAuthenticator *bool

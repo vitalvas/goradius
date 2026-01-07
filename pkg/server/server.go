@@ -14,7 +14,6 @@ import (
 
 // Server is a RADIUS server supporting UDP, TCP, and TLS transports
 type Server struct {
-	addr               string
 	transport          Transport
 	handler            Handler
 	dict               *dictionary.Dictionary
@@ -58,7 +57,6 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	return &Server{
-		addr:               cfg.Addr,
 		handler:            cfg.Handler,
 		dict:               dict,
 		ready:              make(chan struct{}),
@@ -67,23 +65,6 @@ func New(cfg Config) (*Server, error) {
 		requireRequestAuth: requireRequestAuth,
 		requestTimeout:     requestTimeout,
 	}, nil
-}
-
-// ListenAndServe creates a UDP transport and starts serving.
-// For TCP or TLS, use Serve() with the appropriate transport.
-func (s *Server) ListenAndServe() error {
-	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
-	if err != nil {
-		return err
-	}
-
-	conn, err := net.ListenUDP("udp", udpAddr)
-	if err != nil {
-		return err
-	}
-
-	transport := NewUDPTransport(conn)
-	return s.Serve(transport)
 }
 
 // Serve starts the server using the provided transport.

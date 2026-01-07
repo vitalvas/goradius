@@ -74,46 +74,41 @@ func (h *testHandler) SetRadiusResponse(resp Response) {
 	h.radiusResp = resp
 }
 
+// startTestServer creates a UDP transport and starts the server, returning the transport for cleanup
+func startTestServer(tb testing.TB, srv *Server) *UDPTransport {
+	tb.Helper()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	if err != nil {
+		tb.Fatalf("failed to create UDP listener: %v", err)
+	}
+	transport := NewUDPTransport(conn)
+	go srv.Serve(transport)
+	time.Sleep(50 * time.Millisecond) // Give server time to start
+	return transport
+}
+
 func TestNew(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
-	assert.Equal(t, ":0", srv.addr)
 	assert.Equal(t, handler, srv.handler)
 	assert.Equal(t, dict, srv.dict)
 
 	srv.Close()
 }
 
-func TestNewInvalidAddress(t *testing.T) {
-	dict := dictionary.New()
-	handler := &testHandler{}
-
-	srv, err := New(Config{
-		Addr:       "invalid:address:format",
-		Handler:    handler,
-		Dictionary: dict,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, srv)
-
-	err = srv.ListenAndServe()
-	assert.Error(t, err)
-}
 
 func TestServerClose(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
@@ -130,19 +125,13 @@ func TestServerServeStop(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
 	require.NoError(t, err)
 
 	// Start server in background
-	go func() {
-		srv.ListenAndServe()
-	}()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	startTestServer(t, srv)
 
 	// Close server
 	err = srv.Close()
@@ -158,7 +147,6 @@ func TestServerHandlePacket(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
@@ -166,12 +154,7 @@ func TestServerHandlePacket(t *testing.T) {
 	defer srv.Close()
 
 	// Start server in background
-	go func() {
-		srv.ListenAndServe()
-	}()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	startTestServer(t, srv)
 
 	// Get server address
 	serverAddr := srv.Addr().(*net.UDPAddr)
@@ -225,7 +208,6 @@ func TestServerWithDictionary(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
@@ -239,7 +221,6 @@ func TestServerNilDictionary(t *testing.T) {
 	handler := &testHandler{}
 
 	srv, err := New(Config{
-		Addr:    ":0",
 		Handler: handler,
 	})
 	require.NoError(t, err)
@@ -252,7 +233,6 @@ func TestServerNilHandler(t *testing.T) {
 	dict := dictionary.New()
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    nil,
 		Dictionary: dict,
 	})
@@ -260,11 +240,7 @@ func TestServerNilHandler(t *testing.T) {
 	defer srv.Close()
 
 	// Server should not crash with nil handler
-	go func() {
-		srv.ListenAndServe()
-	}()
-
-	time.Sleep(100 * time.Millisecond)
+	startTestServer(t, srv)
 
 	// Send a packet (should be ignored)
 	serverAddr := srv.Addr().(*net.UDPAddr)
@@ -287,7 +263,6 @@ func TestServerMiddleware(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
@@ -341,11 +316,7 @@ func TestServerMiddleware(t *testing.T) {
 	handler.SetRadiusResponse(Response{packet: respPkt})
 
 	// Start server
-	go func() {
-		srv.ListenAndServe()
-	}()
-
-	time.Sleep(100 * time.Millisecond)
+	startTestServer(t, srv)
 
 	// Send request
 	serverAddr := srv.Addr().(*net.UDPAddr)
@@ -393,7 +364,6 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 	}
 
 	srv, _ := New(Config{
-		Addr:       ":0",
 		Handler:    handler,
 		Dictionary: dict,
 	})
@@ -496,14 +466,12 @@ func BenchmarkE2EServerRequestResponse(b *testing.B) {
 	}
 
 	srv, _ := New(Config{
-		Addr:       ":0",
 		Handler:    combinedHandler,
 		Dictionary: dict,
 	})
 
 	// Start server
-	go srv.ListenAndServe()
-	time.Sleep(10 * time.Millisecond) // Wait for server to start
+	startTestServer(b, srv)
 
 	addr := srv.Addr().(*net.UDPAddr)
 	clientConn, _ := net.DialUDP("udp", nil, addr)
@@ -555,14 +523,12 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 	}
 
 	srv, _ := New(Config{
-		Addr:       ":0",
 		Handler:    combinedHandler,
 		Dictionary: dict,
 	})
 
 	// Start server
-	go srv.ListenAndServe()
-	time.Sleep(10 * time.Millisecond)
+	startTestServer(b, srv)
 
 	// Pre-create request packet
 	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
@@ -604,15 +570,12 @@ func TestServerStressWithHighPacketRate(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:    "127.0.0.1:0",
 		Handler: handler,
 	})
 	assert.NoError(t, err)
 
-	go srv.ListenAndServe()
+	startTestServer(t, srv)
 	defer srv.Close()
-
-	time.Sleep(100 * time.Millisecond)
 
 	addr := srv.Addr().(*net.UDPAddr)
 
@@ -684,15 +647,12 @@ func TestServerConcurrentPackets(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:    "127.0.0.1:0",
 		Handler: handler,
 	})
 	assert.NoError(t, err)
 
-	go srv.ListenAndServe()
+	startTestServer(t, srv)
 	defer srv.Close()
-
-	time.Sleep(100 * time.Millisecond)
 
 	addr := srv.Addr().(*net.UDPAddr)
 
@@ -729,15 +689,12 @@ func TestServerBufferSafety(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:    "127.0.0.1:0",
 		Handler: handler,
 	})
 	assert.NoError(t, err)
 
-	go srv.ListenAndServe()
+	startTestServer(t, srv)
 	defer srv.Close()
-
-	time.Sleep(100 * time.Millisecond)
 
 	addr := srv.Addr().(*net.UDPAddr)
 
@@ -792,15 +749,13 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 
 		// RequireRequestAuthenticator defaults to false
 		srv, err := New(Config{
-			Addr:       ":0",
 			Handler:    handler,
 			Dictionary: dict,
 		})
 		require.NoError(t, err)
 		defer srv.Close()
 
-		go srv.ListenAndServe()
-		time.Sleep(100 * time.Millisecond)
+		startTestServer(t, srv)
 
 		serverAddr := srv.Addr().(*net.UDPAddr)
 		clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -846,7 +801,6 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 
 		requireRequestAuth := true
 		srv, err := New(Config{
-			Addr:                        ":0",
 			Handler:                     handler,
 			Dictionary:                  dict,
 			RequireRequestAuthenticator: &requireRequestAuth,
@@ -854,8 +808,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		require.NoError(t, err)
 		defer srv.Close()
 
-		go srv.ListenAndServe()
-		time.Sleep(100 * time.Millisecond)
+		startTestServer(t, srv)
 
 		serverAddr := srv.Addr().(*net.UDPAddr)
 		clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -897,7 +850,6 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		requireRequestAuth := true
 		requireMessageAuth := false // Disable Message-Authenticator for this test
 		srv, err := New(Config{
-			Addr:                        ":0",
 			Handler:                     handler,
 			Dictionary:                  dict,
 			RequireRequestAuthenticator: &requireRequestAuth,
@@ -906,8 +858,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		require.NoError(t, err)
 		defer srv.Close()
 
-		go srv.ListenAndServe()
-		time.Sleep(100 * time.Millisecond)
+		startTestServer(t, srv)
 
 		serverAddr := srv.Addr().(*net.UDPAddr)
 		clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -952,7 +903,6 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		requireRequestAuth := true
 		requireMessageAuth := true
 		srv, err := New(Config{
-			Addr:                        ":0",
 			Handler:                     handler,
 			Dictionary:                  dict,
 			RequireRequestAuthenticator: &requireRequestAuth,
@@ -961,8 +911,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		require.NoError(t, err)
 		defer srv.Close()
 
-		go srv.ListenAndServe()
-		time.Sleep(100 * time.Millisecond)
+		startTestServer(t, srv)
 
 		serverAddr := srv.Addr().(*net.UDPAddr)
 		clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -1014,7 +963,6 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		requireRequestAuth := true
 		requireMessageAuth := true
 		srv, err := New(Config{
-			Addr:                        ":0",
 			Handler:                     handler,
 			Dictionary:                  dict,
 			RequireRequestAuthenticator: &requireRequestAuth,
@@ -1023,8 +971,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		require.NoError(t, err)
 		defer srv.Close()
 
-		go srv.ListenAndServe()
-		time.Sleep(100 * time.Millisecond)
+		startTestServer(t, srv)
 
 		serverAddr := srv.Addr().(*net.UDPAddr)
 		clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -1081,14 +1028,12 @@ func TestServerGracefulShutdown(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    combinedHandler,
 		Dictionary: dict,
 	})
 	require.NoError(t, err)
 
-	go srv.ListenAndServe()
-	time.Sleep(50 * time.Millisecond)
+	startTestServer(t, srv)
 
 	serverAddr := srv.Addr().(*net.UDPAddr)
 	clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -1159,14 +1104,12 @@ func TestServerShutdownWaitsForAllRequests(t *testing.T) {
 	}
 
 	srv, err := New(Config{
-		Addr:       ":0",
 		Handler:    combinedHandler,
 		Dictionary: dict,
 	})
 	require.NoError(t, err)
 
-	go srv.ListenAndServe()
-	time.Sleep(50 * time.Millisecond)
+	startTestServer(t, srv)
 
 	serverAddr := srv.Addr().(*net.UDPAddr)
 
@@ -1241,7 +1184,6 @@ func TestServerRequestTimeout(t *testing.T) {
 
 	timeout := 5 * time.Second
 	srv, err := New(Config{
-		Addr:           ":0",
 		Handler:        combinedHandler,
 		Dictionary:     dict,
 		RequestTimeout: &timeout,
@@ -1249,8 +1191,7 @@ func TestServerRequestTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer srv.Close()
 
-	go srv.ListenAndServe()
-	time.Sleep(50 * time.Millisecond)
+	startTestServer(t, srv)
 
 	serverAddr := srv.Addr().(*net.UDPAddr)
 	clientConn, err := net.DialUDP("udp", nil, serverAddr)
@@ -1587,7 +1528,6 @@ func TestHandlerFuncServeRADIUS(t *testing.T) {
 
 func TestServerAddrBeforeReady(t *testing.T) {
 	srv, _ := New(Config{
-		Addr: "127.0.0.1:0",
 	})
 
 	// Start getting address in goroutine (will block until ready)
@@ -1605,7 +1545,10 @@ func TestServerAddrBeforeReady(t *testing.T) {
 	}
 
 	// Start server
-	go srv.ListenAndServe()
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	transport := NewUDPTransport(conn)
+	go srv.Serve(transport)
 	defer srv.Close()
 
 	// Now should return
@@ -1625,14 +1568,11 @@ func BenchmarkServerThroughput(b *testing.B) {
 	}
 
 	srv, _ := New(Config{
-		Addr:    "127.0.0.1:0",
 		Handler: handler,
 	})
 
-	go srv.ListenAndServe()
+	startTestServer(b, srv)
 	defer srv.Close()
-
-	time.Sleep(100 * time.Millisecond)
 
 	addr := srv.Addr().(*net.UDPAddr)
 

@@ -12,9 +12,9 @@ package main
 import (
     "fmt"
     "log"
+    "net"
 
     "github.com/vitalvas/goradius/pkg/dictionaries"
-    "github.com/vitalvas/goradius/pkg/dictionary"
     "github.com/vitalvas/goradius/pkg/packet"
     "github.com/vitalvas/goradius/pkg/server"
 )
@@ -35,12 +35,12 @@ func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse
 }
 
 func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-    fmt.Printf("Received %s from %s\n", req.Packet.Code.String(), req.RemoteAddr)
+    fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
     resp := server.NewResponse(req)
 
     // Handle different request types
-    switch req.Packet.Code {
+    switch req.Code() {
     case packet.CodeAccessRequest:
         resp.SetCode(packet.CodeAccessAccept)
         resp.SetAttribute("Reply-Message", "Access granted")
@@ -59,14 +59,24 @@ func main() {
         log.Fatal(err)
     }
 
-    // Create and start server
-    srv, err := server.New(":1812", &myHandler{}, dict)
+    // Create server
+    srv, err := server.New(server.Config{
+        Handler:    &myHandler{},
+        Dictionary: dict,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Create UDP listener
+    conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
     if err != nil {
         log.Fatal(err)
     }
 
     fmt.Println("RADIUS server listening on :1812")
-    log.Fatal(srv.Serve())
+    transport := server.NewUDPTransport(conn)
+    log.Fatal(srv.Serve(transport))
 }
 ```
 
@@ -119,7 +129,7 @@ type Request struct {
 func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
     resp := server.NewResponse(req)
 
-    switch req.Packet.Code {
+    switch req.Code() {
     case packet.CodeAccessRequest:
         // Authenticate user
         if authenticateUser(req) {
@@ -183,12 +193,12 @@ resp.SetAttributes(attrs)
 func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
     resp := server.NewResponse(req)
 
-    if req.Packet.Code != packet.CodeAccessRequest {
+    if req.Code() != packet.CodeAccessRequest {
         return resp, nil
     }
 
-    // Get username using dictionary API
-    usernames := req.Packet.GetAttribute("User-Name")
+    // Get username using Request API
+    usernames := req.GetAttribute("User-Name")
     if len(usernames) == 0 {
         resp.SetCode(packet.CodeAccessReject)
         resp.SetAttribute("Reply-Message", "Username required")
@@ -222,12 +232,12 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
     resp := server.NewResponse(req)
 
-    if req.Packet.Code != packet.CodeAccountingRequest {
+    if req.Code() != packet.CodeAccountingRequest {
         return resp, nil
     }
 
-    // Get accounting status type using dictionary API
-    statusAttrs := req.Packet.GetAttribute("Acct-Status-Type")
+    // Get accounting status type using Request API
+    statusAttrs := req.GetAttribute("Acct-Status-Type")
     if len(statusAttrs) == 0 {
         return resp, fmt.Errorf("missing Acct-Status-Type")
     }
@@ -248,8 +258,8 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 }
 
 func handleAccountingStart(req *server.Request) {
-    // Get session ID using dictionary API
-    sessions := req.Packet.GetAttribute("Acct-Session-ID")
+    // Get session ID using Request API
+    sessions := req.GetAttribute("Acct-Session-ID")
     if len(sessions) > 0 {
         sessionID := sessions[0].String()
         // Store session start
@@ -258,11 +268,11 @@ func handleAccountingStart(req *server.Request) {
 }
 
 func handleAccountingStop(req *server.Request) {
-    // Get session statistics using dictionary API
-    sessions := req.Packet.GetAttribute("Acct-Session-ID")
-    inputOctets := req.Packet.GetAttribute("Acct-Input-Octets")
-    outputOctets := req.Packet.GetAttribute("Acct-Output-Octets")
-    sessionTime := req.Packet.GetAttribute("Acct-Session-Time")
+    // Get session statistics using Request API
+    sessions := req.GetAttribute("Acct-Session-ID")
+    inputOctets := req.GetAttribute("Acct-Input-Octets")
+    outputOctets := req.GetAttribute("Acct-Output-Octets")
+    sessionTime := req.GetAttribute("Acct-Session-Time")
 
     if len(sessions) > 0 && len(inputOctets) > 0 && len(outputOctets) > 0 && len(sessionTime) > 0 {
         fmt.Printf("Session %s ended: %s bytes in, %s bytes out, %s seconds\n",
@@ -272,6 +282,99 @@ func handleAccountingStop(req *server.Request) {
             sessionTime[0].String())
     }
 }
+```
+
+## Transport Interface
+
+The server supports multiple transport protocols through the Transport interface. This allows running RADIUS over UDP (standard), TCP, or TLS (RadSec).
+
+### Transport Types
+
+#### UDP Transport (Default)
+
+For standard RADIUS over UDP:
+
+```go
+srv, err := server.New(server.Config{
+    Handler: handler,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
+if err != nil {
+    log.Fatal(err)
+}
+
+transport := server.NewUDPTransport(conn)
+log.Fatal(srv.Serve(transport))
+```
+
+#### TCP Transport
+
+For RADIUS over TCP (RFC 6613):
+
+```go
+srv, err := server.New(server.Config{
+    Handler: handler,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+listener, err := net.Listen("tcp", ":1812")
+if err != nil {
+    log.Fatal(err)
+}
+
+transport := server.NewTCPTransport(listener)
+log.Fatal(srv.Serve(transport))
+```
+
+#### TLS Transport (RadSec)
+
+For RADIUS over TLS (RFC 6614, RadSec):
+
+```go
+srv, err := server.New(server.Config{
+    Handler: handler,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
+if err != nil {
+    log.Fatal(err)
+}
+
+tlsConfig := &tls.Config{
+    Certificates: []tls.Certificate{cert},
+    MinVersion:   tls.VersionTLS12,
+}
+
+listener, err := tls.Listen("tcp", ":2083", tlsConfig)
+if err != nil {
+    log.Fatal(err)
+}
+
+transport := server.NewTCPTransport(listener)
+log.Fatal(srv.Serve(transport))
+```
+
+### Transport Interface Definition
+
+```go
+type Transport interface {
+    Serve(handler TransportHandler) error
+    LocalAddr() net.Addr
+    Close() error
+}
+
+type TransportHandler func(data []byte, remoteAddr net.Addr, respond ResponderFunc)
+
+type ResponderFunc func(data []byte) error
 ```
 
 ## Secret Management
@@ -316,14 +419,24 @@ func (s *SecretStore) ServeSecret(req server.SecretRequest) (server.SecretRespon
 ### Graceful Shutdown
 
 ```go
-srv, err := server.New(":1812", handler, dict)
+srv, err := server.New(server.Config{
+    Handler:    handler,
+    Dictionary: dict,
+})
 if err != nil {
     log.Fatal(err)
 }
 
+// Create UDP listener
+conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
+if err != nil {
+    log.Fatal(err)
+}
+transport := server.NewUDPTransport(conn)
+
 // Start server in goroutine
 go func() {
-    if err := srv.Serve(); err != nil {
+    if err := srv.Serve(transport); err != nil {
         log.Printf("Server error: %v\n", err)
     }
 }()
@@ -333,7 +446,7 @@ sigChan := make(chan os.Signal, 1)
 signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 <-sigChan
 
-// Close server
+// Close server - waits for in-flight requests to complete
 log.Println("Shutting down...")
 srv.Close()
 ```
