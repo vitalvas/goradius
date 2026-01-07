@@ -409,13 +409,19 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 
 	data, _ := reqPkt.Encode()
 
-	// Create UDP connection for testing
+	// Create UDP connection and transport for testing
 	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	defer conn.Close()
-	srv.conn = conn
+	transport := NewUDPTransport(conn)
+	srv.transport = transport
 	close(srv.ready)
 
 	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+
+	// Create a no-op responder for benchmarking
+	respond := func(_ []byte) error {
+		return nil
+	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -429,7 +435,7 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 			// Copy data for concurrent access
 			dataCopy := make([]byte, len(data))
 			copy(dataCopy, data)
-			srv.handlePacket(dataCopy, clientAddr)
+			srv.handlePacket(dataCopy, clientAddr, respond)
 		}
 	})
 }
@@ -1273,6 +1279,344 @@ func TestServerRequestTimeout(t *testing.T) {
 	}
 }
 
+// Tests for Server.Serve with external transport
+
+func TestServerServeWithUDPTransport(t *testing.T) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, err := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+
+	// Create external UDP connection
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+
+	transport := NewUDPTransport(conn)
+
+	// Start server with external transport
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	// Wait for server to be ready
+	time.Sleep(50 * time.Millisecond)
+
+	// Send request
+	clientConn, err := net.DialUDP("udp", nil, conn.LocalAddr().(*net.UDPAddr))
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	_, err = clientConn.Write(data)
+	require.NoError(t, err)
+
+	// Read response
+	clientConn.SetReadDeadline(time.Now().Add(time.Second))
+	buf := make([]byte, 4096)
+	n, err := clientConn.Read(buf)
+	require.NoError(t, err)
+
+	respPkt, err := packet.Decode(buf[:n])
+	require.NoError(t, err)
+	assert.Equal(t, packet.CodeAccessAccept, respPkt.Code)
+}
+
+func TestServerServeWithTCPTransport(t *testing.T) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, err := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+
+	// Create external TCP listener
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	transport := NewTCPTransport(listener)
+
+	// Start server with external transport
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	// Wait for server to be ready
+	time.Sleep(50 * time.Millisecond)
+
+	// Connect via TCP
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Send RADIUS packet
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	_, err = conn.Write(data)
+	require.NoError(t, err)
+
+	// Read response
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	buf := make([]byte, 4096)
+	n, err := conn.Read(buf)
+	require.NoError(t, err)
+
+	respPkt, err := packet.Decode(buf[:n])
+	require.NoError(t, err)
+	assert.Equal(t, packet.CodeAccessAccept, respPkt.Code)
+}
+
+func TestServerServeWithTCPTransportMultiplePackets(t *testing.T) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	var counter int
+	var mu sync.Mutex
+
+	handler := HandlerFunc(func(r *Request) (Response, error) {
+		mu.Lock()
+		counter++
+		mu.Unlock()
+		resp := NewResponse(r)
+		resp.SetCode(packet.CodeAccessAccept)
+		return resp, nil
+	})
+
+	combinedHandler := &combinedTestHandler{
+		secretResp:    SecretResponse{Secret: secret},
+		radiusHandler: handler,
+	}
+
+	srv, err := New(Config{
+		Handler:    combinedHandler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	transport := NewTCPTransport(listener)
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Send multiple packets on same connection
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	numPackets := 5
+	for i := range numPackets {
+		reqPkt := packet.New(packet.CodeAccessRequest, byte(i+1))
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+
+		_, err = conn.Write(data)
+		require.NoError(t, err)
+
+		// Read response
+		conn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := conn.Read(buf)
+		require.NoError(t, err)
+
+		respPkt, err := packet.Decode(buf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, packet.CodeAccessAccept, respPkt.Code)
+		assert.Equal(t, byte(i+1), respPkt.Identifier)
+	}
+
+	mu.Lock()
+	assert.Equal(t, numPackets, counter)
+	mu.Unlock()
+}
+
+// Tests for Request accessor methods
+
+func TestRequestGetAttribute(t *testing.T) {
+	dict, _ := dictionaries.NewDefault()
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = pkt.AddAttributeByName("User-Name", "testuser")
+	_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+	req := &Request{packet: pkt}
+
+	t.Run("existing attribute", func(t *testing.T) {
+		values := req.GetAttribute("User-Name")
+		require.Len(t, values, 1)
+		assert.Equal(t, "testuser", values[0].String())
+	})
+
+	t.Run("non-existing attribute", func(t *testing.T) {
+		values := req.GetAttribute("Called-Station-Id")
+		assert.Empty(t, values)
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilReq := &Request{}
+		values := nilReq.GetAttribute("User-Name")
+		assert.Empty(t, values)
+	})
+}
+
+func TestRequestListAttributes(t *testing.T) {
+	dict, _ := dictionaries.NewDefault()
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = pkt.AddAttributeByName("User-Name", "testuser")
+	_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+
+	req := &Request{packet: pkt}
+
+	t.Run("list attributes", func(t *testing.T) {
+		attrs := req.ListAttributes()
+		assert.Len(t, attrs, 2)
+		assert.Contains(t, attrs, "User-Name")
+		assert.Contains(t, attrs, "NAS-IP-Address")
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilReq := &Request{}
+		attrs := nilReq.ListAttributes()
+		assert.Empty(t, attrs)
+	})
+}
+
+func TestRequestCode(t *testing.T) {
+	pkt := packet.New(packet.CodeAccessRequest, 1)
+	req := &Request{packet: pkt}
+
+	t.Run("access request", func(t *testing.T) {
+		assert.Equal(t, packet.CodeAccessRequest, req.Code())
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilReq := &Request{}
+		assert.Equal(t, packet.Code(0), nilReq.Code())
+	})
+}
+
+func TestResponseCode(t *testing.T) {
+	pkt := packet.New(packet.CodeAccessAccept, 1)
+	resp := Response{packet: pkt}
+
+	t.Run("access accept", func(t *testing.T) {
+		assert.Equal(t, packet.CodeAccessAccept, resp.Code())
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilResp := Response{}
+		assert.Equal(t, packet.Code(0), nilResp.Code())
+	})
+}
+
+func TestResponseListAttributes(t *testing.T) {
+	dict, _ := dictionaries.NewDefault()
+	pkt := packet.NewWithDictionary(packet.CodeAccessAccept, 1, dict)
+	_ = pkt.AddAttributeByName("Session-Timeout", uint32(3600))
+	_ = pkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+
+	resp := Response{packet: pkt}
+
+	t.Run("list attributes", func(t *testing.T) {
+		attrs := resp.ListAttributes()
+		assert.Len(t, attrs, 2)
+		assert.Contains(t, attrs, "Session-Timeout")
+		assert.Contains(t, attrs, "Framed-IP-Address")
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilResp := Response{}
+		attrs := nilResp.ListAttributes()
+		assert.Empty(t, attrs)
+	})
+}
+
+// Tests for HandlerFunc
+
+func TestHandlerFuncServeSecret(t *testing.T) {
+	handler := HandlerFunc(func(r *Request) (Response, error) {
+		return NewResponse(r), nil
+	})
+
+	resp, err := handler.ServeSecret(SecretRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Secret)
+	assert.Nil(t, resp.Metadata)
+}
+
+func TestHandlerFuncServeRADIUS(t *testing.T) {
+	dict, _ := dictionaries.NewDefault()
+	pkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+
+	called := false
+	handler := HandlerFunc(func(r *Request) (Response, error) {
+		called = true
+		resp := NewResponse(r)
+		resp.SetCode(packet.CodeAccessAccept)
+		return resp, nil
+	})
+
+	req := &Request{packet: pkt}
+	resp, err := handler.ServeRADIUS(req)
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, packet.CodeAccessAccept, resp.Code())
+}
+
+// Test for Server.Addr before ready
+
+func TestServerAddrBeforeReady(t *testing.T) {
+	srv, _ := New(Config{
+		Addr: "127.0.0.1:0",
+	})
+
+	// Start getting address in goroutine (will block until ready)
+	addrChan := make(chan net.Addr, 1)
+	go func() {
+		addrChan <- srv.Addr()
+	}()
+
+	// Should not return immediately
+	select {
+	case <-addrChan:
+		t.Fatal("Addr() returned before server was ready")
+	case <-time.After(50 * time.Millisecond):
+		// Expected
+	}
+
+	// Start server
+	go srv.ListenAndServe()
+	defer srv.Close()
+
+	// Now should return
+	select {
+	case addr := <-addrChan:
+		assert.NotNil(t, addr)
+	case <-time.After(time.Second):
+		t.Fatal("Addr() did not return after server started")
+	}
+}
+
 func BenchmarkServerThroughput(b *testing.B) {
 	secret := []byte("testing123")
 	handler := &testHandler{
@@ -1309,6 +1653,251 @@ func BenchmarkServerThroughput(b *testing.B) {
 			conn.SetDeadline(time.Now().Add(2 * time.Second))
 			conn.Write(data)
 			conn.Read(buffer)
+		}
+	})
+}
+
+// Server performance benchmarks with different transports
+
+func BenchmarkServerWithUDPTransport(b *testing.B) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, _ := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	transport := NewUDPTransport(conn)
+
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	b.SetBytes(int64(len(data) * 2))
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		clientConn, _ := net.DialUDP("udp", nil, conn.LocalAddr().(*net.UDPAddr))
+		defer clientConn.Close()
+		buf := make([]byte, 4096)
+
+		for pb.Next() {
+			clientConn.SetDeadline(time.Now().Add(time.Second))
+			clientConn.Write(data)
+			clientConn.Read(buf)
+		}
+	})
+}
+
+func BenchmarkServerWithTCPTransport(b *testing.B) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, _ := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	listener, _ := net.Listen("tcp", "127.0.0.1:0")
+	transport := NewTCPTransport(listener)
+
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	b.SetBytes(int64(len(data) * 2))
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		conn, _ := net.Dial("tcp", listener.Addr().String())
+		defer conn.Close()
+		buf := make([]byte, 4096)
+
+		for pb.Next() {
+			conn.SetDeadline(time.Now().Add(time.Second))
+			conn.Write(data)
+			conn.Read(buf)
+		}
+	})
+}
+
+func BenchmarkServerWithTCPTransport_StreamMode(b *testing.B) {
+	secret := []byte("testing123")
+	dict, _ := dictionaries.NewDefault()
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, _ := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	listener, _ := net.Listen("tcp", "127.0.0.1:0")
+	transport := NewTCPTransport(listener)
+
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	b.SetBytes(int64(len(data) * 2))
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	// Each goroutine gets its own connection
+	b.RunParallel(func(pb *testing.PB) {
+		conn, err := net.Dial("tcp", listener.Addr().String())
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 4096)
+
+		for pb.Next() {
+			conn.SetDeadline(time.Now().Add(time.Second))
+			conn.Write(data)
+			conn.Read(buf)
+		}
+	})
+}
+
+func BenchmarkServerHandlePacketWithMiddleware(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusResp: Response{packet: packet.New(packet.CodeAccessAccept, 1)},
+	}
+
+	srv, _ := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	// Add middlewares
+	for range 3 {
+		srv.Use(func(next Handler) Handler {
+			return HandlerFunc(func(r *Request) (Response, error) {
+				return next.ServeRADIUS(r)
+			})
+		})
+	}
+
+	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	transport := NewUDPTransport(conn)
+
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqPkt := packet.New(packet.CodeAccessRequest, 1)
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, _ := reqPkt.Encode()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		clientConn, _ := net.DialUDP("udp", nil, conn.LocalAddr().(*net.UDPAddr))
+		defer clientConn.Close()
+		buf := make([]byte, 4096)
+
+		for pb.Next() {
+			clientConn.SetDeadline(time.Now().Add(time.Second))
+			clientConn.Write(data)
+			clientConn.Read(buf)
+		}
+	})
+}
+
+func BenchmarkServerWithRealisticPacket(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+	secret := []byte("testing123")
+
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: secret},
+	}
+
+	// Create realistic response with multiple attributes
+	respPkt := packet.NewWithDictionary(packet.CodeAccessAccept, 1, dict)
+	_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+	_ = respPkt.AddAttributeByName("Idle-Timeout", uint32(600))
+	_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+	_ = respPkt.AddAttributeByName("Framed-IP-Netmask", "255.255.255.0")
+	handler.radiusResp = Response{packet: respPkt}
+
+	srv, _ := New(Config{
+		Handler:    handler,
+		Dictionary: dict,
+	})
+
+	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	transport := NewUDPTransport(conn)
+
+	go srv.Serve(transport)
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Create realistic request with multiple attributes
+	reqPkt := packet.NewWithDictionary(packet.CodeAccessRequest, 1, dict)
+	_ = reqPkt.AddAttributeByName("User-Name", "testuser@example.com")
+	_ = reqPkt.AddAttributeByName("User-Password", "secretpassword123")
+	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = reqPkt.AddAttributeByName("NAS-Port", uint32(12345))
+	_ = reqPkt.AddAttributeByName("Called-Station-Id", "00-11-22-33-44-55")
+	_ = reqPkt.AddAttributeByName("Calling-Station-Id", "AA-BB-CC-DD-EE-FF")
+	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
+	reqPkt.SetAuthenticator(reqAuth)
+	reqPkt.AddMessageAuthenticator(secret, reqAuth)
+	data, _ := reqPkt.Encode()
+
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		clientConn, _ := net.DialUDP("udp", nil, conn.LocalAddr().(*net.UDPAddr))
+		defer clientConn.Close()
+		buf := make([]byte, 4096)
+
+		for pb.Next() {
+			clientConn.SetDeadline(time.Now().Add(time.Second))
+			clientConn.Write(data)
+			clientConn.Read(buf)
 		}
 	})
 }

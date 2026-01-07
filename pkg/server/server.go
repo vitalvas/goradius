@@ -12,18 +12,10 @@ import (
 	"github.com/vitalvas/goradius/pkg/packet"
 )
 
-// bufferPool provides reusable buffers for UDP packet reads
-var bufferPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 4096)
-		return &b
-	},
-}
-
-// Server is a simple RADIUS UDP server
+// Server is a RADIUS server supporting UDP, TCP, and TLS transports
 type Server struct {
 	addr               string
-	conn               *net.UDPConn
+	transport          Transport
 	handler            Handler
 	dict               *dictionary.Dictionary
 	middlewares        []Middleware
@@ -33,7 +25,6 @@ type Server struct {
 	useMessageAuth     bool
 	requireRequestAuth bool
 	requestTimeout     time.Duration // 0 means no timeout
-	wg                 sync.WaitGroup
 }
 
 func New(cfg Config) (*Server, error) {
@@ -78,6 +69,8 @@ func New(cfg Config) (*Server, error) {
 	}, nil
 }
 
+// ListenAndServe creates a UDP transport and starts serving.
+// For TCP or TLS, use Serve() with the appropriate transport.
 func (s *Server) ListenAndServe() error {
 	udpAddr, err := net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
@@ -89,65 +82,44 @@ func (s *Server) ListenAndServe() error {
 		return err
 	}
 
+	transport := NewUDPTransport(conn)
+	return s.Serve(transport)
+}
+
+// Serve starts the server using the provided transport.
+// Supports UDP, TCP, and TLS transports.
+func (s *Server) Serve(transport Transport) error {
 	s.mu.Lock()
-	s.conn = conn
+	s.transport = transport
 	close(s.ready)
 	s.mu.Unlock()
 
-	for {
-		// Get buffer from pool
-		bufPtr := bufferPool.Get().(*[]byte)
-		buffer := *bufPtr
-
-		n, clientAddr, err := s.conn.ReadFromUDP(buffer)
-		if err != nil {
-			bufferPool.Put(bufPtr)
-
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue
-			}
-
-			return err
-		}
-
-		// Copy data to new slice before passing to goroutine
-		// This allows us to return the buffer to the pool immediately
-		data := make([]byte, n)
-		copy(data, buffer[:n])
-		bufferPool.Put(bufPtr)
-
-		s.wg.Add(1)
-		go s.handlePacket(data, clientAddr)
-	}
+	return transport.Serve(s.handlePacket)
 }
 
+// Addr returns the local address the server is listening on.
+// Blocks until the server is ready.
 func (s *Server) Addr() net.Addr {
 	<-s.ready
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.conn == nil {
+	if s.transport == nil {
 		return nil
 	}
-	return s.conn.LocalAddr()
+	return s.transport.LocalAddr()
 }
 
-// Close stops the server and waits for in-flight requests to complete
+// Close stops the server and waits for in-flight requests to complete.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	conn := s.conn
+	transport := s.transport
 	s.mu.Unlock()
 
-	if conn == nil {
+	if transport == nil {
 		return nil
 	}
 
-	// Close connection to stop accepting new requests
-	err := conn.Close()
-
-	// Wait for all in-flight requests to complete
-	s.wg.Wait()
-
-	return err
+	return transport.Close()
 }
 
 // Use adds middleware to the server
@@ -168,18 +140,9 @@ func (s *Server) buildHandler() Handler {
 	return handler
 }
 
-func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
-	defer s.wg.Done()
-
-	// Get connection under lock to prevent race with Close()
-	s.mu.RLock()
-	conn := s.conn
-	s.mu.RUnlock()
-
-	if conn == nil {
-		return
-	}
-
+// handlePacket processes a single RADIUS packet.
+// Called by the transport for each received packet.
+func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond ResponderFunc) {
 	pkt, err := packet.Decode(data)
 	if err != nil {
 		return
@@ -204,14 +167,21 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		ctx = context.Background()
 	}
 
-	// Cache local address to avoid repeated method calls
-	localAddr := conn.LocalAddr()
+	// Get local address from transport
+	s.mu.RLock()
+	transport := s.transport
+	s.mu.RUnlock()
+
+	var localAddr net.Addr
+	if transport != nil {
+		localAddr = transport.LocalAddr()
+	}
 
 	// Get secret
 	secretReq := SecretRequest{
 		Context:    ctx,
 		LocalAddr:  localAddr,
-		RemoteAddr: clientAddr,
+		RemoteAddr: remoteAddr,
 	}
 
 	secretResp, err := s.handler.ServeSecret(secretReq)
@@ -239,7 +209,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	req := &Request{
 		Context:    ctx,
 		LocalAddr:  localAddr,
-		RemoteAddr: clientAddr,
+		RemoteAddr: remoteAddr,
 		packet:     pkt,
 		Secret:     secretResp,
 	}
@@ -264,7 +234,6 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		return
 	}
 
-	// Write response - error is intentionally not returned as this is fire-and-forget UDP
-	// The connection was validated at the start of this function
-	_, _ = conn.WriteToUDP(respData, clientAddr)
+	// Send response via transport responder
+	_ = respond(respData)
 }
