@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionaries"
 	"github.com/vitalvas/goradius/pkg/dictionary"
@@ -13,7 +14,7 @@ import (
 
 // bufferPool provides reusable buffers for UDP packet reads
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		b := make([]byte, 4096)
 		return &b
 	},
@@ -31,6 +32,8 @@ type Server struct {
 	requireMessageAuth bool
 	useMessageAuth     bool
 	requireRequestAuth bool
+	requestTimeout     time.Duration // 0 means no timeout
+	wg                 sync.WaitGroup
 }
 
 func New(cfg Config) (*Server, error) {
@@ -58,6 +61,11 @@ func New(cfg Config) (*Server, error) {
 		requireRequestAuth = *cfg.RequireRequestAuthenticator
 	}
 
+	var requestTimeout time.Duration
+	if cfg.RequestTimeout != nil {
+		requestTimeout = *cfg.RequestTimeout
+	}
+
 	return &Server{
 		addr:               cfg.Addr,
 		handler:            cfg.Handler,
@@ -66,6 +74,7 @@ func New(cfg Config) (*Server, error) {
 		requireMessageAuth: requireMessageAuth,
 		useMessageAuth:     useMessageAuth,
 		requireRequestAuth: requireRequestAuth,
+		requestTimeout:     requestTimeout,
 	}, nil
 }
 
@@ -107,6 +116,7 @@ func (s *Server) ListenAndServe() error {
 		copy(data, buffer[:n])
 		bufferPool.Put(bufPtr)
 
+		s.wg.Add(1)
 		go s.handlePacket(data, clientAddr)
 	}
 }
@@ -121,14 +131,23 @@ func (s *Server) Addr() net.Addr {
 	return s.conn.LocalAddr()
 }
 
-// Close stops the server
+// Close stops the server and waits for in-flight requests to complete
 func (s *Server) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.conn == nil {
+	conn := s.conn
+	s.mu.Unlock()
+
+	if conn == nil {
 		return nil
 	}
-	return s.conn.Close()
+
+	// Close connection to stop accepting new requests
+	err := conn.Close()
+
+	// Wait for all in-flight requests to complete
+	s.wg.Wait()
+
+	return err
 }
 
 // Use adds middleware to the server
@@ -150,6 +169,17 @@ func (s *Server) buildHandler() Handler {
 }
 
 func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
+	defer s.wg.Done()
+
+	// Get connection under lock to prevent race with Close()
+	s.mu.RLock()
+	conn := s.conn
+	s.mu.RUnlock()
+
+	if conn == nil {
+		return
+	}
+
 	pkt, err := packet.Decode(data)
 	if err != nil {
 		return
@@ -164,12 +194,23 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		return
 	}
 
-	ctx := context.Background()
+	// Create context with optional timeout
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if s.requestTimeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), s.requestTimeout)
+		defer cancel()
+	} else {
+		ctx = context.Background()
+	}
+
+	// Cache local address to avoid repeated method calls
+	localAddr := conn.LocalAddr()
 
 	// Get secret
 	secretReq := SecretRequest{
 		Context:    ctx,
-		LocalAddr:  s.conn.LocalAddr(),
+		LocalAddr:  localAddr,
 		RemoteAddr: clientAddr,
 	}
 
@@ -197,7 +238,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 	// Handle RADIUS request
 	req := &Request{
 		Context:    ctx,
-		LocalAddr:  s.conn.LocalAddr(),
+		LocalAddr:  localAddr,
 		RemoteAddr: clientAddr,
 		packet:     pkt,
 		Secret:     secretResp,
@@ -223,5 +264,7 @@ func (s *Server) handlePacket(data []byte, clientAddr *net.UDPAddr) {
 		return
 	}
 
-	s.conn.WriteToUDP(respData, clientAddr)
+	// Write response - error is intentionally not returned as this is fire-and-forget UDP
+	// The connection was validated at the start of this function
+	_, _ = conn.WriteToUDP(respData, clientAddr)
 }

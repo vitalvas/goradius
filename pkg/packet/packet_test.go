@@ -1222,3 +1222,215 @@ func BenchmarkVSAParsingWithCache(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkListAttributes(b *testing.B) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 1, Name: "User-Name", DataType: dictionary.DataTypeString},
+		{ID: 4, Name: "NAS-IP-Address", DataType: dictionary.DataTypeIPAddr},
+		{ID: 5, Name: "NAS-Port", DataType: dictionary.DataTypeInteger},
+		{ID: 27, Name: "Session-Timeout", DataType: dictionary.DataTypeInteger},
+	})
+	dict.AddVendor(&dictionary.VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*dictionary.AttributeDefinition{
+			{ID: 4, Name: "ERX-Primary-Dns", DataType: dictionary.DataTypeIPAddr},
+			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: dictionary.DataTypeString},
+		},
+	})
+
+	pkt := NewWithDictionary(CodeAccessRequest, 1, dict)
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+	pkt.AddAttribute(NewAttribute(1, []byte("testuser2"))) // Duplicate
+	pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+	pkt.AddAttribute(NewAttribute(5, []byte{0, 0, 0, 1}))
+	pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{8, 8, 8, 8}))
+	pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb:cc:dd:ee:ff")))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = pkt.ListAttributes()
+	}
+}
+
+func BenchmarkJoinMultilineAttribute(b *testing.B) {
+	values := []string{
+		"access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret<contd>",
+		" secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation<contd>",
+		" idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = JoinMultilineAttribute(values)
+	}
+}
+
+func BenchmarkSplitMultilineAttribute(b *testing.B) {
+	longValue := "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control"
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = SplitMultilineAttribute(longValue, 247)
+	}
+}
+
+func BenchmarkRemoveAttributeByName(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddAttributeByName("Reply-Message", "Message 1")
+		pkt.AddAttributeByName("Reply-Message", "Message 2")
+		pkt.AddAttributeByName("Reply-Message", "Message 3")
+		pkt.AddAttributeByName("Session-Timeout", 3600)
+
+		pkt.RemoveAttributeByName("Reply-Message")
+	}
+}
+
+func BenchmarkRemoveVendorAttributeByName(b *testing.B) {
+	dict, _ := dictionaries.NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1")
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2")
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 3")
+		pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+
+		pkt.RemoveAttributeByName("ERX-Service-Activate")
+	}
+}
+
+func BenchmarkTaggedAttributeCreation(b *testing.B) {
+	dict := dictionary.New()
+	dict.AddStandardAttributes([]*dictionary.AttributeDefinition{
+		{ID: 64, Name: "Tunnel-Type", DataType: dictionary.DataTypeInteger, HasTag: true},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddAttributeByName("Tunnel-Type:1", uint32(3))
+	}
+}
+
+func BenchmarkTaggedVendorAttributeCreation(b *testing.B) {
+	dict := dictionary.New()
+	dict.AddVendor(&dictionary.VendorDefinition{
+		ID:   4874,
+		Name: "ERX",
+		Attributes: []*dictionary.AttributeDefinition{
+			{ID: 1, Name: "ERX-Service-Activate", DataType: dictionary.DataTypeString, HasTag: true},
+		},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddAttributeByName("ERX-Service-Activate:1", "test-service")
+	}
+}
+
+func TestVSACacheIsBounded(t *testing.T) {
+	// TDD: VSA cache should not grow unbounded
+	// This test verifies that the vsaCache doesn't grow beyond a reasonable size
+	pkt := New(CodeAccessRequest, 1)
+
+	// Add many VSA attributes with different indices
+	for i := 0; i < 100; i++ {
+		va := NewVendorAttribute(4874, uint8(i%256), []byte("test-value"))
+		pkt.AddVendorAttribute(va)
+	}
+
+	// Access all VSAs to populate cache
+	for i := 0; i < len(pkt.Attributes); i++ {
+		pkt.GetVendorAttribute(4874, uint8(i%256))
+	}
+
+	// The cache size should be bounded (not exceed the number of actual attributes)
+	// This ensures no memory leak from unbounded cache growth
+	assert.LessOrEqual(t, len(pkt.vsaCache), len(pkt.Attributes),
+		"VSA cache should not exceed number of attributes")
+}
+
+func TestVSACacheInvalidatedOnRemove(t *testing.T) {
+	dict, err := dictionaries.NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewWithDictionary(CodeAccessAccept, 1, dict)
+
+	// Add vendor attributes
+	require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1"))
+	require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2"))
+
+	// Access to populate cache
+	attrs := pkt.GetAttribute("ERX-Service-Activate")
+	assert.Len(t, attrs, 2)
+
+	// Cache should exist
+	assert.NotNil(t, pkt.vsaCache)
+
+	// Remove attributes
+	removed := pkt.RemoveAttributeByName("ERX-Service-Activate")
+	assert.Equal(t, 2, removed)
+
+	// Cache should be invalidated (nil)
+	assert.Nil(t, pkt.vsaCache, "VSA cache should be invalidated after removal")
+}
+
+func BenchmarkAttributeValueString(b *testing.B) {
+	b.Run("string", func(b *testing.B) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeString,
+			Value:    []byte("testuser"),
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = av.String()
+		}
+	})
+
+	b.Run("integer", func(b *testing.B) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeInteger,
+			Value:    EncodeInteger(3600),
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = av.String()
+		}
+	})
+
+	b.Run("ipaddr", func(b *testing.B) {
+		av := AttributeValue{
+			DataType: dictionary.DataTypeIPAddr,
+			Value:    []byte{192, 168, 1, 1},
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_ = av.String()
+		}
+	})
+}

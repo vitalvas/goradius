@@ -57,12 +57,15 @@ func Decode(data []byte) (*Packet, error) {
 	var authenticator [AuthenticatorLength]byte
 	copy(authenticator[:], data[4:20])
 
+	// Estimate attribute count: average attribute is ~10 bytes, so estimate capacity
+	estimatedAttrs := max(int(length-PacketHeaderLength)/10, 4)
+
 	packet := &Packet{
 		Code:          code,
 		Identifier:    identifier,
 		Length:        length,
 		Authenticator: authenticator,
-		Attributes:    make([]*Attribute, 0),
+		Attributes:    make([]*Attribute, 0, estimatedAttrs),
 	}
 
 	// Parse attributes

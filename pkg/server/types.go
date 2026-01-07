@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/vitalvas/goradius/pkg/dictionary"
 	"github.com/vitalvas/goradius/pkg/packet"
@@ -14,7 +15,8 @@ type Config struct {
 	Dictionary                  *dictionary.Dictionary
 	RequireMessageAuthenticator *bool
 	UseMessageAuthenticator     *bool
-	RequireRequestAuthenticator *bool // Validate Request Authenticator for non-Access-Request packets
+	RequireRequestAuthenticator *bool          // Validate Request Authenticator for non-Access-Request packets
+	RequestTimeout              *time.Duration // Timeout for request processing (default: no timeout)
 }
 
 type Request struct {
@@ -85,7 +87,7 @@ type SecretRequest struct {
 
 type SecretResponse struct {
 	Secret   []byte
-	Metadata map[string]interface{}
+	Metadata map[string]any
 }
 
 type Handler interface {

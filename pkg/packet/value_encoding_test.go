@@ -501,7 +501,7 @@ func TestSplitMultilineAttribute(t *testing.T) {
 func BenchmarkEncodeString(b *testing.B) {
 	str := "testuser"
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = EncodeString(str)
 	}
 }
@@ -509,7 +509,7 @@ func BenchmarkEncodeString(b *testing.B) {
 func BenchmarkDecodeString(b *testing.B) {
 	data := []byte("testuser")
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = DecodeString(data)
 	}
 }
@@ -517,7 +517,7 @@ func BenchmarkDecodeString(b *testing.B) {
 func BenchmarkEncodeInteger(b *testing.B) {
 	val := uint32(3600)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = EncodeInteger(val)
 	}
 }
@@ -525,7 +525,7 @@ func BenchmarkEncodeInteger(b *testing.B) {
 func BenchmarkDecodeInteger(b *testing.B) {
 	data := EncodeInteger(3600)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeInteger(data)
 	}
 }
@@ -533,7 +533,7 @@ func BenchmarkDecodeInteger(b *testing.B) {
 func BenchmarkEncodeIPAddr(b *testing.B) {
 	ip := net.ParseIP("192.168.1.1")
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = EncodeIPAddr(ip)
 	}
 }
@@ -541,7 +541,7 @@ func BenchmarkEncodeIPAddr(b *testing.B) {
 func BenchmarkDecodeIPAddr(b *testing.B) {
 	data := []byte{192, 168, 1, 1}
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeIPAddr(data)
 	}
 }
@@ -549,7 +549,7 @@ func BenchmarkDecodeIPAddr(b *testing.B) {
 func BenchmarkEncodeIPv6Addr(b *testing.B) {
 	ip := net.ParseIP("2001:db8::1")
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = EncodeIPv6Addr(ip)
 	}
 }
@@ -558,7 +558,7 @@ func BenchmarkDecodeIPv6Addr(b *testing.B) {
 	ip := net.ParseIP("2001:db8::1")
 	data, _ := EncodeIPv6Addr(ip)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeIPv6Addr(data)
 	}
 }
@@ -566,7 +566,7 @@ func BenchmarkDecodeIPv6Addr(b *testing.B) {
 func BenchmarkEncodeDate(b *testing.B) {
 	now := time.Now()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = EncodeDate(now)
 	}
 }
@@ -574,7 +574,7 @@ func BenchmarkEncodeDate(b *testing.B) {
 func BenchmarkDecodeDate(b *testing.B) {
 	data := EncodeDate(time.Now())
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeDate(data)
 	}
 }
@@ -582,7 +582,7 @@ func BenchmarkDecodeDate(b *testing.B) {
 func BenchmarkEncodeValueString(b *testing.B) {
 	val := "testuser"
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = EncodeValue(val, dictionary.DataTypeString)
 	}
 }
@@ -590,7 +590,7 @@ func BenchmarkEncodeValueString(b *testing.B) {
 func BenchmarkEncodeValueInteger(b *testing.B) {
 	val := uint32(3600)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = EncodeValue(val, dictionary.DataTypeInteger)
 	}
 }
@@ -598,7 +598,7 @@ func BenchmarkEncodeValueInteger(b *testing.B) {
 func BenchmarkEncodeValueIPAddr(b *testing.B) {
 	val := "192.168.1.1"
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = EncodeValue(val, dictionary.DataTypeIPAddr)
 	}
 }
@@ -606,7 +606,7 @@ func BenchmarkEncodeValueIPAddr(b *testing.B) {
 func BenchmarkDecodeValueString(b *testing.B) {
 	data := []byte("testuser")
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeValue(data, dictionary.DataTypeString)
 	}
 }
@@ -614,7 +614,7 @@ func BenchmarkDecodeValueString(b *testing.B) {
 func BenchmarkDecodeValueInteger(b *testing.B) {
 	data := EncodeInteger(3600)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeValue(data, dictionary.DataTypeInteger)
 	}
 }
@@ -622,29 +622,7 @@ func BenchmarkDecodeValueInteger(b *testing.B) {
 func BenchmarkDecodeValueIPAddr(b *testing.B) {
 	data := []byte{192, 168, 1, 1}
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = DecodeValue(data, dictionary.DataTypeIPAddr)
-	}
-}
-
-func BenchmarkSplitMultilineAttribute(b *testing.B) {
-	permissions := "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control"
-
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = SplitMultilineAttribute(permissions, 247)
-	}
-}
-
-func BenchmarkJoinMultilineAttribute(b *testing.B) {
-	chunks := []string{
-		"access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret<contd>",
-		" secret-control security security-control shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation<contd>",
-		" idp-profiler-operation pgcp-session-mirroring pgcp-session-mirroring-control unified-edge unified-edge-control",
-	}
-
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = JoinMultilineAttribute(chunks)
 	}
 }

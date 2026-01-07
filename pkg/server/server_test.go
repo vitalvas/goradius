@@ -1051,6 +1051,228 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 	})
 }
 
+func TestServerGracefulShutdown(t *testing.T) {
+	// TDD: Server should wait for in-flight requests to complete before Close() returns
+	dict := dictionary.New()
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+	// Create a handler that takes some time to process
+	processingStarted := make(chan struct{})
+	processingDone := make(chan struct{})
+
+	slowHandler := HandlerFunc(func(req *Request) (Response, error) {
+		close(processingStarted)
+		time.Sleep(200 * time.Millisecond) // Simulate slow processing
+		close(processingDone)
+		respPkt := packet.New(packet.CodeAccessAccept, req.packet.Identifier)
+		return Response{packet: respPkt}, nil
+	})
+
+	secret := []byte("testing123")
+	combinedHandler := &combinedTestHandler{
+		secretResp:    SecretResponse{Secret: secret},
+		radiusHandler: slowHandler,
+	}
+
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    combinedHandler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+
+	go srv.ListenAndServe()
+	time.Sleep(50 * time.Millisecond)
+
+	serverAddr := srv.Addr().(*net.UDPAddr)
+	clientConn, err := net.DialUDP("udp", nil, serverAddr)
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	// Send a request
+	pkt := packet.New(packet.CodeAccessRequest, 1)
+	pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+	pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+	data, _ := pkt.Encode()
+	_, err = clientConn.Write(data)
+	require.NoError(t, err)
+
+	// Wait for processing to start
+	select {
+	case <-processingStarted:
+		// Good, handler started processing
+	case <-time.After(1 * time.Second):
+		t.Fatal("Handler never started processing")
+	}
+
+	// Close server while request is being processed
+	closeComplete := make(chan struct{})
+	go func() {
+		srv.Close()
+		close(closeComplete)
+	}()
+
+	// Verify handler completes
+	select {
+	case <-processingDone:
+		// Good, handler finished
+	case <-time.After(1 * time.Second):
+		t.Fatal("Handler never completed")
+	}
+
+	// Close should complete shortly after handler finishes
+	select {
+	case <-closeComplete:
+		// Good, close completed
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Server Close() didn't complete after handler finished")
+	}
+}
+
+func TestServerShutdownWaitsForAllRequests(t *testing.T) {
+	// TDD: Multiple concurrent requests should all complete before shutdown
+	dict := dictionary.New()
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+	var processedCount int32
+	var mu sync.Mutex
+
+	slowHandler := HandlerFunc(func(req *Request) (Response, error) {
+		time.Sleep(100 * time.Millisecond)
+		mu.Lock()
+		processedCount++
+		mu.Unlock()
+		respPkt := packet.New(packet.CodeAccessAccept, req.packet.Identifier)
+		return Response{packet: respPkt}, nil
+	})
+
+	secret := []byte("testing123")
+	combinedHandler := &combinedTestHandler{
+		secretResp:    SecretResponse{Secret: secret},
+		radiusHandler: slowHandler,
+	}
+
+	srv, err := New(Config{
+		Addr:       ":0",
+		Handler:    combinedHandler,
+		Dictionary: dict,
+	})
+	require.NoError(t, err)
+
+	go srv.ListenAndServe()
+	time.Sleep(50 * time.Millisecond)
+
+	serverAddr := srv.Addr().(*net.UDPAddr)
+
+	// Send multiple concurrent requests
+	numRequests := 5
+	var wg sync.WaitGroup
+	for i := 0; i < numRequests; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			conn, err := net.DialUDP("udp", nil, serverAddr)
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+
+			pkt := packet.New(packet.CodeAccessRequest, uint8(id))
+			pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+			pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+			data, _ := pkt.Encode()
+			conn.Write(data)
+
+			buffer := make([]byte, 4096)
+			conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+			conn.Read(buffer)
+		}(i)
+	}
+
+	// Give requests time to start processing
+	time.Sleep(50 * time.Millisecond)
+
+	// Close server
+	srv.Close()
+
+	// Wait for all client goroutines
+	wg.Wait()
+
+	// All requests that started should have been processed
+	mu.Lock()
+	count := processedCount
+	mu.Unlock()
+	assert.GreaterOrEqual(t, int(count), 1, "At least some requests should have been processed")
+}
+
+func TestServerRequestTimeout(t *testing.T) {
+	// TDD: Request context should have configurable timeout
+	dict := dictionary.New()
+	require.NoError(t, dict.AddStandardAttributes(dictionaries.StandardRFCAttributes))
+
+	var ctxTimeout time.Duration
+	var ctxHadDeadline bool
+	var mu sync.Mutex
+
+	handler := HandlerFunc(func(req *Request) (Response, error) {
+		// Check if context has deadline
+		deadline, ok := req.Context.Deadline()
+		mu.Lock()
+		ctxHadDeadline = ok
+		if ok {
+			ctxTimeout = time.Until(deadline)
+		}
+		mu.Unlock()
+		respPkt := packet.New(packet.CodeAccessAccept, req.packet.Identifier)
+		return Response{packet: respPkt}, nil
+	})
+
+	secret := []byte("testing123")
+	combinedHandler := &combinedTestHandler{
+		secretResp:    SecretResponse{Secret: secret},
+		radiusHandler: handler,
+	}
+
+	timeout := 5 * time.Second
+	srv, err := New(Config{
+		Addr:           ":0",
+		Handler:        combinedHandler,
+		Dictionary:     dict,
+		RequestTimeout: &timeout,
+	})
+	require.NoError(t, err)
+	defer srv.Close()
+
+	go srv.ListenAndServe()
+	time.Sleep(50 * time.Millisecond)
+
+	serverAddr := srv.Addr().(*net.UDPAddr)
+	clientConn, err := net.DialUDP("udp", nil, serverAddr)
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	pkt := packet.New(packet.CodeAccessRequest, 1)
+	pkt.AddAttribute(packet.NewAttribute(1, []byte("testuser")))
+	pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+	data, _ := pkt.Encode()
+	clientConn.Write(data)
+
+	buffer := make([]byte, 4096)
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	clientConn.Read(buffer)
+
+	// Context should have had a deadline
+	mu.Lock()
+	hadDeadline := ctxHadDeadline
+	timeoutValue := ctxTimeout
+	mu.Unlock()
+
+	assert.True(t, hadDeadline, "Request context should have deadline when RequestTimeout is set")
+	if hadDeadline {
+		assert.InDelta(t, timeout.Seconds(), timeoutValue.Seconds(), 1.0, "Context timeout should match configured value")
+	}
+}
+
 func BenchmarkServerThroughput(b *testing.B) {
 	secret := []byte("testing123")
 	handler := &testHandler{

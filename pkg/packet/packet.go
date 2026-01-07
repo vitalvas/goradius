@@ -52,38 +52,53 @@ func (av AttributeValue) String() string {
 	case dictionary.DataTypeInteger:
 		val, err := DecodeInteger(av.Value)
 		if err != nil {
-			return fmt.Sprintf("0x%x", av.Value)
+			return formatHex(av.Value)
 		}
-		return fmt.Sprintf("%d", val)
+		return strconv.FormatUint(uint64(val), 10)
 
 	case dictionary.DataTypeIPAddr:
 		ip, err := DecodeIPAddr(av.Value)
 		if err != nil {
-			return fmt.Sprintf("0x%x", av.Value)
+			return formatHex(av.Value)
 		}
 		return ip.String()
 
 	case dictionary.DataTypeIPv6Addr:
 		ip, err := DecodeIPv6Addr(av.Value)
 		if err != nil {
-			return fmt.Sprintf("0x%x", av.Value)
+			return formatHex(av.Value)
 		}
 		return ip.String()
 
 	case dictionary.DataTypeDate:
 		t, err := DecodeDate(av.Value)
 		if err != nil {
-			return fmt.Sprintf("0x%x", av.Value)
+			return formatHex(av.Value)
 		}
 		return t.Format(time.RFC3339)
 
 	case dictionary.DataTypeOctets:
-		return fmt.Sprintf("0x%x", av.Value)
+		return formatHex(av.Value)
 
 	default:
 		// For unknown types, return hex representation
-		return fmt.Sprintf("0x%x", av.Value)
+		return formatHex(av.Value)
 	}
+}
+
+// formatHex formats bytes as "0x" followed by hex digits
+func formatHex(data []byte) string {
+	if len(data) == 0 {
+		return "0x"
+	}
+	result := make([]byte, 2+len(data)*2)
+	result[0] = '0'
+	result[1] = 'x'
+	for i, b := range data {
+		result[2+i*2] = hexTable[b>>4]
+		result[2+i*2+1] = hexTable[b&0x0f]
+	}
+	return string(result)
 }
 
 // New creates a new RADIUS packet with the specified code and identifier
@@ -92,7 +107,7 @@ func New(code Code, identifier uint8) *Packet {
 		Code:       code,
 		Identifier: identifier,
 		Length:     PacketHeaderLength,
-		Attributes: make([]*Attribute, 0),
+		Attributes: nil, // nil slice works with append and avoids allocation
 	}
 }
 
@@ -244,19 +259,13 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 				p.Length -= uint16(p.Attributes[i].Length)
 				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 				removed++
-
-				delete(p.vsaCache, i)
-				newCache := make(map[int]*VendorAttribute)
-				for idx, cached := range p.vsaCache {
-					if idx > i {
-						newCache[idx-1] = cached
-					} else {
-						newCache[idx] = cached
-					}
-				}
-				p.vsaCache = newCache
 			}
 		}
+	}
+
+	// Invalidate VSA cache after removals (rebuild on next access)
+	if removed > 0 {
+		p.vsaCache = nil
 	}
 
 	return removed
@@ -419,7 +428,7 @@ func (p *Packet) IsValid() error {
 }
 
 // AddAttributeByName adds an attribute to the packet using dictionary lookup with full feature support
-func (p *Packet) AddAttributeByName(name string, value interface{}) error {
+func (p *Packet) AddAttributeByName(name string, value any) error {
 	if p.Dict == nil {
 		return fmt.Errorf("no dictionary loaded")
 	}
@@ -443,7 +452,7 @@ func (p *Packet) AddAttributeByName(name string, value interface{}) error {
 }
 
 // AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
-func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, secret []byte, authenticator [16]byte) error {
+func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []byte, authenticator [16]byte) error {
 	if p.Dict == nil {
 		return fmt.Errorf("no dictionary loaded")
 	}
@@ -467,7 +476,7 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value interface{}, se
 }
 
 // addStandardAttribute handles standard attribute addition with full feature support
-func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
+func (p *Packet) addStandardAttribute(name string, value any, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
 	if attrDef == nil {
 		return
 	}
@@ -497,7 +506,7 @@ func (p *Packet) addStandardAttribute(name string, value interface{}, attrDef *d
 // Supports formats:
 //   - "AttributeName" - vendor attribute without tag
 //   - "AttributeName:tag" - vendor attribute with tag (tag is a number)
-func (p *Packet) addVendorAttributeByName(name string, value interface{}, secret []byte, authenticator [16]byte) error {
+func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte, authenticator [16]byte) error {
 	var attrName string
 	var tag uint8
 
@@ -551,7 +560,7 @@ func (p *Packet) isAttributeAllowed(attrDef *dictionary.AttributeDefinition) boo
 }
 
 // processEnumeratedValue converts string enumerated values to integers
-func (p *Packet) processEnumeratedValue(value interface{}, attrDef *dictionary.AttributeDefinition) interface{} {
+func (p *Packet) processEnumeratedValue(value any, attrDef *dictionary.AttributeDefinition) any {
 	if len(attrDef.Values) == 0 {
 		return value
 	}
@@ -567,7 +576,7 @@ func (p *Packet) processEnumeratedValue(value interface{}, attrDef *dictionary.A
 }
 
 // encodeAttributeValue encodes a value based on the attribute data type
-func (p *Packet) encodeAttributeValue(value interface{}, attrDef *dictionary.AttributeDefinition) ([]byte, error) {
+func (p *Packet) encodeAttributeValue(value any, attrDef *dictionary.AttributeDefinition) ([]byte, error) {
 	return EncodeValue(value, attrDef.DataType)
 }
 
@@ -605,7 +614,7 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 	// First block: XOR with MD5(secret + authenticator)
 	copy(hashInput[len(secret):], authenticator[:])
 	hash1 := md5.Sum(hashInput)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		encrypted[i] = padded[i] ^ hash1[i]
 	}
 
@@ -616,7 +625,7 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 		copy(hashInput[len(secret):], prevBlock)
 		hash := md5.Sum(hashInput)
 
-		for i := 0; i < 16; i++ {
+		for i := range 16 {
 			encrypted[offset+i] = padded[offset+i] ^ hash[i]
 		}
 	}
@@ -661,7 +670,7 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 
 	// First block: XOR with MD5(secret + authenticator + salt)
 	hash := md5.Sum(hashInput)
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		encrypted[i] = plaintext[i] ^ hash[i]
 	}
 
@@ -674,7 +683,7 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 		copy(hashInputSubseq[len(secret):], prevBlock)
 		hash = md5.Sum(hashInputSubseq)
 
-		for i := 0; i < 16; i++ {
+		for i := range 16 {
 			encrypted[offset+i] = plaintext[offset+i] ^ hash[i]
 		}
 	}
@@ -697,34 +706,34 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
 // If value is a slice, it adds each element as a separate attribute instance
-func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
+func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) {
 	if attrDef == nil {
 		return
 	}
 
-	values := []interface{}{value}
+	values := []any{value}
 
 	// Try to convert to slice for array handling
 	switch v := value.(type) {
-	case []interface{}:
+	case []any:
 		values = v
 	case []string:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, s := range v {
 			values[i] = s
 		}
 	case []int:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, n := range v {
 			values[i] = n
 		}
 	case []uint32:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, n := range v {
 			values[i] = n
 		}
 	case [][]byte:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, b := range v {
 			values[i] = b
 		}
@@ -738,7 +747,9 @@ func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, valu
 			}
 
 			if attrDef.HasTag && tag > 0 {
-				taggedValue := append([]byte{tag}, attrValue...)
+				taggedValue := make([]byte, len(attrValue)+1)
+				taggedValue[0] = tag
+				copy(taggedValue[1:], attrValue)
 				attr := NewAttribute(uint8(attrDef.ID), taggedValue)
 				p.AddAttribute(attr)
 			} else {
@@ -751,34 +762,34 @@ func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, valu
 
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
-func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value interface{}, tag uint8, secret []byte, authenticator [16]byte) {
+func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) {
 	if vendor == nil || attrDef == nil {
 		return
 	}
 
-	values := []interface{}{value}
+	values := []any{value}
 
 	// Try to convert to slice for array handling
 	switch v := value.(type) {
-	case []interface{}:
+	case []any:
 		values = v
 	case []string:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, s := range v {
 			values[i] = s
 		}
 	case []int:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, n := range v {
 			values[i] = n
 		}
 	case []uint32:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, n := range v {
 			values[i] = n
 		}
 	case [][]byte:
-		values = make([]interface{}, len(v))
+		values = make([]any, len(v))
 		for i, b := range v {
 			values[i] = b
 		}
@@ -811,7 +822,7 @@ func (p *Packet) ListAttributes() []string {
 		return []string{}
 	}
 
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var result []string
 
 	for i, attr := range p.Attributes {
@@ -839,8 +850,8 @@ func (p *Packet) ListAttributes() []string {
 			name = attrDef.Name
 		}
 
-		if !seen[name] {
-			seen[name] = true
+		if _, exists := seen[name]; !exists {
+			seen[name] = struct{}{}
 			result = append(result, name)
 		}
 	}
@@ -982,13 +993,12 @@ func JoinMultilineAttribute(values []string) string {
 		return strings.TrimSuffix(values[0], ContinuationMarker)
 	}
 
-	data := make([]string, 0, len(values))
+	var b strings.Builder
 	for _, row := range values {
-		row = strings.TrimSuffix(row, ContinuationMarker)
-		data = append(data, row)
+		b.WriteString(strings.TrimSuffix(row, ContinuationMarker))
 	}
 
-	return strings.Join(data, "")
+	return b.String()
 }
 
 // SplitMultilineAttribute splits a long string into multiple attribute values

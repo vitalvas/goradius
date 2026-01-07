@@ -21,9 +21,9 @@ type EncryptionType string
 
 const (
 	EncryptionNone           EncryptionType = ""
-	EncryptionUserPassword   EncryptionType = "user-password"    // RFC 2865 Section 5.2
-	EncryptionTunnelPassword EncryptionType = "tunnel-password"  // RFC 2868 Section 3.5
-	EncryptionAscendSecret   EncryptionType = "ascend-secret"    // Vendor-specific
+	EncryptionUserPassword   EncryptionType = "user-password"   // RFC 2865 Section 5.2
+	EncryptionTunnelPassword EncryptionType = "tunnel-password" // RFC 2868 Section 3.5
+	EncryptionAscendSecret   EncryptionType = "ascend-secret"   // Vendor-specific
 )
 
 // AttributeType represents whether an attribute can be used in requests, replies, or both

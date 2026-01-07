@@ -191,7 +191,8 @@ func TestCheckCHAPPassword(t *testing.T) {
 }
 
 func BenchmarkGenerateCHAPChallenge(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_, _ = GenerateCHAPChallenge(CHAPChallengeLength)
 	}
 }
@@ -201,8 +202,9 @@ func BenchmarkGenerateCHAPResponse(b *testing.B) {
 	challenge := []byte("0123456789abcdef")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = GenerateCHAPResponse(byte(i), password, challenge)
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = GenerateCHAPResponse(0x01, password, challenge)
 	}
 }
 
@@ -212,7 +214,8 @@ func BenchmarkCheckCHAPPassword(b *testing.B) {
 	chapPassword := GenerateCHAPResponse(0x01, password, challenge)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	b.ReportAllocs()
+	for b.Loop() {
 		_ = CheckCHAPPassword(chapPassword, password, challenge)
 	}
 }

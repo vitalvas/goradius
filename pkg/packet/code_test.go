@@ -316,3 +316,59 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkCodeString(b *testing.B) {
+	codes := []Code{
+		CodeAccessRequest,
+		CodeAccessAccept,
+		CodeAccountingRequest,
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, c := range codes {
+			_ = c.String()
+		}
+	}
+}
+
+func BenchmarkCodeIsValid(b *testing.B) {
+	codes := []Code{
+		CodeAccessRequest,
+		CodeAccessAccept,
+		Code(99),
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, c := range codes {
+			_ = c.IsValid()
+		}
+	}
+}
+
+func BenchmarkCodeIsRequest(b *testing.B) {
+	codes := []Code{
+		CodeAccessRequest,
+		CodeAccessAccept,
+		CodeAccountingRequest,
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, c := range codes {
+			_ = c.IsRequest()
+		}
+	}
+}
+
+func BenchmarkCodeIsReply(b *testing.B) {
+	codes := []Code{
+		CodeAccessRequest,
+		CodeAccessAccept,
+		CodeAccountingResponse,
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, c := range codes {
+			_ = c.IsReply()
+		}
+	}
+}

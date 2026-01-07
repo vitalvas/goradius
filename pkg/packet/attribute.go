@@ -2,6 +2,8 @@ package packet
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Attribute represents a RADIUS attribute per RFC 2865 Section 5
@@ -88,20 +90,85 @@ func (va *VendorAttribute) GetValue() []byte {
 	return va.Value
 }
 
+// hexTable is the hexadecimal encoding table for fast encoding
+const hexTable = "0123456789abcdef"
+
 // String returns a string representation of the attribute
 func (a *Attribute) String() string {
+	var value []byte
 	if a.Tag != 0 {
-		return fmt.Sprintf("Type=%d, Tag=%d, Length=%d, Value=%x", a.Type, a.Tag, a.Length, a.GetValue())
+		value = a.GetValue()
+	} else {
+		value = a.Value
 	}
-	return fmt.Sprintf("Type=%d, Length=%d, Value=%x", a.Type, a.Length, a.Value)
+
+	// Calculate exact size needed
+	size := 5 + 10 + 9 + 10 + 7 + len(value)*2 // "Type=" + max_uint8 + ", Length=" + max_uint8 + ", Value=" + hex
+	if a.Tag != 0 {
+		size += 6 + 10 // ", Tag=" + max_uint8
+	}
+
+	var b strings.Builder
+	b.Grow(size)
+
+	b.WriteString("Type=")
+	b.WriteString(strconv.FormatUint(uint64(a.Type), 10))
+
+	if a.Tag != 0 {
+		b.WriteString(", Tag=")
+		b.WriteString(strconv.FormatUint(uint64(a.Tag), 10))
+	}
+
+	b.WriteString(", Length=")
+	b.WriteString(strconv.FormatUint(uint64(a.Length), 10))
+	b.WriteString(", Value=")
+
+	// Write hex directly to builder without allocating intermediate string
+	for _, v := range value {
+		b.WriteByte(hexTable[v>>4])
+		b.WriteByte(hexTable[v&0x0f])
+	}
+
+	return b.String()
 }
 
 // String returns a string representation of the vendor attribute
 func (va *VendorAttribute) String() string {
+	var value []byte
 	if va.Tag != 0 {
-		return fmt.Sprintf("VendorID=%d, Type=%d, Tag=%d, Value=%x", va.VendorID, va.VendorType, va.Tag, va.GetValue())
+		value = va.GetValue()
+	} else {
+		value = va.Value
 	}
-	return fmt.Sprintf("VendorID=%d, Type=%d, Value=%x", va.VendorID, va.VendorType, va.Value)
+
+	// Calculate exact size needed
+	size := 9 + 10 + 7 + 3 + 8 + len(value)*2 // "VendorID=" + max_uint32 + ", Type=" + max_uint8 + ", Value=" + hex
+	if va.Tag != 0 {
+		size += 6 + 3 // ", Tag=" + max_uint8
+	}
+
+	var b strings.Builder
+	b.Grow(size)
+
+	b.WriteString("VendorID=")
+	b.WriteString(strconv.FormatUint(uint64(va.VendorID), 10))
+	b.WriteString(", Type=")
+	b.WriteString(strconv.FormatUint(uint64(va.VendorType), 10))
+
+	if va.Tag != 0 {
+		b.WriteString(", Tag=")
+		b.WriteString(strconv.FormatUint(uint64(va.Tag), 10))
+	}
+
+	b.WriteString(", Value=")
+
+	// Write hex directly to builder without allocating intermediate string
+	for _, v := range value {
+		b.WriteByte(hexTable[v>>4])
+		b.WriteByte(hexTable[v&0x0f])
+	}
+
+	return b.String()
 }
 
 // ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific) per RFC 2865 Section 5.26

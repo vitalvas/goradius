@@ -22,8 +22,19 @@ func DecodeString(data []byte) string {
 // EncodeInteger encodes a 32-bit integer value for RADIUS attributes per RFC 2865 Section 5
 func EncodeInteger(value uint32) []byte {
 	data := make([]byte, 4)
-	binary.BigEndian.PutUint32(data, value)
+	data[0] = byte(value >> 24)
+	data[1] = byte(value >> 16)
+	data[2] = byte(value >> 8)
+	data[3] = byte(value)
 	return data
+}
+
+// EncodeIntegerTo encodes a 32-bit integer into a pre-allocated buffer (must be at least 4 bytes)
+func EncodeIntegerTo(dst []byte, value uint32) {
+	dst[0] = byte(value >> 24)
+	dst[1] = byte(value >> 16)
+	dst[2] = byte(value >> 8)
+	dst[3] = byte(value)
 }
 
 // DecodeInteger decodes a 32-bit integer value from RADIUS attributes per RFC 2865 Section 5
@@ -71,7 +82,12 @@ func DecodeIPv6Addr(data []byte) (net.IP, error) {
 // EncodeDate encodes a Unix timestamp for RADIUS attributes per RFC 2865 Section 5
 func EncodeDate(t time.Time) []byte {
 	timestamp := uint32(t.Unix())
-	return EncodeInteger(timestamp)
+	data := make([]byte, 4)
+	data[0] = byte(timestamp >> 24)
+	data[1] = byte(timestamp >> 16)
+	data[2] = byte(timestamp >> 8)
+	data[3] = byte(timestamp)
+	return data
 }
 
 // DecodeDate decodes a Unix timestamp from RADIUS attributes per RFC 2865 Section 5
@@ -94,7 +110,7 @@ func DecodeOctets(data []byte) []byte {
 }
 
 // EncodeValue encodes a value based on the attribute data type
-func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error) {
+func EncodeValue(value any, dataType dictionary.DataType) ([]byte, error) {
 	switch dataType {
 	case dictionary.DataTypeString:
 		if s, ok := value.(string); ok {
@@ -158,7 +174,7 @@ func EncodeValue(value interface{}, dataType dictionary.DataType) ([]byte, error
 }
 
 // DecodeValue decodes a value based on the attribute data type
-func DecodeValue(data []byte, dataType dictionary.DataType) (interface{}, error) {
+func DecodeValue(data []byte, dataType dictionary.DataType) (any, error) {
 	switch dataType {
 	case dictionary.DataTypeString:
 		return DecodeString(data), nil

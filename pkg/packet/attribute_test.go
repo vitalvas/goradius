@@ -288,3 +288,144 @@ func TestVSARoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkNewAttribute(b *testing.B) {
+	value := []byte("testvalue")
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = NewAttribute(1, value)
+	}
+}
+
+func BenchmarkNewTaggedAttribute(b *testing.B) {
+	value := []byte("testvalue")
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = NewTaggedAttribute(64, 5, value)
+	}
+}
+
+func BenchmarkNewVendorAttribute(b *testing.B) {
+	value := []byte("testvalue")
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = NewVendorAttribute(4874, 13, value)
+	}
+}
+
+func BenchmarkNewTaggedVendorAttribute(b *testing.B) {
+	value := []byte("testvalue")
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = NewTaggedVendorAttribute(4874, 1, 3, value)
+	}
+}
+
+func BenchmarkAttributeGetValue(b *testing.B) {
+	b.Run("regular", func(b *testing.B) {
+		attr := NewAttribute(1, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = attr.GetValue()
+		}
+	})
+
+	b.Run("tagged", func(b *testing.B) {
+		attr := NewTaggedAttribute(64, 5, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = attr.GetValue()
+		}
+	})
+}
+
+func BenchmarkVendorAttributeGetValue(b *testing.B) {
+	b.Run("regular", func(b *testing.B) {
+		va := NewVendorAttribute(4874, 13, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = va.GetValue()
+		}
+	})
+
+	b.Run("tagged", func(b *testing.B) {
+		va := NewTaggedVendorAttribute(4874, 1, 3, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = va.GetValue()
+		}
+	})
+}
+
+func BenchmarkAttributeString(b *testing.B) {
+	b.Run("regular", func(b *testing.B) {
+		attr := NewAttribute(1, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = attr.String()
+		}
+	})
+
+	b.Run("tagged", func(b *testing.B) {
+		attr := NewTaggedAttribute(64, 5, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = attr.String()
+		}
+	})
+}
+
+func BenchmarkVendorAttributeString(b *testing.B) {
+	b.Run("regular", func(b *testing.B) {
+		va := NewVendorAttribute(4874, 13, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = va.String()
+		}
+	})
+
+	b.Run("tagged", func(b *testing.B) {
+		va := NewTaggedVendorAttribute(4874, 1, 3, []byte("testvalue"))
+		b.ResetTimer()
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = va.String()
+		}
+	})
+}
+
+func BenchmarkVendorAttributeToVSA(b *testing.B) {
+	va := NewVendorAttribute(4874, 13, []byte("8.8.8.8"))
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = va.ToVSA()
+	}
+}
+
+func BenchmarkParseVSA(b *testing.B) {
+	va := NewVendorAttribute(4874, 13, []byte("testvalue"))
+	attr := va.ToVSA()
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = ParseVSA(attr)
+	}
+}
+
+func BenchmarkVSARoundTrip(b *testing.B) {
+	value := []byte("testvalue")
+	b.ReportAllocs()
+	for b.Loop() {
+		va := NewVendorAttribute(4874, 13, value)
+		attr := va.ToVSA()
+		_, _ = ParseVSA(attr)
+	}
+}

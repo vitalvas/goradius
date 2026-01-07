@@ -133,3 +133,30 @@ func TestNewDefaultEnumeratedValues(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkNewDefault(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = NewDefault()
+	}
+}
+
+func BenchmarkNewDefaultLookupStandard(b *testing.B) {
+	dict, _ := NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = dict.LookupStandardByName("User-Name")
+	}
+}
+
+func BenchmarkNewDefaultLookupVendor(b *testing.B) {
+	dict, _ := NewDefault()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = dict.LookupByAttributeName("Juniper-User-Permissions")
+	}
+}
