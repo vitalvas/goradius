@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/vitalvas/goradius/pkg/server"
+	"github.com/vitalvas/goradius"
 )
 
 type AuditLog struct {
@@ -21,9 +21,9 @@ type AuditPacket struct {
 	Attributes map[string][]string `json:"attributes"`
 }
 
-func auditMiddleware(writer io.Writer) server.Middleware {
-	return func(next server.Handler) server.Handler {
-		return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+func auditMiddleware(writer io.Writer) goradius.Middleware {
+	return func(next goradius.Handler) goradius.Handler {
+		return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 			resp, err := next.ServeRADIUS(req)
 
 			auditLog := AuditLog{
@@ -50,7 +50,7 @@ func auditMiddleware(writer io.Writer) server.Middleware {
 	}
 }
 
-func collectAttributes(req *server.Request) map[string][]string {
+func collectAttributes(req *goradius.Request) map[string][]string {
 	attrs := make(map[string][]string)
 
 	for _, name := range req.ListAttributes() {
@@ -65,7 +65,7 @@ func collectAttributes(req *server.Request) map[string][]string {
 	return attrs
 }
 
-func collectAttributesFromResponse(resp *server.Response) map[string][]string {
+func collectAttributesFromResponse(resp *goradius.Response) map[string][]string {
 	attrs := make(map[string][]string)
 
 	for _, name := range resp.ListAttributes() {

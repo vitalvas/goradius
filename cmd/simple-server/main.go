@@ -5,16 +5,15 @@ import (
 	"log"
 	"net"
 
-	"github.com/vitalvas/goradius/pkg/packet"
-	"github.com/vitalvas/goradius/pkg/server"
+	"github.com/vitalvas/goradius"
 )
 
 type simpleHandler struct{}
 
-func (h *simpleHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+func (h *simpleHandler) ServeSecret(req goradius.SecretRequest) (goradius.SecretResponse, error) {
 	fmt.Printf("Received secret request from %s\n", req.RemoteAddr)
 
-	return server.SecretResponse{
+	return goradius.SecretResponse{
 		Secret: []byte("testing123"),
 		Metadata: map[string]interface{}{
 			"client":  req.RemoteAddr.String(),
@@ -23,7 +22,7 @@ func (h *simpleHandler) ServeSecret(req server.SecretRequest) (server.SecretResp
 	}, nil
 }
 
-func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+func (h *simpleHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
 	fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
 	// Access metadata from the secret response
@@ -49,14 +48,14 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 		fmt.Printf("NAS IP: %s\n", nasIPValues[0].String())
 	}
 
-	resp := server.NewResponse(req)
+	resp := goradius.NewResponse(req)
 
 	// Set appropriate response code based on request type
 	switch req.Code() {
-	case packet.CodeAccessRequest:
-		resp.SetCode(packet.CodeAccessAccept)
-	case packet.CodeAccountingRequest:
-		resp.SetCode(packet.CodeAccountingResponse)
+	case goradius.CodeAccessRequest:
+		resp.SetCode(goradius.CodeAccessAccept)
+	case goradius.CodeAccountingRequest:
+		resp.SetCode(goradius.CodeAccountingResponse)
 	}
 
 	attrs := map[string][]interface{}{
@@ -83,11 +82,11 @@ func (h *simpleHandler) ServeRADIUS(req *server.Request) (server.Response, error
 	return resp, nil
 }
 
-func validationMiddleware(next server.Handler) server.Handler {
-	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
-		if req.Code() != packet.CodeAccessRequest {
+func validationMiddleware(next goradius.Handler) goradius.Handler {
+	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
+		if req.Code() != goradius.CodeAccessRequest {
 			// do not response for non Access-Request packets
-			return server.Response{}, nil
+			return goradius.Response{}, nil
 		}
 
 		return next.ServeRADIUS(req)
@@ -95,7 +94,7 @@ func validationMiddleware(next server.Handler) server.Handler {
 }
 
 func main() {
-	srv, err := server.New(server.Config{
+	srv, err := goradius.NewServer(goradius.ServerConfig{
 		Handler: &simpleHandler{},
 	})
 	if err != nil {
@@ -111,6 +110,6 @@ func main() {
 	}
 
 	fmt.Println("RADIUS server listening on :1812")
-	transport := server.NewUDPTransport(conn)
+	transport := goradius.NewUDPTransport(conn)
 	log.Fatal(srv.Serve(transport))
 }

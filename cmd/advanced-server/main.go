@@ -7,16 +7,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/vitalvas/goradius/pkg/packet"
-	"github.com/vitalvas/goradius/pkg/server"
+	"github.com/vitalvas/goradius"
 )
 
 type advancedHandler struct{}
 
-func (h *advancedHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+func (h *advancedHandler) ServeSecret(req goradius.SecretRequest) (goradius.SecretResponse, error) {
 	fmt.Printf("[Secret] Request from %s\n", req.RemoteAddr)
 
-	return server.SecretResponse{
+	return goradius.SecretResponse{
 		Secret: []byte("testing123"),
 		Metadata: map[string]interface{}{
 			"client":  req.RemoteAddr.String(),
@@ -25,7 +24,7 @@ func (h *advancedHandler) ServeSecret(req server.SecretRequest) (server.SecretRe
 	}, nil
 }
 
-func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+func (h *advancedHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
 	fmt.Printf("[Handler] Processing %s from %s\n", req.Code().String(), req.RemoteAddr)
 
 	// Get user information
@@ -33,14 +32,14 @@ func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, err
 		fmt.Printf("[Handler] User: %s\n", userValues[0].String())
 	}
 
-	resp := server.NewResponse(req)
+	resp := goradius.NewResponse(req)
 
 	// Set appropriate response code based on request type
 	switch req.Code() {
-	case packet.CodeAccessRequest:
-		resp.SetCode(packet.CodeAccessAccept)
-	case packet.CodeAccountingRequest:
-		resp.SetCode(packet.CodeAccountingResponse)
+	case goradius.CodeAccessRequest:
+		resp.SetCode(goradius.CodeAccessAccept)
+	case goradius.CodeAccountingRequest:
+		resp.SetCode(goradius.CodeAccountingResponse)
 	}
 
 	// Add response attributes
@@ -58,8 +57,8 @@ func (h *advancedHandler) ServeRADIUS(req *server.Request) (server.Response, err
 }
 
 // Logging middleware
-func loggingMiddleware(next server.Handler) server.Handler {
-	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+func loggingMiddleware(next goradius.Handler) goradius.Handler {
+	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 		start := time.Now()
 
 		fmt.Printf("[Middleware:Logging] >>> Request started: %s from %s\n",
@@ -80,8 +79,8 @@ func loggingMiddleware(next server.Handler) server.Handler {
 }
 
 // Attribute listing middleware
-func attributeListMiddleware(next server.Handler) server.Handler {
-	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+func attributeListMiddleware(next goradius.Handler) goradius.Handler {
+	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 		attrs := req.ListAttributes()
 		if len(attrs) > 0 {
 			fmt.Printf("[Middleware:Attributes] Request contains: %v\n", attrs)
@@ -101,16 +100,16 @@ func attributeListMiddleware(next server.Handler) server.Handler {
 }
 
 // Validation middleware
-func validationMiddleware(next server.Handler) server.Handler {
-	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+func validationMiddleware(next goradius.Handler) goradius.Handler {
+	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 		// Validate User-Name is present for Access-Request
-		if req.Code() == packet.CodeAccessRequest {
+		if req.Code() == goradius.CodeAccessRequest {
 			userValues := req.GetAttribute("User-Name")
 			if len(userValues) == 0 {
 				fmt.Println("[Middleware:Validation] ERROR: User-Name is required")
 				// Return Access-Reject
-				resp := server.NewResponse(req)
-				resp.SetCode(packet.CodeAccessReject)
+				resp := goradius.NewResponse(req)
+				resp.SetCode(goradius.CodeAccessReject)
 				if err := resp.SetAttribute("Reply-Message", "User-Name is required"); err != nil {
 					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
 				}
@@ -120,8 +119,8 @@ func validationMiddleware(next server.Handler) server.Handler {
 			username := userValues[0].String()
 			if len(username) == 0 {
 				fmt.Println("[Middleware:Validation] ERROR: User-Name cannot be empty")
-				resp := server.NewResponse(req)
-				resp.SetCode(packet.CodeAccessReject)
+				resp := goradius.NewResponse(req)
+				resp.SetCode(goradius.CodeAccessReject)
 				if err := resp.SetAttribute("Reply-Message", "User-Name cannot be empty"); err != nil {
 					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
 				}
@@ -136,7 +135,7 @@ func validationMiddleware(next server.Handler) server.Handler {
 }
 
 // Statistics middleware
-func statisticsMiddleware(next server.Handler) server.Handler {
+func statisticsMiddleware(next goradius.Handler) goradius.Handler {
 	var (
 		totalRequests   int
 		acceptedCount   int
@@ -144,18 +143,18 @@ func statisticsMiddleware(next server.Handler) server.Handler {
 		accountingCount int
 	)
 
-	return server.HandlerFunc(func(req *server.Request) (server.Response, error) {
+	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 		totalRequests++
 
 		resp, err := next.ServeRADIUS(req)
 
 		if err == nil {
 			switch resp.Code() {
-			case packet.CodeAccessAccept:
+			case goradius.CodeAccessAccept:
 				acceptedCount++
-			case packet.CodeAccessReject:
+			case goradius.CodeAccessReject:
 				rejectedCount++
-			case packet.CodeAccountingResponse:
+			case goradius.CodeAccountingResponse:
 				accountingCount++
 			}
 		}
@@ -169,7 +168,7 @@ func statisticsMiddleware(next server.Handler) server.Handler {
 
 func main() {
 	// Create server
-	srv, err := server.New(server.Config{
+	srv, err := goradius.NewServer(goradius.ServerConfig{
 		Handler: &advancedHandler{},
 	})
 	if err != nil {
@@ -201,6 +200,6 @@ func main() {
 	fmt.Println("  5. Attribute List - Shows all request attributes")
 	fmt.Println("=======================================================")
 
-	transport := server.NewUDPTransport(conn)
+	transport := goradius.NewUDPTransport(conn)
 	log.Fatal(srv.Serve(transport))
 }

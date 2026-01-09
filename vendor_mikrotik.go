@@ -1,0 +1,51 @@
+package goradius
+
+
+// MikrotikVendorDefinition defines the Mikrotik vendor and its attributes
+var MikrotikVendorDefinition = &VendorDefinition{
+	ID:          14988,
+	Name:        "Mikrotik",
+	Description: "Mikrotik RouterOS RADIUS attributes",
+	Attributes: []*AttributeDefinition{
+		{ID: 1, Name: "Mikrotik-Recv-Limit", DataType: DataTypeInteger},
+		{ID: 2, Name: "Mikrotik-Xmit-Limit", DataType: DataTypeInteger},
+		{ID: 3, Name: "Mikrotik-Group", DataType: DataTypeString},
+		{ID: 4, Name: "Mikrotik-Wireless-Forward", DataType: DataTypeInteger},
+		{ID: 5, Name: "Mikrotik-Wireless-Skip-Dot1x", DataType: DataTypeInteger},
+		{
+			ID:       6,
+			Name:     "Mikrotik-Wireless-Enc-Algo",
+			DataType: DataTypeInteger,
+			Values: map[string]uint32{
+				"No-encryption": 0,
+				"40-bit-WEP":    1,
+				"104-bit-WEP":   2,
+				"AES-CCM":       3,
+				"TKIP":          4,
+			},
+		},
+		{ID: 7, Name: "Mikrotik-Wireless-Enc-Key", DataType: DataTypeString},
+		{ID: 8, Name: "Mikrotik-Rate-Limit", DataType: DataTypeString},
+		{ID: 9, Name: "Mikrotik-Realm", DataType: DataTypeString},
+		{ID: 10, Name: "Mikrotik-Host-IP", DataType: DataTypeIPAddr},
+		{ID: 11, Name: "Mikrotik-Mark-Id", DataType: DataTypeString},
+		{ID: 12, Name: "Mikrotik-Advertise-URL", DataType: DataTypeString},
+		{ID: 13, Name: "Mikrotik-Advertise-Interval", DataType: DataTypeInteger},
+		{ID: 14, Name: "Mikrotik-Recv-Limit-Gigawords", DataType: DataTypeInteger},
+		{ID: 15, Name: "Mikrotik-Xmit-Limit-Gigawords", DataType: DataTypeInteger},
+		{ID: 16, Name: "Mikrotik-Wireless-PSK", DataType: DataTypeString},
+		{ID: 17, Name: "Mikrotik-Total-Limit", DataType: DataTypeInteger},
+		{ID: 18, Name: "Mikrotik-Total-Limit-Gigawords", DataType: DataTypeInteger},
+		{ID: 19, Name: "Mikrotik-Address-List", DataType: DataTypeString},
+		{ID: 20, Name: "Mikrotik-Wireless-MPKey", DataType: DataTypeString},
+		{ID: 21, Name: "Mikrotik-Wireless-Comment", DataType: DataTypeString},
+		{ID: 22, Name: "Mikrotik-Delegated-IPv6-Pool", DataType: DataTypeString},
+		{ID: 23, Name: "Mikrotik-DHCP-Option-Set", DataType: DataTypeString},
+		{ID: 24, Name: "Mikrotik-DHCP-Option-Param-STR1", DataType: DataTypeString},
+		{ID: 25, Name: "Mikrotik-DHCP-Option-ParamSTR2", DataType: DataTypeString},
+		{ID: 26, Name: "Mikrotik-Wireless-VLANID", DataType: DataTypeInteger},
+		{ID: 27, Name: "Mikrotik-Wireless-VLANID-Type", DataType: DataTypeInteger},
+		{ID: 28, Name: "Mikrotik-Wireless-Minsignal", DataType: DataTypeString},
+		{ID: 29, Name: "Mikrotik-Wireless-Maxsignal", DataType: DataTypeString},
+	},
+}

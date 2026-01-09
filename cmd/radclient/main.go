@@ -9,9 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vitalvas/goradius/pkg/client"
-	"github.com/vitalvas/goradius/pkg/dictionaries"
-	"github.com/vitalvas/goradius/pkg/packet"
+	"github.com/vitalvas/goradius"
 )
 
 func parseAttributes(scanner *bufio.Scanner) (map[string]interface{}, error) {
@@ -83,7 +81,7 @@ func main() {
 		*server += ":3799"
 	}
 
-	dict, err := dictionaries.NewDefault()
+	dict, err := goradius.NewDefault()
 	if err != nil {
 		log.Fatalf("Failed to load dictionary: %v", err)
 	}
@@ -98,7 +96,7 @@ func main() {
 		log.Fatal("Error: No attributes provided")
 	}
 
-	cl, err := client.New(client.Config{
+	cl, err := goradius.NewClient(goradius.ClientConfig{
 		Addr:       *server,
 		Secret:     []byte(*secret),
 		Dictionary: dict,
@@ -107,7 +105,7 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	var resp *packet.Packet
+	var resp *goradius.Packet
 
 	switch *action {
 	case "coa":
@@ -132,7 +130,7 @@ func main() {
 		}
 	}
 
-	if resp.Code == packet.CodeCoAACK || resp.Code == packet.CodeDisconnectACK {
+	if resp.Code == goradius.CodeCoAACK || resp.Code == goradius.CodeDisconnectACK {
 		os.Exit(0)
 	}
 	os.Exit(1)
