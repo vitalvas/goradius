@@ -90,17 +90,11 @@ GoRADIUS centers around three layers:
 
 ## Package Structure
 
-### Core Packages
-
-- **`pkg/packet`**: RADIUS packet encoding, decoding, and attribute handling
-- **`pkg/server`**: Simple RADIUS UDP server implementation
-- **`pkg/client`**: Full RADIUS client (Access, Accounting, CoA/Disconnect)
-- **`pkg/dictionary`**: In-memory attribute dictionary with fast lookups
-- **`pkg/dictionaries`**: Built-in RFC and vendor dictionary definitions
+GoRADIUS uses a flat package structure where all types and functions are exported from the root `goradius` package.
 
 ### Key Components
 
-#### Packet Processing (pkg/packet)
+#### Packet Processing
 - Packet encoding/decoding (Encode/Decode)
 - Attribute creation and manipulation
 - Vendor-Specific Attribute (VSA) support
@@ -110,7 +104,7 @@ GoRADIUS centers around three layers:
 - Message-Authenticator calculation and verification (HMAC-MD5)
 - Password encryption (User-Password, Tunnel-Password, Ascend-Secret)
 
-#### Dictionary System (pkg/dictionary)
+#### Dictionary System
 - Fast O(1) lookups by attribute ID or name
 - Vendor attribute lookups
 - Standard RFC attributes
@@ -119,8 +113,9 @@ GoRADIUS centers around three layers:
 - Encryption type support
 - Enumerated values
 
-#### Server (pkg/server)
+#### Server
 - Multi-transport RADIUS server (UDP, TCP, TLS)
+- Functional options configuration pattern
 - Transport interface for pluggable network backends
 - Handler interface for request processing
 - Middleware support
@@ -128,7 +123,8 @@ GoRADIUS centers around three layers:
 - Response helper functions
 - Graceful shutdown
 
-#### Client (pkg/client)
+#### Client
+- Functional options configuration pattern
 - Access-Request for authentication
 - Accounting-Request for accounting (Start, Stop, Interim-Update)
 - CoA (Change-of-Authorization) request support
@@ -137,7 +133,7 @@ GoRADIUS centers around three layers:
 - Dictionary-based attribute handling
 - Automatic authenticator generation
 
-#### Built-in Dictionaries (pkg/dictionaries)
+#### Built-in Dictionaries
 - Standard RFC attributes (RFC 2865, 2866, etc.)
 - Juniper ERX vendor attributes
 - Ascend vendor attributes

@@ -14,18 +14,16 @@ import (
     "log"
     "net"
 
-    "github.com/vitalvas/goradius/pkg/dictionaries"
-    "github.com/vitalvas/goradius/pkg/packet"
-    "github.com/vitalvas/goradius/pkg/server"
+    "github.com/vitalvas/goradius"
 )
 
 type myHandler struct{}
 
-func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+func (h *myHandler) ServeSecret(req goradius.SecretRequest) (goradius.SecretResponse, error) {
     fmt.Printf("Secret request from %s\n", req.RemoteAddr)
 
     // Return shared secret for this client
-    return server.SecretResponse{
+    return goradius.SecretResponse{
         Secret: []byte("testing123"),
         Metadata: map[string]interface{}{
             "client":  req.RemoteAddr.String(),
@@ -34,19 +32,19 @@ func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse
     }, nil
 }
 
-func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
+func (h *myHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
     fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
-    resp := server.NewResponse(req)
+    resp := goradius.NewResponse(req)
 
     // Handle different request types
     switch req.Code() {
-    case packet.CodeAccessRequest:
-        resp.SetCode(packet.CodeAccessAccept)
+    case goradius.CodeAccessRequest:
+        resp.SetCode(goradius.CodeAccessAccept)
         resp.SetAttribute("Reply-Message", "Access granted")
 
-    case packet.CodeAccountingRequest:
-        resp.SetCode(packet.CodeAccountingResponse)
+    case goradius.CodeAccountingRequest:
+        resp.SetCode(goradius.CodeAccountingResponse)
     }
 
     return resp, nil
@@ -54,16 +52,16 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 
 func main() {
     // Create dictionary with standard attributes and common vendors
-    dict, err := dictionaries.NewDefault()
+    dict, err := goradius.NewDefault()
     if err != nil {
         log.Fatal(err)
     }
 
-    // Create server
-    srv, err := server.New(server.Config{
-        Handler:    &myHandler{},
-        Dictionary: dict,
-    })
+    // Create server using functional options
+    srv, err := goradius.NewServer(
+        goradius.WithHandler(&myHandler{}),
+        goradius.WithDictionary(dict),
+    )
     if err != nil {
         log.Fatal(err)
     }
@@ -75,7 +73,7 @@ func main() {
     }
 
     fmt.Println("RADIUS server listening on :1812")
-    transport := server.NewUDPTransport(conn)
+    transport := goradius.NewUDPTransport(conn)
     log.Fatal(srv.Serve(transport))
 }
 ```
@@ -100,11 +98,11 @@ type SecretResponse struct {
     Metadata map[string]interface{}
 }
 
-func (h *myHandler) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+func (h *myHandler) ServeSecret(req goradius.SecretRequest) (goradius.SecretResponse, error) {
     // Lookup secret based on client address
     secret := lookupSecretForClient(req.RemoteAddr.String())
 
-    return server.SecretResponse{
+    return goradius.SecretResponse{
         Secret: []byte(secret),
         Metadata: map[string]interface{}{
             "client": req.RemoteAddr.String(),
@@ -122,26 +120,26 @@ type Request struct {
     Context    context.Context
     LocalAddr  net.Addr
     RemoteAddr net.Addr
-    Packet     *packet.Packet
+    Packet     *goradius.Packet
     Secret     SecretResponse
 }
 
-func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-    resp := server.NewResponse(req)
+func (h *myHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
+    resp := goradius.NewResponse(req)
 
     switch req.Code() {
-    case packet.CodeAccessRequest:
+    case goradius.CodeAccessRequest:
         // Authenticate user
         if authenticateUser(req) {
-            resp.SetCode(packet.CodeAccessAccept)
+            resp.SetCode(goradius.CodeAccessAccept)
         } else {
-            resp.SetCode(packet.CodeAccessReject)
+            resp.SetCode(goradius.CodeAccessReject)
         }
 
-    case packet.CodeAccountingRequest:
+    case goradius.CodeAccountingRequest:
         // Handle accounting
         handleAccounting(req)
-        resp.SetCode(packet.CodeAccountingResponse)
+        resp.SetCode(goradius.CodeAccountingResponse)
     }
 
     return resp, nil
@@ -157,9 +155,9 @@ The Response object provides convenient methods:
 Set the response packet code:
 
 ```go
-resp.SetCode(packet.CodeAccessAccept)
-resp.SetCode(packet.CodeAccessReject)
-resp.SetCode(packet.CodeAccountingResponse)
+resp.SetCode(goradius.CodeAccessAccept)
+resp.SetCode(goradius.CodeAccessReject)
+resp.SetCode(goradius.CodeAccountingResponse)
 ```
 
 ### SetAttribute
@@ -190,17 +188,17 @@ resp.SetAttributes(attrs)
 ## Authentication Example
 
 ```go
-func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-    resp := server.NewResponse(req)
+func (h *myHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
+    resp := goradius.NewResponse(req)
 
-    if req.Code() != packet.CodeAccessRequest {
+    if req.Code() != goradius.CodeAccessRequest {
         return resp, nil
     }
 
     // Get username using Request API
     usernames := req.GetAttribute("User-Name")
     if len(usernames) == 0 {
-        resp.SetCode(packet.CodeAccessReject)
+        resp.SetCode(goradius.CodeAccessReject)
         resp.SetAttribute("Reply-Message", "Username required")
         return resp, nil
     }
@@ -208,7 +206,7 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 
     // Authenticate (implement your logic)
     if authenticateUser(username, req.Secret.Secret) {
-        resp.SetCode(packet.CodeAccessAccept)
+        resp.SetCode(goradius.CodeAccessAccept)
         resp.SetAttribute("Reply-Message", "Access granted")
 
         // Add service attributes
@@ -218,7 +216,7 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
         }
         resp.SetAttributes(attrs)
     } else {
-        resp.SetCode(packet.CodeAccessReject)
+        resp.SetCode(goradius.CodeAccessReject)
         resp.SetAttribute("Reply-Message", "Authentication failed")
     }
 
@@ -229,10 +227,10 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
 ## Accounting Example
 
 ```go
-func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
-    resp := server.NewResponse(req)
+func (h *myHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
+    resp := goradius.NewResponse(req)
 
-    if req.Code() != packet.CodeAccountingRequest {
+    if req.Code() != goradius.CodeAccountingRequest {
         return resp, nil
     }
 
@@ -253,11 +251,11 @@ func (h *myHandler) ServeRADIUS(req *server.Request) (server.Response, error) {
         handleAccountingUpdate(req)
     }
 
-    resp.SetCode(packet.CodeAccountingResponse)
+    resp.SetCode(goradius.CodeAccountingResponse)
     return resp, nil
 }
 
-func handleAccountingStart(req *server.Request) {
+func handleAccountingStart(req *goradius.Request) {
     // Get session ID using Request API
     sessions := req.GetAttribute("Acct-Session-ID")
     if len(sessions) > 0 {
@@ -267,7 +265,7 @@ func handleAccountingStart(req *server.Request) {
     }
 }
 
-func handleAccountingStop(req *server.Request) {
+func handleAccountingStop(req *goradius.Request) {
     // Get session statistics using Request API
     sessions := req.GetAttribute("Acct-Session-ID")
     inputOctets := req.GetAttribute("Acct-Input-Octets")
@@ -295,9 +293,9 @@ The server supports multiple transport protocols through the Transport interface
 For standard RADIUS over UDP:
 
 ```go
-srv, err := server.New(server.Config{
-    Handler: handler,
-})
+srv, err := goradius.NewServer(
+    goradius.WithHandler(handler),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -307,7 +305,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-transport := server.NewUDPTransport(conn)
+transport := goradius.NewUDPTransport(conn)
 log.Fatal(srv.Serve(transport))
 ```
 
@@ -316,9 +314,9 @@ log.Fatal(srv.Serve(transport))
 For RADIUS over TCP (RFC 6613):
 
 ```go
-srv, err := server.New(server.Config{
-    Handler: handler,
-})
+srv, err := goradius.NewServer(
+    goradius.WithHandler(handler),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -328,7 +326,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-transport := server.NewTCPTransport(listener)
+transport := goradius.NewTCPTransport(listener)
 log.Fatal(srv.Serve(transport))
 ```
 
@@ -337,9 +335,9 @@ log.Fatal(srv.Serve(transport))
 For RADIUS over TLS (RFC 6614, RadSec):
 
 ```go
-srv, err := server.New(server.Config{
-    Handler: handler,
-})
+srv, err := goradius.NewServer(
+    goradius.WithHandler(handler),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -359,7 +357,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-transport := server.NewTCPTransport(listener)
+transport := goradius.NewTCPTransport(listener)
 log.Fatal(srv.Serve(transport))
 ```
 
@@ -396,7 +394,7 @@ func NewSecretStore() *SecretStore {
     }
 }
 
-func (s *SecretStore) ServeSecret(req server.SecretRequest) (server.SecretResponse, error) {
+func (s *SecretStore) ServeSecret(req goradius.SecretRequest) (goradius.SecretResponse, error) {
     clientIP := req.RemoteAddr.(*net.UDPAddr).IP.String()
 
     secret, found := s.secrets[clientIP]
@@ -405,7 +403,7 @@ func (s *SecretStore) ServeSecret(req server.SecretRequest) (server.SecretRespon
         secret = "default-secret"
     }
 
-    return server.SecretResponse{
+    return goradius.SecretResponse{
         Secret: []byte(secret),
         Metadata: map[string]interface{}{
             "client": clientIP,
@@ -419,10 +417,10 @@ func (s *SecretStore) ServeSecret(req server.SecretRequest) (server.SecretRespon
 ### Graceful Shutdown
 
 ```go
-srv, err := server.New(server.Config{
-    Handler:    handler,
-    Dictionary: dict,
-})
+srv, err := goradius.NewServer(
+    goradius.WithHandler(handler),
+    goradius.WithDictionary(dict),
+)
 if err != nil {
     log.Fatal(err)
 }
@@ -432,7 +430,7 @@ conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: 1812})
 if err != nil {
     log.Fatal(err)
 }
-transport := server.NewUDPTransport(conn)
+transport := goradius.NewUDPTransport(conn)
 
 // Start server in goroutine
 go func() {
