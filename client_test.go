@@ -13,11 +13,11 @@ func TestNewClient(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:3799",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:3799"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+	)
 	require.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.Equal(t, "127.0.0.1:3799", client.addr)
@@ -30,12 +30,12 @@ func TestNewWithCustomTimeout(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:3799",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    5 * time.Second,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:3799"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(5*time.Second),
+	)
 	require.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.Equal(t, 5*time.Second, client.timeout)
@@ -73,12 +73,12 @@ func TestCoA(t *testing.T) {
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
 
-	client, err := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, err := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 	require.NoError(t, err)
 
 	resp, err := client.CoA(map[string]interface{}{
@@ -122,12 +122,12 @@ func TestDisconnect(t *testing.T) {
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
 
-	client, err := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, err := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 	require.NoError(t, err)
 
 	resp, err := client.Disconnect(map[string]interface{}{
@@ -142,11 +142,11 @@ func TestCoAWithInvalidAttribute(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:3799",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:3799"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	_, err = client.CoA(map[string]interface{}{
@@ -160,11 +160,11 @@ func TestDisconnectWithInvalidAttribute(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:3799",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:3799"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	_, err = client.Disconnect(map[string]interface{}{
@@ -184,12 +184,12 @@ func TestTimeout(t *testing.T) {
 
 	serverAddr := serverConn.LocalAddr().(*net.UDPAddr)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    100 * time.Millisecond,
-	})
+	client, err := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(100*time.Millisecond),
+	)
 	require.NoError(t, err)
 
 	_, err = client.CoA(map[string]interface{}{
@@ -231,12 +231,12 @@ func TestAccessRequest(t *testing.T) {
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
 
-	client, err := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, err := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 	require.NoError(t, err)
 
 	resp, err := client.AccessRequest(map[string]interface{}{
@@ -280,12 +280,12 @@ func TestAccountingRequest(t *testing.T) {
 		serverConn.WriteToUDP(respData, clientAddr)
 	}()
 
-	client, err := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, err := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 	require.NoError(t, err)
 
 	resp, err := client.AccountingRequest(map[string]interface{}{
@@ -304,11 +304,11 @@ func TestAccessRequestWithInvalidAttribute(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:1812",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:1812"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	_, err = client.AccessRequest(map[string]interface{}{
@@ -322,11 +322,11 @@ func TestAccountingRequestWithInvalidAttribute(t *testing.T) {
 	dict, err := NewDefault()
 	require.NoError(t, err)
 
-	client, err := NewClient(ClientConfig{
-		Addr:       "127.0.0.1:1813",
-		Secret:     []byte("testing123"),
-		Dictionary: dict,
-	})
+	client, err := NewClient(
+		WithAddr("127.0.0.1:1813"),
+		WithSecret([]byte("testing123")),
+		WithClientDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	_, err = client.AccountingRequest(map[string]interface{}{
@@ -344,11 +344,11 @@ func BenchmarkClientNew(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _ = NewClient(ClientConfig{
-			Addr:       "127.0.0.1:1812",
-			Secret:     []byte("testing123"),
-			Dictionary: dict,
-		})
+		_, _ = NewClient(
+			WithAddr("127.0.0.1:1812"),
+			WithSecret([]byte("testing123")),
+			WithClientDictionary(dict),
+		)
 	}
 }
 
@@ -383,12 +383,12 @@ func BenchmarkClientAccessRequest(b *testing.B) {
 		}
 	}()
 
-	client, _ := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     secret,
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, _ := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret(secret),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 
 	attrs := map[string]interface{}{
 		"User-Name":     "testuser",
@@ -433,12 +433,12 @@ func BenchmarkClientAccessRequestParallel(b *testing.B) {
 		}
 	}()
 
-	client, _ := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     secret,
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, _ := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret(secret),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 
 	attrs := map[string]interface{}{
 		"User-Name":     "testuser",
@@ -485,12 +485,12 @@ func BenchmarkClientAccountingRequest(b *testing.B) {
 		}
 	}()
 
-	client, _ := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     secret,
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, _ := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret(secret),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 
 	attrs := map[string]interface{}{
 		"User-Name":         "testuser",
@@ -538,12 +538,12 @@ func BenchmarkClientCoA(b *testing.B) {
 		}
 	}()
 
-	client, _ := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     secret,
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, _ := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret(secret),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 
 	attrs := map[string]interface{}{
 		"User-Name":       "testuser",
@@ -588,12 +588,12 @@ func BenchmarkClientDisconnect(b *testing.B) {
 		}
 	}()
 
-	client, _ := NewClient(ClientConfig{
-		Addr:       serverAddr.String(),
-		Secret:     secret,
-		Dictionary: dict,
-		Timeout:    2 * time.Second,
-	})
+	client, _ := NewClient(
+		WithAddr(serverAddr.String()),
+		WithSecret(secret),
+		WithClientDictionary(dict),
+		WithTimeout(2*time.Second),
+	)
 
 	attrs := map[string]interface{}{
 		"User-Name": "testuser",

@@ -168,9 +168,9 @@ func statisticsMiddleware(next goradius.Handler) goradius.Handler {
 
 func main() {
 	// Create server
-	srv, err := goradius.NewServer(goradius.ServerConfig{
-		Handler: &advancedHandler{},
-	})
+	srv, err := goradius.NewServer(
+		goradius.WithHandler(&advancedHandler{}),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

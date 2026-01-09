@@ -96,11 +96,11 @@ func main() {
 		log.Fatal("Error: No attributes provided")
 	}
 
-	cl, err := goradius.NewClient(goradius.ClientConfig{
-		Addr:       *server,
-		Secret:     []byte(*secret),
-		Dictionary: dict,
-	})
+	cl, err := goradius.NewClient(
+		goradius.WithAddr(*server),
+		goradius.WithSecret([]byte(*secret)),
+		goradius.WithClientDictionary(dict),
+	)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}

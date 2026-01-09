@@ -88,10 +88,10 @@ func TestNewServer(t *testing.T) {
 	dict := NewDictionary()
 	handler := &testHandler{}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
 	assert.Equal(t, handler, srv.handler)
@@ -104,10 +104,10 @@ func TestServerClose(t *testing.T) {
 	dict := NewDictionary()
 	handler := &testHandler{}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	err = srv.Close()
@@ -120,10 +120,10 @@ func TestServerServeStop(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	// Start server in background
@@ -142,10 +142,10 @@ func TestServerHandlePacket(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -203,10 +203,10 @@ func TestServerWithDictionary(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -216,9 +216,9 @@ func TestServerWithDictionary(t *testing.T) {
 func TestServerNilDictionary(t *testing.T) {
 	handler := &testHandler{}
 
-	srv, err := NewServer(ServerConfig{
-		Handler: handler,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -228,10 +228,9 @@ func TestServerNilDictionary(t *testing.T) {
 func TestServerNilHandler(t *testing.T) {
 	dict := NewDictionary()
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    nil,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -258,10 +257,10 @@ func TestServerMiddleware(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -359,10 +358,10 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 		secretResp: SecretResponse{Secret: secret},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	// Create Access-Request packet
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
@@ -461,10 +460,10 @@ func BenchmarkE2EServerRequestResponse(b *testing.B) {
 		radiusHandler: handler,
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    combinedHandler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+	)
 
 	// Start server
 	startTestServer(b, srv)
@@ -518,10 +517,10 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 		radiusHandler: handler,
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    combinedHandler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+	)
 
 	// Start server
 	startTestServer(b, srv)
@@ -565,9 +564,9 @@ func TestServerStressWithHighPacketRate(t *testing.T) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 0)},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler: handler,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+	)
 	assert.NoError(t, err)
 
 	startTestServer(t, srv)
@@ -642,9 +641,9 @@ func TestServerConcurrentPackets(t *testing.T) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 0)},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler: handler,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+	)
 	assert.NoError(t, err)
 
 	startTestServer(t, srv)
@@ -684,9 +683,9 @@ func TestServerBufferSafety(t *testing.T) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 0)},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler: handler,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+	)
 	assert.NoError(t, err)
 
 	startTestServer(t, srv)
@@ -744,10 +743,10 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		}
 
 		// RequireRequestAuthenticator defaults to false
-		srv, err := NewServer(ServerConfig{
-			Handler:    handler,
-			Dictionary: dict,
-		})
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithDictionary(dict),
+		)
 		require.NoError(t, err)
 		defer srv.Close()
 
@@ -795,12 +794,11 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			secretResp: SecretResponse{Secret: secret},
 		}
 
-		requireRequestAuth := true
-		srv, err := NewServer(ServerConfig{
-			Handler:                     handler,
-			Dictionary:                  dict,
-			RequireRequestAuthenticator: &requireRequestAuth,
-		})
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithDictionary(dict),
+			WithRequireRequestAuthenticator(true),
+		)
 		require.NoError(t, err)
 		defer srv.Close()
 
@@ -843,14 +841,12 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			secretResp: SecretResponse{Secret: secret},
 		}
 
-		requireRequestAuth := true
-		requireMessageAuth := false // Disable Message-Authenticator for this test
-		srv, err := NewServer(ServerConfig{
-			Handler:                     handler,
-			Dictionary:                  dict,
-			RequireRequestAuthenticator: &requireRequestAuth,
-			RequireMessageAuthenticator: &requireMessageAuth,
-		})
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithDictionary(dict),
+			WithRequireRequestAuthenticator(true),
+			WithRequireMessageAuthenticator(false), // Disable Message-Authenticator for this test
+		)
 		require.NoError(t, err)
 		defer srv.Close()
 
@@ -896,14 +892,12 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			secretResp: SecretResponse{Secret: secret},
 		}
 
-		requireRequestAuth := true
-		requireMessageAuth := true
-		srv, err := NewServer(ServerConfig{
-			Handler:                     handler,
-			Dictionary:                  dict,
-			RequireRequestAuthenticator: &requireRequestAuth,
-			RequireMessageAuthenticator: &requireMessageAuth,
-		})
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithDictionary(dict),
+			WithRequireRequestAuthenticator(true),
+			WithRequireMessageAuthenticator(true),
+		)
 		require.NoError(t, err)
 		defer srv.Close()
 
@@ -956,14 +950,12 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			secretResp: SecretResponse{Secret: secret},
 		}
 
-		requireRequestAuth := true
-		requireMessageAuth := true
-		srv, err := NewServer(ServerConfig{
-			Handler:                     handler,
-			Dictionary:                  dict,
-			RequireRequestAuthenticator: &requireRequestAuth,
-			RequireMessageAuthenticator: &requireMessageAuth,
-		})
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithDictionary(dict),
+			WithRequireRequestAuthenticator(true),
+			WithRequireMessageAuthenticator(true),
+		)
 		require.NoError(t, err)
 		defer srv.Close()
 
@@ -1023,10 +1015,10 @@ func TestServerGracefulShutdown(t *testing.T) {
 		radiusHandler: slowHandler,
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    combinedHandler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	startTestServer(t, srv)
@@ -1099,10 +1091,10 @@ func TestServerShutdownWaitsForAllRequests(t *testing.T) {
 		radiusHandler: slowHandler,
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    combinedHandler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	startTestServer(t, srv)
@@ -1178,12 +1170,11 @@ func TestServerRequestTimeout(t *testing.T) {
 		radiusHandler: handler,
 	}
 
-	timeout := 5 * time.Second
-	srv, err := NewServer(ServerConfig{
-		Handler:        combinedHandler,
-		Dictionary:     dict,
-		RequestTimeout: &timeout,
-	})
+	srv, err := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+		WithRequestTimeout(5*time.Second),
+	)
 	require.NoError(t, err)
 	defer srv.Close()
 
@@ -1212,7 +1203,7 @@ func TestServerRequestTimeout(t *testing.T) {
 
 	assert.True(t, hadDeadline, "Request context should have deadline when RequestTimeout is set")
 	if hadDeadline {
-		assert.InDelta(t, timeout.Seconds(), timeoutValue.Seconds(), 1.0, "Context timeout should match configured value")
+		assert.InDelta(t, (5 * time.Second).Seconds(), timeoutValue.Seconds(), 1.0, "Context timeout should match configured value")
 	}
 }
 
@@ -1227,10 +1218,10 @@ func TestServerServeWithUDPTransport(t *testing.T) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	// Create external UDP connection
@@ -1278,10 +1269,10 @@ func TestServerServeWithTCPTransport(t *testing.T) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	// Create external TCP listener
@@ -1342,10 +1333,10 @@ func TestServerServeWithTCPTransportMultiplePackets(t *testing.T) {
 		radiusHandler: handler,
 	}
 
-	srv, err := NewServer(ServerConfig{
-		Handler:    combinedHandler,
-		Dictionary: dict,
-	})
+	srv, err := NewServer(
+		WithHandler(combinedHandler),
+		WithDictionary(dict),
+	)
 	require.NoError(t, err)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1523,7 +1514,7 @@ func TestHandlerFuncServeRADIUS(t *testing.T) {
 // Test for Server.Addr before ready
 
 func TestServerAddrBeforeReady(t *testing.T) {
-	srv, _ := NewServer(ServerConfig{})
+	srv, _ := NewServer()
 
 	// Start getting address in goroutine (will block until ready)
 	addrChan := make(chan net.Addr, 1)
@@ -1562,9 +1553,9 @@ func BenchmarkServerThroughput(b *testing.B) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 0)},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler: handler,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+	)
 
 	startTestServer(b, srv)
 	defer srv.Close()
@@ -1603,10 +1594,10 @@ func BenchmarkServerWithUDPTransport(b *testing.B) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	transport := NewUDPTransport(conn)
@@ -1646,10 +1637,10 @@ func BenchmarkServerWithTCPTransport(b *testing.B) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	transport := NewTCPTransport(listener)
@@ -1689,10 +1680,10 @@ func BenchmarkServerWithTCPTransport_StreamMode(b *testing.B) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	transport := NewTCPTransport(listener)
@@ -1736,10 +1727,10 @@ func BenchmarkServerHandlePacketWithMiddleware(b *testing.B) {
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	// Add middlewares
 	for range 3 {
@@ -1794,10 +1785,10 @@ func BenchmarkServerWithRealisticPacket(b *testing.B) {
 	_ = respPkt.AddAttributeByName("Framed-IP-Netmask", "255.255.255.0")
 	handler.radiusResp = Response{packet: respPkt}
 
-	srv, _ := NewServer(ServerConfig{
-		Handler:    handler,
-		Dictionary: dict,
-	})
+	srv, _ := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+	)
 
 	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	transport := NewUDPTransport(conn)

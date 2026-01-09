@@ -18,38 +18,63 @@ type Client struct {
 	verifyMessageAuth bool
 }
 
-type ClientConfig struct {
-	Addr                       string
-	Secret                     []byte
-	Dictionary                 *Dictionary
-	Timeout                    time.Duration
-	UseMessageAuthenticator    *bool
-	VerifyMessageAuthenticator *bool
+// ClientOption configures a Client.
+type ClientOption func(*Client)
+
+// WithAddr sets the server address for the client.
+func WithAddr(addr string) ClientOption {
+	return func(c *Client) {
+		c.addr = addr
+	}
 }
 
-func NewClient(cfg ClientConfig) (*Client, error) {
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 3 * time.Second
+// WithSecret sets the shared secret for the client.
+func WithSecret(secret []byte) ClientOption {
+	return func(c *Client) {
+		c.secret = secret
+	}
+}
+
+// WithClientDictionary sets the RADIUS dictionary for the client.
+func WithClientDictionary(d *Dictionary) ClientOption {
+	return func(c *Client) {
+		c.dict = d
+	}
+}
+
+// WithTimeout sets the request timeout for the client.
+func WithTimeout(d time.Duration) ClientOption {
+	return func(c *Client) {
+		c.timeout = d
+	}
+}
+
+// WithClientUseMessageAuthenticator sets whether to add Message-Authenticator to requests.
+func WithClientUseMessageAuthenticator(b bool) ClientOption {
+	return func(c *Client) {
+		c.useMessageAuth = b
+	}
+}
+
+// WithVerifyMessageAuthenticator sets whether to verify Message-Authenticator in responses.
+func WithVerifyMessageAuthenticator(b bool) ClientOption {
+	return func(c *Client) {
+		c.verifyMessageAuth = b
+	}
+}
+
+func NewClient(opts ...ClientOption) (*Client, error) {
+	c := &Client{
+		timeout:           3 * time.Second,
+		useMessageAuth:    true,
+		verifyMessageAuth: true,
 	}
 
-	useMessageAuth := true
-	if cfg.UseMessageAuthenticator != nil {
-		useMessageAuth = *cfg.UseMessageAuthenticator
+	for _, opt := range opts {
+		opt(c)
 	}
 
-	verifyMessageAuth := true
-	if cfg.VerifyMessageAuthenticator != nil {
-		verifyMessageAuth = *cfg.VerifyMessageAuthenticator
-	}
-
-	return &Client{
-		addr:              cfg.Addr,
-		secret:            cfg.Secret,
-		dict:              cfg.Dictionary,
-		timeout:           cfg.Timeout,
-		useMessageAuth:    useMessageAuth,
-		verifyMessageAuth: verifyMessageAuth,
-	}, nil
+	return c, nil
 }
 
 func (c *Client) Close() error {

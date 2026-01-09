@@ -3,18 +3,7 @@ package goradius
 import (
 	"context"
 	"net"
-	"time"
-
 )
-
-type ServerConfig struct {
-	Handler                     Handler
-	Dictionary                  *Dictionary
-	RequireMessageAuthenticator *bool
-	UseMessageAuthenticator     *bool
-	RequireRequestAuthenticator *bool          // Validate Request Authenticator for non-Access-Request packets
-	RequestTimeout              *time.Duration // Timeout for request processing (default: no timeout)
-}
 
 type Request struct {
 	Context    context.Context

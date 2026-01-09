@@ -94,9 +94,9 @@ func validationMiddleware(next goradius.Handler) goradius.Handler {
 }
 
 func main() {
-	srv, err := goradius.NewServer(goradius.ServerConfig{
-		Handler: &simpleHandler{},
-	})
+	srv, err := goradius.NewServer(
+		goradius.WithHandler(&simpleHandler{}),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

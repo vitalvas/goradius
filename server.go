@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
 )
 
 // Server is a RADIUS server supporting UDP, TCP, and TLS transports
@@ -23,45 +22,27 @@ type Server struct {
 	requestTimeout     time.Duration // 0 means no timeout
 }
 
-func NewServer(cfg ServerConfig) (*Server, error) {
-	dict := cfg.Dictionary
-	if dict == nil {
+func NewServer(opts ...ServerOption) (*Server, error) {
+	s := &Server{
+		ready:              make(chan struct{}),
+		requireMessageAuth: true,
+		useMessageAuth:     true,
+		requireRequestAuth: false,
+	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	if s.dict == nil {
 		var err error
-		dict, err = NewDefault()
+		s.dict, err = NewDefault()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	requireMessageAuth := true
-	if cfg.RequireMessageAuthenticator != nil {
-		requireMessageAuth = *cfg.RequireMessageAuthenticator
-	}
-
-	useMessageAuth := true
-	if cfg.UseMessageAuthenticator != nil {
-		useMessageAuth = *cfg.UseMessageAuthenticator
-	}
-
-	requireRequestAuth := false
-	if cfg.RequireRequestAuthenticator != nil {
-		requireRequestAuth = *cfg.RequireRequestAuthenticator
-	}
-
-	var requestTimeout time.Duration
-	if cfg.RequestTimeout != nil {
-		requestTimeout = *cfg.RequestTimeout
-	}
-
-	return &Server{
-		handler:            cfg.Handler,
-		dict:               dict,
-		ready:              make(chan struct{}),
-		requireMessageAuth: requireMessageAuth,
-		useMessageAuth:     useMessageAuth,
-		requireRequestAuth: requireRequestAuth,
-		requestTimeout:     requestTimeout,
-	}, nil
+	return s, nil
 }
 
 // Serve starts the server using the provided transport.
