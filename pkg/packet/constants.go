@@ -14,6 +14,10 @@ const (
 	AttributeHeaderLength = 2
 	// VendorSpecificHeaderLength is the length of VSA header (Type + Length + Vendor-Id) per RFC 2865 Section 5.26
 	VendorSpecificHeaderLength = 6
+	// MaxAttributeValueLength is the maximum value length for a standard attribute (255 - 2 for header)
+	MaxAttributeValueLength = 253
+	// MaxVSAValueLength is the maximum vendor data length for a VSA (255 - 2 - 4 - 2 for headers)
+	MaxVSAValueLength = 247
 )
 
 const (

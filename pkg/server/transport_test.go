@@ -306,7 +306,7 @@ func TestTCPTransport_Serve(t *testing.T) {
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	require.NoError(t, err)
-	assert.Equal(t, 20, n) // Minimal RADIUS packet
+	assert.Equal(t, 20, n)           // Minimal RADIUS packet
 	assert.Equal(t, byte(2), buf[0]) // Access-Accept
 
 	// Close transport
@@ -556,9 +556,9 @@ func TestTCPTransport_InvalidPacketLength(t *testing.T) {
 
 		// Send packet with length < 20
 		pkt := make([]byte, 4)
-		pkt[0] = 1                                   // Code
-		pkt[1] = 1                                   // ID
-		binary.BigEndian.PutUint16(pkt[2:4], 10)     // Length = 10 (invalid, too small)
+		pkt[0] = 1                               // Code
+		pkt[1] = 1                               // ID
+		binary.BigEndian.PutUint16(pkt[2:4], 10) // Length = 10 (invalid, too small)
 		conn.Write(pkt)
 
 		// Handler should not be called
@@ -577,9 +577,9 @@ func TestTCPTransport_InvalidPacketLength(t *testing.T) {
 
 		// Send packet with length > 4096
 		pkt := make([]byte, 4)
-		pkt[0] = 1                                   // Code
-		pkt[1] = 1                                   // ID
-		binary.BigEndian.PutUint16(pkt[2:4], 5000)   // Length = 5000 (invalid, too large)
+		pkt[0] = 1                                 // Code
+		pkt[1] = 1                                 // ID
+		binary.BigEndian.PutUint16(pkt[2:4], 5000) // Length = 5000 (invalid, too large)
 		conn.Write(pkt)
 
 		// Handler should not be called

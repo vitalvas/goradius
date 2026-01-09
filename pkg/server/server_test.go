@@ -103,7 +103,6 @@ func TestNew(t *testing.T) {
 	srv.Close()
 }
 
-
 func TestServerClose(t *testing.T) {
 	dict := dictionary.New()
 	handler := &testHandler{}
@@ -1527,8 +1526,7 @@ func TestHandlerFuncServeRADIUS(t *testing.T) {
 // Test for Server.Addr before ready
 
 func TestServerAddrBeforeReady(t *testing.T) {
-	srv, _ := New(Config{
-	})
+	srv, _ := New(Config{})
 
 	// Start getting address in goroutine (will block until ready)
 	addrChan := make(chan net.Addr, 1)

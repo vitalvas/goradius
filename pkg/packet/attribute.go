@@ -25,6 +25,7 @@ type VendorAttribute struct {
 }
 
 // NewAttribute creates a new RADIUS attribute per RFC 2865 Section 5
+// Note: value length must not exceed MaxAttributeValueLength (253 bytes)
 func NewAttribute(attrType uint8, value []byte) *Attribute {
 	return &Attribute{
 		Type:   attrType,
@@ -34,6 +35,7 @@ func NewAttribute(attrType uint8, value []byte) *Attribute {
 }
 
 // NewTaggedAttribute creates a new tagged RADIUS attribute per RFC 2868
+// Note: value length must not exceed MaxAttributeValueLength-1 (252 bytes, accounting for tag byte)
 func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
 	// Per RFC 2868, the tag is the first byte of the value
 	taggedValue := make([]byte, len(value)+1)
@@ -49,6 +51,7 @@ func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
 }
 
 // NewVendorAttribute creates a new vendor-specific attribute per RFC 2865 Section 5.26
+// Note: value length must not exceed MaxVSAValueLength (247 bytes)
 func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *VendorAttribute {
 	return &VendorAttribute{
 		VendorID:   vendorID,
@@ -58,6 +61,7 @@ func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *Vendor
 }
 
 // NewTaggedVendorAttribute creates a new tagged vendor-specific attribute per RFC 2868
+// Note: value length must not exceed MaxVSAValueLength-1 (246 bytes, accounting for tag byte)
 func NewTaggedVendorAttribute(vendorID uint32, vendorType uint8, tag uint8, value []byte) *VendorAttribute {
 	// Per RFC 2868, the tag is the first byte of the value
 	taggedValue := make([]byte, len(value)+1)
@@ -172,6 +176,7 @@ func (va *VendorAttribute) String() string {
 }
 
 // ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific) per RFC 2865 Section 5.26
+// Note: vendor value length must not exceed MaxVSAValueLength (247 bytes)
 func (va *VendorAttribute) ToVSA() *Attribute {
 	// Per RFC 2865 Section 5.26: Type(1) + Length(1) + Vendor-ID(4) + Vendor-Type(1) + Vendor-Length(1) + Vendor-Data
 	vendorLength := uint8(len(va.Value) + 2)  // +2 for Vendor-Type and Vendor-Length

@@ -198,6 +198,7 @@ func (p *Packet) RemoveAttribute(attrType uint8) bool {
 		if attr.Type == attrType {
 			p.Length -= uint16(attr.Length)
 			p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
+			p.vsaCache = nil // Invalidate cache as indices have shifted
 			return true
 		}
 	}
@@ -214,6 +215,9 @@ func (p *Packet) RemoveAttributes(attrType uint8) int {
 			p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 			removed++
 		}
+	}
+	if removed > 0 {
+		p.vsaCache = nil // Invalidate cache as indices have shifted
 	}
 	return removed
 }
@@ -439,16 +443,11 @@ func (p *Packet) AddAttributeByName(name string, value any) error {
 		if !p.isAttributeAllowed(attrDef) {
 			return nil
 		}
-		p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
-		return nil
+		return p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
 	}
 
 	// Handle vendor attributes
-	if err := p.addVendorAttributeByName(name, value, nil, [16]byte{}); err != nil {
-		return err
-	}
-
-	return nil
+	return p.addVendorAttributeByName(name, value, nil, [16]byte{})
 }
 
 // AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
@@ -463,22 +462,17 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []b
 		if !p.isAttributeAllowed(attrDef) {
 			return nil
 		}
-		p.addStandardAttribute(name, value, attrDef, secret, authenticator)
-		return nil
+		return p.addStandardAttribute(name, value, attrDef, secret, authenticator)
 	}
 
 	// Handle vendor attributes
-	if err := p.addVendorAttributeByName(name, value, secret, authenticator); err != nil {
-		return err
-	}
-
-	return nil
+	return p.addVendorAttributeByName(name, value, secret, authenticator)
 }
 
 // addStandardAttribute handles standard attribute addition with full feature support
-func (p *Packet) addStandardAttribute(name string, value any, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) {
+func (p *Packet) addStandardAttribute(name string, value any, attrDef *dictionary.AttributeDefinition, secret []byte, authenticator [16]byte) error {
 	if attrDef == nil {
-		return
+		return nil
 	}
 
 	var tag uint8
@@ -499,7 +493,7 @@ func (p *Packet) addStandardAttribute(name string, value any, attrDef *dictionar
 
 	// Handle array attributes - check if value is a slice
 	// This handles both attributes marked as Array=true and user-provided slices
-	p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
+	return p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
 }
 
 // addVendorAttributeByName handles vendor-specific attribute addition with full feature support
@@ -541,8 +535,7 @@ func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte,
 	}
 
 	processedValue := p.processEnumeratedValue(value, attrDef)
-	p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
-	return nil
+	return p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
 }
 
 // isAttributeAllowed checks if an attribute can be used in the current packet type
@@ -601,8 +594,12 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 	// 2. XOR with MD5(secret + authenticator) for first 16 bytes
 	// 3. XOR with MD5(secret + previous encrypted block) for subsequent blocks
 
-	// Pad password to multiple of 16 bytes
-	padded := make([]byte, ((len(password)+15)/16)*16)
+	// Pad password to multiple of 16 bytes (minimum 16 bytes per RFC 2865)
+	paddedLen := ((len(password) + 15) / 16) * 16
+	if paddedLen == 0 {
+		paddedLen = 16
+	}
+	padded := make([]byte, paddedLen)
 	copy(padded, password)
 
 	encrypted := make([]byte, len(padded))
@@ -706,9 +703,9 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
 // If value is a slice, it adds each element as a separate attribute instance
-func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) {
+func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) error {
 	if attrDef == nil {
-		return
+		return nil
 	}
 
 	values := []any{value}
@@ -741,30 +738,42 @@ func (p *Packet) addArrayAttribute(attrDef *dictionary.AttributeDefinition, valu
 
 	// Add each value as a separate attribute
 	for _, val := range values {
-		if attrValue, err := p.encodeAttributeValue(val, attrDef); err == nil {
-			if attrDef.Encryption != "" && secret != nil {
-				attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-			}
+		attrValue, err := p.encodeAttributeValue(val, attrDef)
+		if err != nil {
+			return fmt.Errorf("failed to encode attribute %q: %w", attrDef.Name, err)
+		}
 
-			if attrDef.HasTag && tag > 0 {
-				taggedValue := make([]byte, len(attrValue)+1)
-				taggedValue[0] = tag
-				copy(taggedValue[1:], attrValue)
-				attr := NewAttribute(uint8(attrDef.ID), taggedValue)
-				p.AddAttribute(attr)
-			} else {
-				attr := NewAttribute(uint8(attrDef.ID), attrValue)
-				p.AddAttribute(attr)
+		if attrDef.Encryption != "" && secret != nil {
+			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+		}
+
+		if attrDef.HasTag && tag > 0 {
+			// Validate length for tagged attribute (value + 1 byte for tag)
+			if len(attrValue)+1 > MaxAttributeValueLength {
+				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxAttributeValueLength)
 			}
+			taggedValue := make([]byte, len(attrValue)+1)
+			taggedValue[0] = tag
+			copy(taggedValue[1:], attrValue)
+			attr := NewAttribute(uint8(attrDef.ID), taggedValue)
+			p.AddAttribute(attr)
+		} else {
+			// Validate length for standard attribute
+			if len(attrValue) > MaxAttributeValueLength {
+				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxAttributeValueLength)
+			}
+			attr := NewAttribute(uint8(attrDef.ID), attrValue)
+			p.AddAttribute(attr)
 		}
 	}
+	return nil
 }
 
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
-func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) {
+func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, attrDef *dictionary.AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) error {
 	if vendor == nil || attrDef == nil {
-		return
+		return nil
 	}
 
 	values := []any{value}
@@ -797,20 +806,32 @@ func (p *Packet) addVendorArrayAttribute(vendor *dictionary.VendorDefinition, at
 
 	// Add each value as a separate vendor attribute
 	for _, val := range values {
-		if attrValue, err := p.encodeAttributeValue(val, attrDef); err == nil {
-			if attrDef.Encryption != "" && secret != nil {
-				attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-			}
-
-			var vsa *VendorAttribute
-			if attrDef.HasTag && tag > 0 {
-				vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
-			} else {
-				vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
-			}
-			p.AddVendorAttribute(vsa)
+		attrValue, err := p.encodeAttributeValue(val, attrDef)
+		if err != nil {
+			return fmt.Errorf("failed to encode vendor attribute %q: %w", attrDef.Name, err)
 		}
+
+		if attrDef.Encryption != "" && secret != nil {
+			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
+		}
+
+		var vsa *VendorAttribute
+		if attrDef.HasTag && tag > 0 {
+			// Validate length for tagged vendor attribute (value + 1 byte for tag)
+			if len(attrValue)+1 > MaxVSAValueLength {
+				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxVSAValueLength)
+			}
+			vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
+		} else {
+			// Validate length for vendor attribute
+			if len(attrValue) > MaxVSAValueLength {
+				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxVSAValueLength)
+			}
+			vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+		}
+		p.AddVendorAttribute(vsa)
 	}
+	return nil
 }
 
 // ListAttributes returns a list of unique attribute names found in the packet.
@@ -873,12 +894,13 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
 		for _, attr := range p.Attributes {
 			if attr.Type == uint8(attrDef.ID) {
-				// Only use tag if the attribute definition supports tagging
+				// For tagged attributes (HasTag=true), the first byte is always the tag
+				// per RFC 2868, even when tag value is 0 (which means "untagged")
 				tag := uint8(0)
 				value := attr.Value
-				if attrDef.HasTag && attr.Tag > 0 {
-					tag = attr.Tag
-					value = attr.GetValue() // Strips tag byte
+				if attrDef.HasTag && len(attr.Value) > 0 {
+					tag = attr.Value[0]
+					value = attr.Value[1:] // Strip tag byte
 				}
 
 				result = append(result, AttributeValue{
@@ -912,12 +934,13 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 				}
 
 				if va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
-					// Only use tag if the attribute definition supports tagging
+					// For tagged attributes (HasTag=true), the first byte is always the tag
+					// per RFC 2868, even when tag value is 0 (which means "untagged")
 					tag := uint8(0)
 					value := va.Value
-					if attrDef.HasTag && va.Tag > 0 {
-						tag = va.Tag
-						value = va.GetValue() // Strips tag byte
+					if attrDef.HasTag && len(va.Value) > 0 {
+						tag = va.Value[0]
+						value = va.Value[1:] // Strip tag byte
 					}
 
 					result = append(result, AttributeValue{

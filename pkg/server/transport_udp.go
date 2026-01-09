@@ -67,9 +67,11 @@ func (t *UDPTransport) Serve(handler TransportHandler) error {
 			return err
 		}
 
-		t.wg.Go(func() {
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
 			handler(data, addr, respond)
-		})
+		}()
 	}
 }
 
