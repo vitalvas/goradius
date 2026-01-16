@@ -99,8 +99,8 @@ func (s *Server) buildHandler() Handler {
 	return handler
 }
 
-// handlePacket processes a single RADIUS 
-// Called by the transport for each received 
+// handlePacket processes a single RADIUS
+// Called by the transport for each received
 func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond ResponderFunc) {
 	pkt, err := Decode(data)
 	if err != nil {

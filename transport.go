@@ -6,7 +6,7 @@ import "net"
 // Implementations handle protocol-specific details (UDP datagram vs TCP stream).
 type Transport interface {
 	// Serve starts accepting and processing packets.
-	// Calls handler for each received 
+	// Calls handler for each received
 	// Blocks until the transport is closed or an error occurs.
 	Serve(handler TransportHandler) error
 
@@ -18,7 +18,7 @@ type Transport interface {
 	Close() error
 }
 
-// TransportHandler is called for each received RADIUS 
+// TransportHandler is called for each received RADIUS
 // data contains the raw packet bytes.
 // remoteAddr is the client's address.
 // respond sends a reply back to the client.

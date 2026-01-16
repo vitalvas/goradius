@@ -1,8 +1,7 @@
 package goradius
 
-
-// NewDefault creates a dictionary pre-loaded with all standard RFC attributes and common vendor 
-// This is a convenience function for users who want standard RADIUS support without manually adding 
+// NewDefault creates a dictionary pre-loaded with all standard RFC attributes and common vendor
+// This is a convenience function for users who want standard RADIUS support without manually adding
 // Currently includes:
 //   - RFC 2865/2866/2868/2869 standard attributes
 //   - Juniper vendor attributes

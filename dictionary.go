@@ -42,7 +42,7 @@ func NewDictionary() *Dictionary {
 	}
 }
 
-// AddStandardAttributes adds standard RFC attributes to the 
+// AddStandardAttributes adds standard RFC attributes to the
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	d.mu.Lock()
@@ -65,7 +65,7 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	return nil
 }
 
-// AddVendor adds a vendor and its attributes to the 
+// AddVendor adds a vendor and its attributes to the
 // Returns an error if any vendor attribute name conflicts with existing standard or vendor attributes.
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()

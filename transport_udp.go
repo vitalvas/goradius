@@ -30,7 +30,7 @@ func NewUDPTransport(conn net.PacketConn) *UDPTransport {
 }
 
 // Serve implements Transport.Serve for UDP.
-// Runs a single read loop and spawns a goroutine for each 
+// Runs a single read loop and spawns a goroutine for each
 func (t *UDPTransport) Serve(handler TransportHandler) error {
 	for {
 		// Get buffer from pool

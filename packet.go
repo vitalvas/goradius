@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 )
 
 const (
@@ -31,15 +30,15 @@ type Packet struct {
 
 // AttributeValue contains a single attribute value with type information
 type AttributeValue struct {
-	Name       string              // Attribute name from dictionary
-	Type       uint8               // Attribute type ID (26 for VSA)
+	Name       string   // Attribute name from dictionary
+	Type       uint8    // Attribute type ID (26 for VSA)
 	DataType   DataType // Data type (string, integer, ipaddr, etc.)
-	Value      []byte              // Raw value bytes
-	Tag        uint8               // Tag value for tagged attributes (0 = no tag)
-	IsVSA      bool                // True if this is a vendor-specific attribute
-	VendorID   uint32              // Vendor ID (only for VSA)
-	VendorType uint8               // Vendor attribute type (only for VSA)
-	Multiline  bool                // True if attribute supports multiline continuation
+	Value      []byte   // Raw value bytes
+	Tag        uint8    // Tag value for tagged attributes (0 = no tag)
+	IsVSA      bool     // True if this is a vendor-specific attribute
+	VendorID   uint32   // Vendor ID (only for VSA)
+	VendorType uint8    // Vendor attribute type (only for VSA)
+	Multiline  bool     // True if attribute supports multiline continuation
 }
 
 // String returns the attribute value as a string, decoded based on DataType
@@ -833,7 +832,7 @@ func (p *Packet) addVendorArrayAttribute(vendor *VendorDefinition, attrDef *Attr
 	return nil
 }
 
-// ListAttributes returns a list of unique attribute names found in the 
+// ListAttributes returns a list of unique attribute names found in the
 // Requires a dictionary to be set on the  Returns empty slice if dictionary is nil.
 // Attributes not found in dictionary are skipped.
 // VSA attributes return their attribute name (e.g., "ERX-Dhcp-Mac-Addr").

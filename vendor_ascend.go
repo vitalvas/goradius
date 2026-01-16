@@ -1,6 +1,5 @@
 package goradius
 
-
 // AscendVendorDefinition contains the Ascend vendor definition with all its attributes
 var AscendVendorDefinition = &VendorDefinition{
 	ID:          529,

@@ -1,6 +1,5 @@
 package goradius
 
-
 // ERXVendorDefinition contains the ERX vendor definition with all its attributes
 var ERXVendorDefinition = &VendorDefinition{
 	ID:          4874,

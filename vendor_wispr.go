@@ -1,6 +1,5 @@
 package goradius
 
-
 // WISPrVendorDefinition defines the WISPr vendor and its attributes
 var WISPrVendorDefinition = &VendorDefinition{
 	ID:          14122,

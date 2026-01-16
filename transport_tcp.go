@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"sync"
-
 )
 
 // TCPTransport implements Transport for TCP/TLS connections.

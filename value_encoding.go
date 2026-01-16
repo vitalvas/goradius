@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-
 )
 
 // EncodeString encodes a string value for RADIUS attributes per RFC 2865 Section 5

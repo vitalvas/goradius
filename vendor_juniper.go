@@ -1,6 +1,5 @@
 package goradius
 
-
 // JuniperVendorDefinition contains the Juniper vendor definition with all its attributes
 var JuniperVendorDefinition = &VendorDefinition{
 	ID:          2636,

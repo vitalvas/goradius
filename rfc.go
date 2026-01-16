@@ -1,13 +1,12 @@
 package goradius
 
-
 // StandardRFCAttributes contains all RFC standard attributes
 var StandardRFCAttributes = []*AttributeDefinition{
-	{ID: 1, Name: "User-Name", DataType: DataTypeString},                                                    // RFC2865
+	{ID: 1, Name: "User-Name", DataType: DataTypeString},                                         // RFC2865
 	{ID: 2, Name: "User-Password", DataType: DataTypeString, Encryption: EncryptionUserPassword}, // RFC2865
-	{ID: 3, Name: "CHAP-Password", DataType: DataTypeOctets},                                                // RFC2865
-	{ID: 4, Name: "NAS-IP-Address", DataType: DataTypeIPAddr},                                               // RFC2865
-	{ID: 5, Name: "NAS-Port", DataType: DataTypeInteger},                                                    // RFC2865
+	{ID: 3, Name: "CHAP-Password", DataType: DataTypeOctets},                                     // RFC2865
+	{ID: 4, Name: "NAS-IP-Address", DataType: DataTypeIPAddr},                                    // RFC2865
+	{ID: 5, Name: "NAS-Port", DataType: DataTypeInteger},                                         // RFC2865
 	{ // RFC2865
 		ID:       6,
 		Name:     "Service-Type",
@@ -288,12 +287,12 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"E.164-NSAP":   15, // RFC2868
 		},
 	},
-	{ID: 66, Name: "Tunnel-Client-Endpoint", DataType: DataTypeString, HasTag: true},                                           // RFC2868
-	{ID: 67, Name: "Tunnel-Server-Endpoint", DataType: DataTypeString, HasTag: true},                                           // RFC2868
-	{ID: 68, Name: "Acct-Tunnel-Connection", DataType: DataTypeString},                                                         // RFC2867
+	{ID: 66, Name: "Tunnel-Client-Endpoint", DataType: DataTypeString, HasTag: true},                                // RFC2868
+	{ID: 67, Name: "Tunnel-Server-Endpoint", DataType: DataTypeString, HasTag: true},                                // RFC2868
+	{ID: 68, Name: "Acct-Tunnel-Connection", DataType: DataTypeString},                                              // RFC2867
 	{ID: 69, Name: "Tunnel-Password", DataType: DataTypeString, HasTag: true, Encryption: EncryptionTunnelPassword}, // RFC2868
-	{ID: 70, Name: "ARAP-Password", DataType: DataTypeOctets},                                                                  // RFC2869
-	{ID: 71, Name: "ARAP-Features", DataType: DataTypeOctets},                                                                  // RFC2869
+	{ID: 70, Name: "ARAP-Password", DataType: DataTypeOctets},                                                       // RFC2869
+	{ID: 71, Name: "ARAP-Features", DataType: DataTypeOctets},                                                       // RFC2869
 	{ // RFC2869
 		ID:       72,
 		Name:     "ARAP-Zone-Access",

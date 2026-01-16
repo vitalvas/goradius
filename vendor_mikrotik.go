@@ -1,6 +1,5 @@
 package goradius
 
-
 // MikrotikVendorDefinition defines the Mikrotik vendor and its attributes
 var MikrotikVendorDefinition = &VendorDefinition{
 	ID:          14988,

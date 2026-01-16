@@ -1,7 +1,6 @@
 package goradius
 
-import (
-)
+import ()
 
 // NewResponse creates a new Response with the request identifier and appropriate default response code
 func NewResponse(req *Request) Response {

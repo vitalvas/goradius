@@ -2,12 +2,32 @@ package goradius
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"net"
+	"sync/atomic"
 	"time"
-
 )
+
+// ClientTransport specifies the network transport protocol for the client.
+type ClientTransport int
+
+const (
+	// TransportUDP uses standard RADIUS over UDP (RFC 2865).
+	TransportUDP ClientTransport = iota
+	// TransportTCP uses RADIUS over TCP (RFC 6613).
+	TransportTCP
+	// TransportTLS uses RADIUS over TLS / RadSec (RFC 6614).
+	TransportTLS
+)
+
+// ErrClientClosed is returned when attempting to use a closed client.
+var ErrClientClosed = errors.New("client is closed")
 
 type Client struct {
 	addr              string
@@ -16,6 +36,11 @@ type Client struct {
 	timeout           time.Duration
 	useMessageAuth    bool
 	verifyMessageAuth bool
+	transport         ClientTransport
+	tlsConfig         *tls.Config
+	closed            atomic.Bool
+	ctx               context.Context
+	cancel            context.CancelFunc
 }
 
 // ClientOption configures a Client.
@@ -63,11 +88,31 @@ func WithVerifyMessageAuthenticator(b bool) ClientOption {
 	}
 }
 
+// WithTransport sets the network transport protocol (UDP, TCP, or TLS).
+// Default is TransportUDP.
+func WithTransport(t ClientTransport) ClientOption {
+	return func(c *Client) {
+		c.transport = t
+	}
+}
+
+// WithTLSConfig sets the TLS configuration for TransportTLS.
+// Required when using TransportTLS.
+func WithTLSConfig(cfg *tls.Config) ClientOption {
+	return func(c *Client) {
+		c.tlsConfig = cfg
+	}
+}
+
 func NewClient(opts ...ClientOption) (*Client, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	c := &Client{
 		timeout:           3 * time.Second,
 		useMessageAuth:    true,
 		verifyMessageAuth: true,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	for _, opt := range opts {
@@ -77,25 +122,94 @@ func NewClient(opts ...ClientOption) (*Client, error) {
 	return c, nil
 }
 
+// Close closes the client, cancels any in-flight requests, and releases resources.
+// After Close is called, any subsequent operations will return ErrClientClosed.
+// Close is safe to call multiple times.
 func (c *Client) Close() error {
+	c.closed.Store(true)
+	c.cancel()
 	return nil
 }
 
-func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
-	// Create a new connection for each request to ensure concurrency safety
-	udpAddr, err := net.ResolveUDPAddr("udp", c.addr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve address: %w", err)
+// dial creates a connection based on the configured transport type.
+func (c *Client) dial(ctx context.Context) (net.Conn, error) {
+	switch c.transport {
+	case TransportTCP:
+		dialer := net.Dialer{}
+		return dialer.DialContext(ctx, "tcp", c.addr)
+
+	case TransportTLS:
+		dialer := tls.Dialer{
+			Config: c.tlsConfig,
+		}
+		return dialer.DialContext(ctx, "tcp", c.addr)
+
+	default: // TransportUDP
+		dialer := net.Dialer{}
+		return dialer.DialContext(ctx, "udp", c.addr)
+	}
+}
+
+// readResponse reads a RADIUS response based on the transport type.
+// UDP reads a single datagram, TCP/TLS reads a framed packet.
+func (c *Client) readResponse(conn net.Conn) ([]byte, error) {
+	if c.transport == TransportUDP {
+		buffer := make([]byte, MaxPacketLength)
+		n, err := conn.Read(buffer)
+		if err != nil {
+			return nil, err
+		}
+		return buffer[:n], nil
 	}
 
-	conn, err := net.DialUDP("udp", nil, udpAddr)
+	// TCP/TLS: read framed packet using length field
+	header := make([]byte, PacketHeaderLength)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return nil, err
+	}
+
+	length := binary.BigEndian.Uint16(header[2:4])
+	if length < MinPacketLength || length > MaxPacketLength {
+		return nil, fmt.Errorf("invalid packet length: %d", length)
+	}
+
+	if length == PacketHeaderLength {
+		return header, nil
+	}
+
+	data := make([]byte, length)
+	copy(data, header)
+	if _, err := io.ReadFull(conn, data[PacketHeaderLength:]); err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
+	if c.closed.Load() {
+		return nil, ErrClientClosed
+	}
+
+	// Create request context with timeout
+	ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
+	defer cancel()
+
+	// Dial connection based on transport type
+	conn, err := c.dial(ctx)
 	if err != nil {
+		if c.closed.Load() {
+			return nil, ErrClientClosed
+		}
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
 	defer conn.Close()
 
-	if err := conn.SetDeadline(time.Now().Add(c.timeout)); err != nil {
-		return nil, fmt.Errorf("failed to set deadline: %w", err)
+	// Set deadline from context
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return nil, fmt.Errorf("failed to set deadline: %w", err)
+		}
 	}
 
 	data, err := pkt.Encode()
@@ -107,13 +221,13 @@ func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
 		return nil, fmt.Errorf("failed to write packet: %w", err)
 	}
 
-	buffer := make([]byte, 4096)
-	n, err := conn.Read(buffer)
+	// Read response based on transport type
+	respData, err := c.readResponse(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	respPkt, err := Decode(buffer[:n])
+	respPkt, err := Decode(respData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
