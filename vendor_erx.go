@@ -2,9 +2,8 @@ package goradius
 
 // ERXVendorDefinition contains the ERX vendor definition with all its attributes
 var ERXVendorDefinition = &VendorDefinition{
-	ID:          4874,
-	Name:        "erx",
-	Description: "Juniper ERX Series",
+	ID:   4874,
+	Name: "erx",
 	Attributes: []*AttributeDefinition{
 		{ID: 1, Name: "erx-virtual-router-name", DataType: DataTypeString},
 		{ID: 2, Name: "erx-address-pool-name", DataType: DataTypeString},

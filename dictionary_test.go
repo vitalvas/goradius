@@ -106,9 +106,8 @@ func TestAddVendor(t *testing.T) {
 	dict := NewDictionary()
 
 	vendor := &VendorDefinition{
-		ID:          4874,
-		Name:        "erx",
-		Description: "Juniper ERX",
+		ID:   4874,
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
 			{
 				ID:       1,
@@ -223,6 +222,40 @@ func TestLookupByAttributeName(t *testing.T) {
 			assert.Equal(t, tt.exists, exists)
 		})
 	}
+}
+
+func TestGetAllAttributes(t *testing.T) {
+	dict := NewDictionary()
+
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 2, Name: "user-password", DataType: DataTypeString},
+	}))
+
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "erx",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+		},
+	}))
+
+	attrs := dict.GetAllAttributes()
+	assert.Len(t, attrs, 3)
+
+	names := make(map[string]bool)
+	for _, attr := range attrs {
+		names[attr.Name] = true
+	}
+	assert.True(t, names["user-name"])
+	assert.True(t, names["user-password"])
+	assert.True(t, names["erx-primary-dns"])
+}
+
+func TestGetAllAttributesEmpty(t *testing.T) {
+	dict := NewDictionary()
+	attrs := dict.GetAllAttributes()
+	assert.Empty(t, attrs)
 }
 
 func TestGetAllVendors(t *testing.T) {

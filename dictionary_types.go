@@ -37,22 +37,20 @@ const (
 
 // AttributeDefinition defines a RADIUS attribute per RFC 2865 Section 5
 type AttributeDefinition struct {
-	ID          uint32            `yaml:"id" json:"id"`
-	Name        string            `yaml:"name" json:"name"`
-	DataType    DataType          `yaml:"data_type" json:"data_type"`
-	Type        AttributeType     `yaml:"type,omitempty" json:"type,omitempty"`
-	Encryption  EncryptionType    `yaml:"encryption,omitempty" json:"encryption,omitempty"`
-	HasTag      bool              `yaml:"has_tag,omitempty" json:"has_tag,omitempty"`
-	Array       bool              `yaml:"array,omitempty" json:"array,omitempty"`
-	Multiline   bool              `yaml:"multiline,omitempty" json:"multiline,omitempty"`
-	Values      map[string]uint32 `yaml:"values,omitempty" json:"values,omitempty"`
-	Description string            `yaml:"description,omitempty" json:"description,omitempty"`
+	ID         uint32            `yaml:"id" json:"id"`
+	Name       string            `yaml:"name" json:"name"`
+	DataType   DataType          `yaml:"data_type" json:"data_type"`
+	Type       AttributeType     `yaml:"type,omitempty" json:"type,omitempty"`
+	Encryption EncryptionType    `yaml:"encryption,omitempty" json:"encryption,omitempty"`
+	HasTag     bool              `yaml:"has_tag,omitempty" json:"has_tag,omitempty"`
+	Array      bool              `yaml:"array,omitempty" json:"array,omitempty"`
+	Multiline  bool              `yaml:"multiline,omitempty" json:"multiline,omitempty"`
+	Values     map[string]uint32 `yaml:"values,omitempty" json:"values,omitempty"`
 }
 
 // VendorDefinition defines a vendor and its attributes per RFC 2865 Section 5.26
 type VendorDefinition struct {
-	ID          uint32                 `yaml:"id" json:"id"`
-	Name        string                 `yaml:"name" json:"name"`
-	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	Attributes  []*AttributeDefinition `yaml:"attributes" json:"attributes"`
+	ID         uint32                 `yaml:"id" json:"id"`
+	Name       string                 `yaml:"name" json:"name"`
+	Attributes []*AttributeDefinition `yaml:"attributes" json:"attributes"`
 }

@@ -2,9 +2,8 @@ package goradius
 
 // AscendVendorDefinition contains the Ascend vendor definition with all its attributes
 var AscendVendorDefinition = &VendorDefinition{
-	ID:          529,
-	Name:        "ascend",
-	Description: "Ascend Communications",
+	ID:   529,
+	Name: "ascend",
 	Attributes: []*AttributeDefinition{
 		{ID: 2, Name: "ascend-max-shared-users", DataType: DataTypeInteger},
 		{ID: 7, Name: "ascend-uu-info", DataType: DataTypeString},

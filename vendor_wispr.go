@@ -2,9 +2,8 @@ package goradius
 
 // WISPrVendorDefinition defines the WISPr vendor and its attributes
 var WISPrVendorDefinition = &VendorDefinition{
-	ID:          14122,
-	Name:        "wispr",
-	Description: "WISPr (Wireless Internet Service Provider roaming)",
+	ID:   14122,
+	Name: "wispr",
 	Attributes: []*AttributeDefinition{
 		{ID: 1, Name: "wispr-location-id", DataType: DataTypeString},
 		{ID: 2, Name: "wispr-location-name", DataType: DataTypeString},

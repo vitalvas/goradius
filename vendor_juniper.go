@@ -2,9 +2,8 @@ package goradius
 
 // JuniperVendorDefinition contains the Juniper vendor definition with all its attributes
 var JuniperVendorDefinition = &VendorDefinition{
-	ID:          2636,
-	Name:        "juniper",
-	Description: "Juniper Networks",
+	ID:   2636,
+	Name: "juniper",
 	Attributes: []*AttributeDefinition{
 		{ID: 1, Name: "juniper-local-user-name", DataType: DataTypeString},
 		{ID: 2, Name: "juniper-allow-commands", DataType: DataTypeString, Multiline: true},

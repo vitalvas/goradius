@@ -2,9 +2,8 @@ package goradius
 
 // MikrotikVendorDefinition defines the Mikrotik vendor and its attributes
 var MikrotikVendorDefinition = &VendorDefinition{
-	ID:          14988,
-	Name:        "mikrotik",
-	Description: "Mikrotik RouterOS RADIUS attributes",
+	ID:   14988,
+	Name: "mikrotik",
 	Attributes: []*AttributeDefinition{
 		{ID: 1, Name: "mikrotik-recv-limit", DataType: DataTypeInteger},
 		{ID: 2, Name: "mikrotik-xmit-limit", DataType: DataTypeInteger},

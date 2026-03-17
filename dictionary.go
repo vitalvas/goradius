@@ -170,6 +170,18 @@ func (d *Dictionary) LookupVendorIDByAttributeName(name string) (uint32, bool) {
 	return vendorID, exists
 }
 
+// GetAllAttributes returns all attributes in the dictionary (both standard and vendor)
+func (d *Dictionary) GetAllAttributes() []*AttributeDefinition {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	attrs := make([]*AttributeDefinition, 0, len(d.allAttrByName))
+	for _, attr := range d.allAttrByName {
+		attrs = append(attrs, attr)
+	}
+	return attrs
+}
+
 // GetAllVendors returns all vendors in the dictionary
 func (d *Dictionary) GetAllVendors() []*VendorDefinition {
 	d.mu.RLock()

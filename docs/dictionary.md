@@ -65,7 +65,6 @@ type AttributeDefinition struct {
     HasTag      bool              // Tagging
     Array       bool              // Multi-value
     Values      map[string]uint32 // Enum values
-    Description string            // Description
 }
 ```
 
@@ -239,7 +238,6 @@ req.AddAttributeByName(
 vendor := &goradius.VendorDefinition{
     ID:          4874,
     Name:        "erx",
-    Description: "Juniper ERX",
     Attributes: []*goradius.AttributeDefinition{
         {
             ID:       1,
