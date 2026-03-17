@@ -1,7 +1,6 @@
 package goradius
 
 import (
-	"bytes"
 	"context"
 	"net"
 	"sync"
@@ -136,11 +135,12 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		localAddr = transport.LocalAddr()
 	}
 
-	// Get secret
+	// Get secret (attempt 0)
 	secretReq := SecretRequest{
 		Context:    ctx,
 		LocalAddr:  localAddr,
 		RemoteAddr: remoteAddr,
+		Attempt:    0,
 	}
 
 	secretResp, err := s.handler.ServeSecret(secretReq)
@@ -148,18 +148,18 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		return
 	}
 
-	// Optionally validate Request Authenticator for non-Access-Request packets (RFC 2866, RFC 5176)
-	// Access-Request uses random authenticator, others use computed MD5
-	if s.requireRequestAuth && pkt.Code != CodeAccessRequest {
-		expectedAuth := pkt.CalculateRequestAuthenticator(secretResp.Secret)
-		if !bytes.Equal(pkt.Authenticator[:], expectedAuth[:]) {
+	totalAttempts := max(secretResp.Attempts, 1)
+
+	// Validate packet with secret rotation support
+	if totalAttempts <= 1 {
+		// Fast path: single secret
+		if !s.validatePacketSecret(pkt, secretResp.Secret) {
 			return
 		}
-	}
-
-	// Verify Message-Authenticator per RFC 2869 Section 5.14
-	if s.requireMessageAuth {
-		if !pkt.VerifyMessageAuthenticator(secretResp.Secret, pkt.Authenticator) {
+	} else {
+		// Rotation path: try multiple secrets
+		secretResp = s.resolveSecret(ctx, localAddr, remoteAddr, pkt, secretResp, totalAttempts)
+		if secretResp.Secret == nil {
 			return
 		}
 	}
@@ -195,4 +195,53 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 
 	// Send response via transport responder
 	_ = respond(respData)
+}
+
+// validatePacketSecret validates the packet against the given secret
+// using Message-Authenticator and/or Request Authenticator checks.
+func (s *Server) validatePacketSecret(pkt *Packet, secret []byte) bool {
+	if s.requireRequestAuth && pkt.Code != CodeAccessRequest {
+		expectedAuth := pkt.CalculateRequestAuthenticator(secret)
+		if pkt.Authenticator != expectedAuth {
+			return false
+		}
+	}
+
+	if s.requireMessageAuth {
+		if !pkt.VerifyMessageAuthenticator(secret, pkt.Authenticator) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// resolveSecret tries each secret in order until one validates the packet.
+// Returns the SecretResponse with the resolved secret, or one with nil Secret
+// if all attempts fail.
+func (s *Server) resolveSecret(ctx context.Context, localAddr, remoteAddr net.Addr, pkt *Packet, firstResp SecretResponse, totalAttempts int) SecretResponse {
+	// Try first secret (already fetched)
+	if s.validatePacketSecret(pkt, firstResp.Secret) {
+		return firstResp
+	}
+
+	// Try remaining secrets
+	for i := 1; i < totalAttempts; i++ {
+		resp, err := s.handler.ServeSecret(SecretRequest{
+			Context:    ctx,
+			LocalAddr:  localAddr,
+			RemoteAddr: remoteAddr,
+			Attempt:    i,
+		})
+		if err != nil {
+			continue
+		}
+
+		if s.validatePacketSecret(pkt, resp.Secret) {
+			return resp
+		}
+	}
+
+	// All secrets failed
+	return SecretResponse{}
 }

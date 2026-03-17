@@ -1827,3 +1827,242 @@ func BenchmarkServerWithRealisticPacket(b *testing.B) {
 		}
 	})
 }
+
+// rotationHandler supports secret rotation in tests.
+type rotationHandler struct {
+	secrets  []string
+	metadata map[string]any
+}
+
+func (h *rotationHandler) ServeSecret(req SecretRequest) (SecretResponse, error) {
+	return SecretResponse{
+		Secret:   []byte(h.secrets[req.Attempt]),
+		Metadata: h.metadata,
+		Attempts: len(h.secrets),
+	}, nil
+}
+
+func (h *rotationHandler) ServeRADIUS(req *Request) (Response, error) {
+	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
+	return resp, nil
+}
+
+// trackingSecretHandler tracks ServeSecret calls for testing.
+type trackingSecretHandler struct {
+	secrets          []string
+	receivedAttempts *[]int
+	mu               *sync.Mutex
+}
+
+func (h *trackingSecretHandler) ServeSecret(req SecretRequest) (SecretResponse, error) {
+	h.mu.Lock()
+	*h.receivedAttempts = append(*h.receivedAttempts, req.Attempt)
+	h.mu.Unlock()
+
+	return SecretResponse{
+		Secret:   []byte(h.secrets[req.Attempt]),
+		Attempts: len(h.secrets),
+	}, nil
+}
+
+func (h *trackingSecretHandler) ServeRADIUS(req *Request) (Response, error) {
+	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
+	return resp, nil
+}
+
+func TestServerSecretRotation(t *testing.T) {
+	t.Run("succeeds with secondary secret", func(t *testing.T) {
+		srv, err := NewServer(WithHandler(&rotationHandler{
+			secrets: []string{"oldsecret", "newsecret"},
+		}))
+		require.NoError(t, err)
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("newsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := clientConn.Read(buf)
+		require.NoError(t, err)
+
+		respPkt, err := Decode(buf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, respPkt.Code)
+	})
+
+	t.Run("succeeds with primary secret", func(t *testing.T) {
+		srv, err := NewServer(WithHandler(&rotationHandler{
+			secrets: []string{"oldsecret", "newsecret"},
+		}))
+		require.NoError(t, err)
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("oldsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := clientConn.Read(buf)
+		require.NoError(t, err)
+
+		respPkt, err := Decode(buf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, respPkt.Code)
+	})
+
+	t.Run("all secrets fail drops packet", func(t *testing.T) {
+		srv, err := NewServer(WithHandler(&rotationHandler{
+			secrets: []string{"oldsecret", "newsecret"},
+		}))
+		require.NoError(t, err)
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("wrongsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		buf := make([]byte, 4096)
+		_, err = clientConn.Read(buf)
+		assert.Error(t, err)
+	})
+
+	t.Run("attempts zero backward compatible", func(t *testing.T) {
+		handler := &testHandler{
+			secretResp: SecretResponse{
+				Secret:   []byte("testsecret"),
+				Attempts: 0,
+			},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		srv, err := NewServer(WithHandler(handler))
+		require.NoError(t, err)
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("testsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := clientConn.Read(buf)
+		require.NoError(t, err)
+
+		respPkt, err := Decode(buf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, respPkt.Code)
+	})
+
+	t.Run("attempt values correct", func(t *testing.T) {
+		var mu sync.Mutex
+		var receivedAttempts []int
+
+		srv, err := NewServer(WithHandler(&trackingSecretHandler{
+			secrets:          []string{"oldsecret", "newsecret"},
+			receivedAttempts: &receivedAttempts,
+			mu:               &mu,
+		}))
+		require.NoError(t, err)
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("newsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := clientConn.Read(buf)
+		require.NoError(t, err)
+
+		respPkt, err := Decode(buf[:n])
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, respPkt.Code)
+
+		mu.Lock()
+		assert.Equal(t, []int{0, 1}, receivedAttempts)
+		mu.Unlock()
+	})
+
+	t.Run("metadata preserved from resolved secret", func(t *testing.T) {
+		var mu sync.Mutex
+		var capturedMetadata map[string]any
+
+		srv, err := NewServer(WithHandler(&rotationHandler{
+			secrets:  []string{"oldsecret", "newsecret"},
+			metadata: map[string]any{"client": "test-nas"},
+		}))
+		require.NoError(t, err)
+
+		srv.Use(func(next Handler) Handler {
+			return HandlerFunc(func(req *Request) (Response, error) {
+				mu.Lock()
+				capturedMetadata = req.Secret.Metadata
+				mu.Unlock()
+				return next.ServeRADIUS(req)
+			})
+		})
+
+		transport := startTestServer(t, srv)
+		defer srv.Close()
+
+		clientConn, err := net.DialUDP("udp", nil, transport.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator([]byte("newsecret"), reqPkt.Authenticator)
+		data, _ := reqPkt.Encode()
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		_, err = clientConn.Read(buf)
+		require.NoError(t, err)
+
+		mu.Lock()
+		assert.Equal(t, "test-nas", capturedMetadata["client"])
+		mu.Unlock()
+	})
+}

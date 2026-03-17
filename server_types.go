@@ -77,11 +77,20 @@ type SecretRequest struct {
 	Context    context.Context
 	LocalAddr  net.Addr
 	RemoteAddr net.Addr
+	// Attempt is the 0-based secret attempt index for secret rotation.
+	// The server calls ServeSecret multiple times with increasing Attempt values
+	// when the first secret fails to validate the packet.
+	Attempt int
 }
 
 type SecretResponse struct {
 	Secret   []byte
 	Metadata map[string]any
+	// Attempts is the total number of secrets available for rotation.
+	// A value of 0 or 1 means no rotation (single secret).
+	// When greater than 1, the server will try each secret in order
+	// until one validates the packet.
+	Attempts int
 }
 
 type Handler interface {
