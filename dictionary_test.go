@@ -284,9 +284,9 @@ func TestAttributeWithEnumeratedValues(t *testing.T) {
 			Name:     "service-type",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
-				"Login":    1,
-				"Framed":   2,
-				"Callback": 3,
+				"login":    1,
+				"framed":   2,
+				"callback": 3,
 			},
 		},
 	})
@@ -294,9 +294,9 @@ func TestAttributeWithEnumeratedValues(t *testing.T) {
 	attr, exists := dict.LookupStandardByID(6)
 	assert.True(t, exists)
 	assert.NotNil(t, attr.Values)
-	assert.Equal(t, uint32(1), attr.Values["Login"])
-	assert.Equal(t, uint32(2), attr.Values["Framed"])
-	assert.Equal(t, uint32(3), attr.Values["Callback"])
+	assert.Equal(t, uint32(1), attr.Values["login"])
+	assert.Equal(t, uint32(2), attr.Values["framed"])
+	assert.Equal(t, uint32(3), attr.Values["callback"])
 }
 
 func TestAttributeWithTag(t *testing.T) {
@@ -485,6 +485,63 @@ func TestAttributeNameMustBeLowercase(t *testing.T) {
 			Name: "erx",
 			Attributes: []*AttributeDefinition{
 				{ID: 1, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+			},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("standard attribute rejects uppercase value key", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddStandardAttributes([]*AttributeDefinition{
+			{
+				ID:       6,
+				Name:     "service-type",
+				DataType: DataTypeInteger,
+				Values: map[string]uint32{
+					"Login-User": 1,
+				},
+			},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "value key")
+		assert.Contains(t, err.Error(), "must be lowercase")
+	})
+
+	t.Run("vendor attribute rejects uppercase value key", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   4874,
+			Name: "erx",
+			Attributes: []*AttributeDefinition{
+				{
+					ID:       12,
+					Name:     "erx-ingress-statistics",
+					DataType: DataTypeInteger,
+					Values: map[string]uint32{
+						"Disable": 0,
+					},
+				},
+			},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "value key")
+		assert.Contains(t, err.Error(), "must be lowercase")
+	})
+
+	t.Run("accepts lowercase value keys", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddStandardAttributes([]*AttributeDefinition{
+			{
+				ID:       6,
+				Name:     "service-type",
+				DataType: DataTypeInteger,
+				Values: map[string]uint32{
+					"login-user":  1,
+					"framed-user": 2,
+				},
 			},
 		})
 		assert.NoError(t, err)

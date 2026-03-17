@@ -1,3 +1,4 @@
+//yake:skip-test
 package main
 
 import (
@@ -28,7 +29,7 @@ func (h *advancedHandler) ServeRADIUS(req *goradius.Request) (goradius.Response,
 	fmt.Printf("[Handler] Processing %s from %s\n", req.Code().String(), req.RemoteAddr)
 
 	// Get user information
-	if userValues := req.GetAttribute("User-Name"); len(userValues) > 0 {
+	if userValues := req.GetAttribute("user-name"); len(userValues) > 0 {
 		fmt.Printf("[Handler] User: %s\n", userValues[0].String())
 	}
 
@@ -44,11 +45,11 @@ func (h *advancedHandler) ServeRADIUS(req *goradius.Request) (goradius.Response,
 
 	// Add response attributes
 	if err := resp.SetAttributes(map[string][]interface{}{
-		"Reply-Message":           {"Access granted via advanced server"},
-		"Session-Timeout":         {3600},
-		"Framed-IP-Address":       {"192.0.2.100"},
-		"ERX-Primary-Dns":         {"8.8.8.8"},
-		"ERX-Ingress-Policy-Name": {"premium-user-policy"},
+		"reply-message":           {"Access granted via advanced server"},
+		"session-timeout":         {3600},
+		"framed-ip-address":       {"192.0.2.100"},
+		"erx-primary-dns":         {"8.8.8.8"},
+		"erx-ingress-policy-name": {"premium-user-policy"},
 	}); err != nil {
 		return resp, fmt.Errorf("failed to set response attributes: %w", err)
 	}
@@ -104,13 +105,13 @@ func validationMiddleware(next goradius.Handler) goradius.Handler {
 	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
 		// Validate User-Name is present for Access-Request
 		if req.Code() == goradius.CodeAccessRequest {
-			userValues := req.GetAttribute("User-Name")
+			userValues := req.GetAttribute("user-name")
 			if len(userValues) == 0 {
-				fmt.Println("[Middleware:Validation] ERROR: User-Name is required")
+				fmt.Println("[Middleware:Validation] ERROR: user-name is required")
 				// Return Access-Reject
 				resp := goradius.NewResponse(req)
 				resp.SetCode(goradius.CodeAccessReject)
-				if err := resp.SetAttribute("Reply-Message", "User-Name is required"); err != nil {
+				if err := resp.SetAttribute("reply-message", "user-name is required"); err != nil {
 					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
 				}
 				return resp, nil
@@ -118,10 +119,10 @@ func validationMiddleware(next goradius.Handler) goradius.Handler {
 
 			username := userValues[0].String()
 			if len(username) == 0 {
-				fmt.Println("[Middleware:Validation] ERROR: User-Name cannot be empty")
+				fmt.Println("[Middleware:Validation] ERROR: user-name cannot be empty")
 				resp := goradius.NewResponse(req)
 				resp.SetCode(goradius.CodeAccessReject)
-				if err := resp.SetAttribute("Reply-Message", "User-Name cannot be empty"); err != nil {
+				if err := resp.SetAttribute("reply-message", "user-name cannot be empty"); err != nil {
 					return resp, fmt.Errorf("failed to set Reply-Message: %w", err)
 				}
 				return resp, nil

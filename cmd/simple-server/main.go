@@ -1,3 +1,4 @@
+//yake:skip-test
 package main
 
 import (
@@ -40,11 +41,11 @@ func (h *simpleHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, e
 	}
 
 	// Example: Get specific attributes
-	if userValues := req.GetAttribute("User-Name"); len(userValues) > 0 {
+	if userValues := req.GetAttribute("user-name"); len(userValues) > 0 {
 		fmt.Printf("Username: %s\n", userValues[0].String())
 	}
 
-	if nasIPValues := req.GetAttribute("NAS-IP-Address"); len(nasIPValues) > 0 {
+	if nasIPValues := req.GetAttribute("nas-ip-address"); len(nasIPValues) > 0 {
 		fmt.Printf("NAS IP: %s\n", nasIPValues[0].String())
 	}
 
@@ -59,22 +60,22 @@ func (h *simpleHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, e
 	}
 
 	attrs := map[string][]interface{}{
-		"Reply-Message":           {"Hello, RADIUS client!"},
-		"ERX-Service-Activate:1":  {"ipoe-parking"},
-		"ERX-Service-Activate:3":  {"svc-ipoe-policer(52428800, 52428800)"},
-		"ERX-Primary-Dns":         {"8.8.8.8"},
-		"ERX-Ingress-Policy-Name": {"svc-ipoe-filter"},
-		"Framed-IP-Address":       {"192.0.2.11"},
+		"reply-message":           {"Hello, RADIUS client!"},
+		"erx-service-activate:1":  {"ipoe-parking"},
+		"erx-service-activate:3":  {"svc-ipoe-policer(52428800, 52428800)"},
+		"erx-primary-dns":         {"8.8.8.8"},
+		"erx-ingress-policy-name": {"svc-ipoe-filter"},
+		"framed-ip-address":       {"192.0.2.11"},
 	}
 
 	if err := resp.SetAttributes(attrs); err != nil {
 		return resp, fmt.Errorf("failed to set attributes: %w", err)
 	}
 
-	if err := resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat"); err != nil {
+	if err := resp.SetAttribute("framed-pool", "dhcp-pool-cgnat"); err != nil {
 		return resp, fmt.Errorf("failed to set Framed-Pool: %w", err)
 	}
-	// if err := resp.SetAttribute("Framed-Pool", "dhcp-pool-cgnat-v2"); err != nil {
+	// if err := resp.SetAttribute("framed-pool", "dhcp-pool-cgnat-v2"); err != nil {
 	//     return resp, fmt.Errorf("failed to set Framed-Pool: %w", err)
 	// }
 

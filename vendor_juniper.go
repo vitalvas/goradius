@@ -23,10 +23,10 @@ var JuniperVendorDefinition = &VendorDefinition{
 			Name:     "juniper-ctp-group",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
-				"Read_Only":        1,
-				"Admin":            2,
-				"Privileged_Admin": 3,
-				"Auditor":          4,
+				"read_only":        1,
+				"admin":            2,
+				"privileged_admin": 3,
+				"auditor":          4,
 			},
 		},
 		{
@@ -34,9 +34,9 @@ var JuniperVendorDefinition = &VendorDefinition{
 			Name:     "juniper-ctpview-app-group",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
-				"Net_View":     1,
-				"Net_Admin":    2,
-				"Global_Admin": 3,
+				"net_view":     1,
+				"net_admin":    2,
+				"global_admin": 3,
 			},
 		},
 		{
@@ -44,9 +44,9 @@ var JuniperVendorDefinition = &VendorDefinition{
 			Name:     "juniper-ctpview-os-group",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
-				"Web_Manager":  1,
-				"System_Admin": 2,
-				"Auditor":      3,
+				"web_manager":  1,
+				"system_admin": 2,
+				"auditor":      3,
 			},
 		},
 		{ID: 31, Name: "juniper-primary-dns", DataType: DataTypeIPAddr},

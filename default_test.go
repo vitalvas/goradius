@@ -13,14 +13,14 @@ func TestNewDefault(t *testing.T) {
 
 	// Verify standard RFC attributes are loaded by ID
 	userNameAttr, ok := dict.LookupStandardByID(1)
-	assert.True(t, ok, "User-Name (ID 1) should be loaded")
+	assert.True(t, ok, "user-name (ID 1) should be loaded")
 	if ok {
 		assert.Equal(t, "user-name", userNameAttr.Name)
 	}
 
 	// Verify standard RFC attributes are loaded by name
 	userPassAttr, ok := dict.LookupStandardByName("user-password")
-	assert.True(t, ok, "User-Password should be loaded")
+	assert.True(t, ok, "user-password should be loaded")
 	if ok {
 		assert.Equal(t, uint32(2), userPassAttr.ID)
 		assert.Equal(t, "user-password", userPassAttr.Name)
@@ -32,14 +32,14 @@ func TestNewDefault(t *testing.T) {
 	if ok {
 		assert.Equal(t, "juniper", juniperVendor.Name)
 		juniperAttr, ok := dict.LookupVendorAttributeByID(2636, 1)
-		assert.True(t, ok, "Juniper-Local-User-Name should be loaded")
+		assert.True(t, ok, "juniper-local-user-name should be loaded")
 		if ok {
 			assert.Equal(t, "juniper-local-user-name", juniperAttr.Name)
 		}
 
 		// Verify lookup by name also works (using unified lookup)
 		juniperAttrByName, ok := dict.LookupByAttributeName("juniper-user-permissions")
-		assert.True(t, ok, "Juniper-User-Permissions should be found by name")
+		assert.True(t, ok, "juniper-user-permissions should be found by name")
 		if ok {
 			assert.Equal(t, uint32(10), juniperAttrByName.ID)
 		}
@@ -85,17 +85,17 @@ func TestNewDefaultMultilineAttributes(t *testing.T) {
 
 	// Verify Juniper multiline attributes are properly configured
 	juniperUserPerms, ok := dict.LookupVendorAttributeByID(2636, 10)
-	assert.True(t, ok, "Juniper-User-Permissions should exist")
+	assert.True(t, ok, "juniper-user-permissions should exist")
 	if ok {
 		assert.Equal(t, "juniper-user-permissions", juniperUserPerms.Name)
-		assert.True(t, juniperUserPerms.Multiline, "Juniper-User-Permissions should have multiline flag")
+		assert.True(t, juniperUserPerms.Multiline, "juniper-user-permissions should have multiline flag")
 	}
 
 	juniperAllowCmds, ok := dict.LookupVendorAttributeByID(2636, 2)
-	assert.True(t, ok, "Juniper-Allow-Commands should exist")
+	assert.True(t, ok, "juniper-allow-commands should exist")
 	if ok {
 		assert.Equal(t, "juniper-allow-commands", juniperAllowCmds.Name)
-		assert.True(t, juniperAllowCmds.Multiline, "Juniper-Allow-Commands should have multiline flag")
+		assert.True(t, juniperAllowCmds.Multiline, "juniper-allow-commands should have multiline flag")
 	}
 }
 
@@ -106,30 +106,30 @@ func TestNewDefaultEnumeratedValues(t *testing.T) {
 
 	// Verify Juniper-CTP-Group enumerated values
 	ctpGroup, ok := dict.LookupVendorAttributeByID(2636, 21)
-	assert.True(t, ok, "Juniper-CTP-Group should exist")
+	assert.True(t, ok, "juniper-ctp-group should exist")
 	if ok {
 		assert.Equal(t, "juniper-ctp-group", ctpGroup.Name)
-		assert.NotNil(t, ctpGroup.Values, "Juniper-CTP-Group should have enumerated values")
+		assert.NotNil(t, ctpGroup.Values, "juniper-ctp-group should have enumerated values")
 		if ctpGroup.Values != nil {
-			assert.Equal(t, uint32(1), ctpGroup.Values["Read_Only"])
-			assert.Equal(t, uint32(2), ctpGroup.Values["Admin"])
-			assert.Equal(t, uint32(3), ctpGroup.Values["Privileged_Admin"])
-			assert.Equal(t, uint32(4), ctpGroup.Values["Auditor"])
+			assert.Equal(t, uint32(1), ctpGroup.Values["read_only"])
+			assert.Equal(t, uint32(2), ctpGroup.Values["admin"])
+			assert.Equal(t, uint32(3), ctpGroup.Values["privileged_admin"])
+			assert.Equal(t, uint32(4), ctpGroup.Values["auditor"])
 		}
 	}
 
 	// Verify Mikrotik-Wireless-Enc-Algo enumerated values
 	encAlgo, ok := dict.LookupVendorAttributeByID(14988, 6)
-	assert.True(t, ok, "Mikrotik-Wireless-Enc-Algo should exist")
+	assert.True(t, ok, "mikrotik-wireless-enc-algo should exist")
 	if ok {
 		assert.Equal(t, "mikrotik-wireless-enc-algo", encAlgo.Name)
-		assert.NotNil(t, encAlgo.Values, "Mikrotik-Wireless-Enc-Algo should have enumerated values")
+		assert.NotNil(t, encAlgo.Values, "mikrotik-wireless-enc-algo should have enumerated values")
 		if encAlgo.Values != nil {
-			assert.Equal(t, uint32(0), encAlgo.Values["No-encryption"])
-			assert.Equal(t, uint32(1), encAlgo.Values["40-bit-WEP"])
-			assert.Equal(t, uint32(2), encAlgo.Values["104-bit-WEP"])
-			assert.Equal(t, uint32(3), encAlgo.Values["AES-CCM"])
-			assert.Equal(t, uint32(4), encAlgo.Values["TKIP"])
+			assert.Equal(t, uint32(0), encAlgo.Values["no-encryption"])
+			assert.Equal(t, uint32(1), encAlgo.Values["40-bit-wep"])
+			assert.Equal(t, uint32(2), encAlgo.Values["104-bit-wep"])
+			assert.Equal(t, uint32(3), encAlgo.Values["aes-ccm"])
+			assert.Equal(t, uint32(4), encAlgo.Values["tkip"])
 		}
 	}
 }

@@ -21,7 +21,7 @@ func TestStandardRFCAttributes(t *testing.T) {
 
 	// Verify User-Name (ID 1)
 	userNameAttr, exists := idMap[1]
-	assert.True(t, exists, "User-Name attribute should exist")
+	assert.True(t, exists, "user-name attribute should exist")
 	if exists {
 		assert.Equal(t, "user-name", userNameAttr.Name)
 		assert.Equal(t, DataTypeString, userNameAttr.DataType)
@@ -29,7 +29,7 @@ func TestStandardRFCAttributes(t *testing.T) {
 
 	// Verify User-Password (ID 2)
 	userPassAttr, exists := idMap[2]
-	assert.True(t, exists, "User-Password attribute should exist")
+	assert.True(t, exists, "user-password attribute should exist")
 	if exists {
 		assert.Equal(t, "user-password", userPassAttr.Name)
 		assert.Equal(t, DataTypeString, userPassAttr.DataType)
@@ -38,7 +38,7 @@ func TestStandardRFCAttributes(t *testing.T) {
 
 	// Verify NAS-IP-Address (ID 4)
 	nasIPAttr, exists := idMap[4]
-	assert.True(t, exists, "NAS-IP-Address attribute should exist")
+	assert.True(t, exists, "nas-ip-address attribute should exist")
 	if exists {
 		assert.Equal(t, "nas-ip-address", nasIPAttr.Name)
 		assert.Equal(t, DataTypeIPAddr, nasIPAttr.DataType)
@@ -46,7 +46,7 @@ func TestStandardRFCAttributes(t *testing.T) {
 
 	// Verify Framed-IP-Address (ID 8)
 	framedIPAttr, exists := idMap[8]
-	assert.True(t, exists, "Framed-IP-Address attribute should exist")
+	assert.True(t, exists, "framed-ip-address attribute should exist")
 	if exists {
 		assert.Equal(t, "framed-ip-address", framedIPAttr.Name)
 		assert.Equal(t, DataTypeIPAddr, framedIPAttr.DataType)

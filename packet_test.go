@@ -434,7 +434,7 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 		pkt.AddAttribute(NewAttribute(99, []byte("unknown")))
 
-		values := pkt.GetAttribute("Unknown-Attribute")
+		values := pkt.GetAttribute("unknown-attribute")
 		assert.Empty(t, values)
 	})
 
@@ -815,7 +815,7 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 		pkt := NewPacket(CodeAccessAccept, 1)
 		pkt.Dict = dict
 
-		result := pkt.GetAttributeString("Non-Existent-Attribute")
+		result := pkt.GetAttributeString("non-existent-attribute")
 		assert.Equal(t, "", result)
 	})
 }
@@ -1393,6 +1393,60 @@ func TestVSACacheInvalidatedOnRemove(t *testing.T) {
 
 	// Cache should be invalidated (nil)
 	assert.Nil(t, pkt.vsaCache, "VSA cache should be invalidated after removal")
+}
+
+func TestEncryptTunnelPassword(t *testing.T) {
+	secret := []byte("testing123")
+	auth := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	t.Run("basic encryption", func(t *testing.T) {
+		password := []byte("tunnel-secret")
+		result := encryptTunnelPassword(password, secret, auth)
+
+		// Result must have salt (2 bytes) + encrypted data
+		assert.GreaterOrEqual(t, len(result), 2+16)
+
+		// Salt first byte must have high bit set (RFC 2868)
+		assert.True(t, result[0]&0x80 != 0, "salt high bit must be set")
+
+		// Encrypted portion must be padded to 16-byte boundary
+		encryptedLen := len(result) - 2
+		assert.Equal(t, 0, encryptedLen%16)
+	})
+
+	t.Run("empty password", func(t *testing.T) {
+		result := encryptTunnelPassword([]byte{}, secret, auth)
+
+		assert.GreaterOrEqual(t, len(result), 2+16)
+		assert.True(t, result[0]&0x80 != 0)
+	})
+
+	t.Run("long password spans multiple blocks", func(t *testing.T) {
+		// Password longer than 15 bytes requires multiple blocks
+		password := []byte("this-is-a-very-long-tunnel-password-value")
+		result := encryptTunnelPassword(password, secret, auth)
+
+		// 1 byte length + 41 bytes password = 42, padded to 48 (3 blocks)
+		assert.Equal(t, 2+48, len(result))
+		assert.True(t, result[0]&0x80 != 0)
+	})
+
+	t.Run("exactly 15 bytes fits one block", func(t *testing.T) {
+		password := []byte("123456789012345") // 15 bytes
+		result := encryptTunnelPassword(password, secret, auth)
+
+		// 1 byte length + 15 bytes = 16, exactly one block
+		assert.Equal(t, 2+16, len(result))
+	})
+
+	t.Run("different passwords produce different output", func(t *testing.T) {
+		r1 := encryptTunnelPassword([]byte("pass1"), secret, auth)
+		r2 := encryptTunnelPassword([]byte("pass2"), secret, auth)
+
+		// Salt is random, so results differ even for same password
+		// But encrypted portions should definitely differ
+		assert.NotEqual(t, r1, r2)
+	})
 }
 
 func BenchmarkAttributeValueString(b *testing.B) {

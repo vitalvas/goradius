@@ -43,17 +43,31 @@ func NewDictionary() *Dictionary {
 	}
 }
 
+// validateAttributeDefinition validates that attribute names and value keys are lowercase
+func validateAttributeDefinition(attr *AttributeDefinition) error {
+	if attr.Name != strings.ToLower(attr.Name) {
+		return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+	}
+
+	for key := range attr.Values {
+		if key != strings.ToLower(key) {
+			return fmt.Errorf("attribute %q value key %q must be lowercase", attr.Name, key)
+		}
+	}
+
+	return nil
+}
+
 // AddStandardAttributes adds standard RFC attributes to the
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
-// Attribute names must be lowercase only.
+// Attribute names and value keys must be lowercase only.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// Check for duplicates and validate lowercase against unified attribute index
 	for _, attr := range attrs {
-		if attr.Name != strings.ToLower(attr.Name) {
-			return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+		if err := validateAttributeDefinition(attr); err != nil {
+			return err
 		}
 
 		if _, exists := d.allAttrByName[attr.Name]; exists {
@@ -78,8 +92,8 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	defer d.mu.Unlock()
 
 	for _, attr := range vendor.Attributes {
-		if attr.Name != strings.ToLower(attr.Name) {
-			return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+		if err := validateAttributeDefinition(attr); err != nil {
+			return err
 		}
 
 		if _, exists := d.allAttrByName[attr.Name]; exists {

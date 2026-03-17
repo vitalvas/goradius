@@ -150,7 +150,7 @@ func TestCoAWithInvalidAttribute(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.CoA(map[string]interface{}{
-		"Invalid-Attribute": "value",
+		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
@@ -168,7 +168,7 @@ func TestDisconnectWithInvalidAttribute(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.Disconnect(map[string]interface{}{
-		"Invalid-Attribute": "value",
+		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
@@ -312,7 +312,7 @@ func TestAccessRequestWithInvalidAttribute(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.AccessRequest(map[string]interface{}{
-		"Invalid-Attribute": "value",
+		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")
@@ -330,7 +330,7 @@ func TestAccountingRequestWithInvalidAttribute(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.AccountingRequest(map[string]interface{}{
-		"Invalid-Attribute": "value",
+		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in dictionary")

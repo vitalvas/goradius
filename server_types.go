@@ -13,6 +13,14 @@ type Request struct {
 	Secret     SecretResponse
 }
 
+// NewRequest creates a Request from a Packet and SecretResponse
+func NewRequest(pkt *Packet, secret SecretResponse) *Request {
+	return &Request{
+		packet: pkt,
+		Secret: secret,
+	}
+}
+
 // GetAttribute returns all values for the given attribute name
 func (r *Request) GetAttribute(name string) []AttributeValue {
 	if r.packet == nil {

@@ -20,37 +20,37 @@ func TestJuniperVendorDefinition(t *testing.T) {
 
 	// Verify Juniper-User-Permissions exists and has multiline enabled
 	userPerms, exists := attrMap["juniper-user-permissions"]
-	assert.True(t, exists, "Juniper-User-Permissions should exist")
+	assert.True(t, exists, "juniper-user-permissions should exist")
 	if exists {
 		assert.Equal(t, uint32(10), userPerms.ID)
 		assert.Equal(t, DataTypeString, userPerms.DataType)
-		assert.True(t, userPerms.Multiline, "Juniper-User-Permissions should support multiline")
+		assert.True(t, userPerms.Multiline, "juniper-user-permissions should support multiline")
 	}
 
 	// Verify Juniper-Allow-Commands has multiline enabled
 	allowCmds, exists := attrMap["juniper-allow-commands"]
-	assert.True(t, exists, "Juniper-Allow-Commands should exist")
+	assert.True(t, exists, "juniper-allow-commands should exist")
 	if exists {
 		assert.Equal(t, uint32(2), allowCmds.ID)
-		assert.True(t, allowCmds.Multiline, "Juniper-Allow-Commands should support multiline")
+		assert.True(t, allowCmds.Multiline, "juniper-allow-commands should support multiline")
 	}
 
 	// Verify Juniper-CTP-Group has enumerated values
 	ctpGroup, exists := attrMap["juniper-ctp-group"]
-	assert.True(t, exists, "Juniper-CTP-Group should exist")
+	assert.True(t, exists, "juniper-ctp-group should exist")
 	if exists {
 		assert.Equal(t, uint32(21), ctpGroup.ID)
 		assert.Equal(t, DataTypeInteger, ctpGroup.DataType)
 		assert.NotNil(t, ctpGroup.Values)
-		assert.Equal(t, uint32(1), ctpGroup.Values["Read_Only"])
-		assert.Equal(t, uint32(2), ctpGroup.Values["Admin"])
-		assert.Equal(t, uint32(3), ctpGroup.Values["Privileged_Admin"])
-		assert.Equal(t, uint32(4), ctpGroup.Values["Auditor"])
+		assert.Equal(t, uint32(1), ctpGroup.Values["read_only"])
+		assert.Equal(t, uint32(2), ctpGroup.Values["admin"])
+		assert.Equal(t, uint32(3), ctpGroup.Values["privileged_admin"])
+		assert.Equal(t, uint32(4), ctpGroup.Values["auditor"])
 	}
 
 	// Verify Juniper-Primary-Dns exists
 	primaryDNS, exists := attrMap["juniper-primary-dns"]
-	assert.True(t, exists, "Juniper-Primary-Dns should exist")
+	assert.True(t, exists, "juniper-primary-dns should exist")
 	if exists {
 		assert.Equal(t, uint32(31), primaryDNS.ID)
 		assert.Equal(t, DataTypeIPAddr, primaryDNS.DataType)

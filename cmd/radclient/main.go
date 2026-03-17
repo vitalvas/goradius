@@ -1,3 +1,4 @@
+//yake:skip-test
 package main
 
 import (

@@ -12,18 +12,18 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "service-type",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Login-User":              1,  // RFC2865
-			"Framed-User":             2,  // RFC2865
-			"Callback-Login-User":     3,  // RFC2865
-			"Callback-Framed-User":    4,  // RFC2865
-			"Outbound-User":           5,  // RFC2865
-			"Administrative-User":     6,  // RFC2865
-			"NAS-Prompt-User":         7,  // RFC2865
-			"Authenticate-Only":       8,  // RFC2865
-			"Callback-NAS-Prompt":     9,  // RFC2865
-			"Call-Check":              10, // RFC2865
-			"Callback-Administrative": 11, // RFC2865
-			"Authorize-Only":          17, // RFC2865
+			"login-user":              1,  // RFC2865
+			"framed-user":             2,  // RFC2865
+			"callback-login-user":     3,  // RFC2865
+			"callback-framed-user":    4,  // RFC2865
+			"outbound-user":           5,  // RFC2865
+			"administrative-user":     6,  // RFC2865
+			"nas-prompt-user":         7,  // RFC2865
+			"authenticate-only":       8,  // RFC2865
+			"callback-nas-prompt":     9,  // RFC2865
+			"call-check":              10, // RFC2865
+			"callback-administrative": 11, // RFC2865
+			"authorize-only":          17, // RFC2865
 			"framed-management":       18, // RFC2865
 		},
 	},
@@ -32,12 +32,12 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "framed-protocol",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"PPP":               1, // RFC2865
-			"SLIP":              2, // RFC2865
-			"ARAP":              3, // RFC2865
-			"Gandalf-SLML":      4, // RFC2865
-			"Xylogics-IPX-SLIP": 5, // RFC2865
-			"X.75-Synchronous":  6, // RFC2865
+			"ppp":               1, // RFC2865
+			"slip":              2, // RFC2865
+			"arap":              3, // RFC2865
+			"gandalf-slml":      4, // RFC2865
+			"xylogics-ipx-slip": 5, // RFC2865
+			"x.75-synchronous":  6, // RFC2865
 		},
 	},
 	{ID: 8, Name: "framed-ip-address", DataType: DataTypeIPAddr}, // RFC2865
@@ -47,10 +47,10 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "framed-routing",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"None":             0, // RFC2865
-			"Broadcast":        1, // RFC2865
-			"Listen":           2, // RFC2865
-			"Broadcast-Listen": 3, // RFC2865
+			"none":             0, // RFC2865
+			"broadcast":        1, // RFC2865
+			"listen":           2, // RFC2865
+			"broadcast-listen": 3, // RFC2865
 		},
 	},
 	{ID: 11, Name: "filter-id", DataType: DataTypeString},   // RFC2865
@@ -60,10 +60,10 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "framed-compression",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"None":                   0, // RFC2865
-			"Van-Jacobson-TCP-IP":    1, // RFC2865
-			"IPX-Header-Compression": 2, // RFC2865
-			"Stac-LZS":               3, // RFC2865
+			"none":                   0, // RFC2865
+			"van-jacobson-tcp-ip":    1, // RFC2865
+			"ipx-header-compression": 2, // RFC2865
+			"stac-lzs":               3, // RFC2865
 		},
 	},
 	{ID: 14, Name: "login-ip-host", DataType: DataTypeIPAddr}, // RFC2865
@@ -72,14 +72,14 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "login-service",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Telnet":          0, // RFC2865
-			"Rlogin":          1, // RFC2865
-			"TCP-Clear":       2, // RFC2865
-			"PortMaster":      3, // RFC2865
-			"LAT":             4, // RFC2865
-			"X25-PAD":         5, // RFC2865
-			"X25-T3POS":       6, // RFC2865
-			"TCP-Clear-Quiet": 8, // RFC2865
+			"telnet":          0, // RFC2865
+			"rlogin":          1, // RFC2865
+			"tcp-clear":       2, // RFC2865
+			"portmaster":      3, // RFC2865
+			"lat":             4, // RFC2865
+			"x25-pad":         5, // RFC2865
+			"x25-t3pos":       6, // RFC2865
+			"tcp-clear-quiet": 8, // RFC2865
 		},
 	},
 	{ // RFC2865
@@ -87,9 +87,9 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "login-tcp-port",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Telnet": 23,  // RFC2865
-			"Rlogin": 513, // RFC2865
-			"Rsh":    514, // RFC2865
+			"telnet": 23,  // RFC2865
+			"rlogin": 513, // RFC2865
+			"rsh":    514, // RFC2865
 		},
 	},
 	{ID: 18, Name: "reply-message", DataType: DataTypeString},      // RFC2865
@@ -107,8 +107,8 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "termination-action",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Default":        0, // RFC2865
-			"RADIUS-Request": 1, // RFC2865
+			"default":        0, // RFC2865
+			"radius-request": 1, // RFC2865
 		},
 	},
 	{ID: 30, Name: "called-station-id", DataType: DataTypeString},         // RFC2865
@@ -126,19 +126,19 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "acct-status-type",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Start":              1,  // RFC2866
-			"Stop":               2,  // RFC2866
-			"Alive":              3,  // RFC2866
-			"Interim-Update":     3,  // RFC2866
-			"Accounting-On":      7,  // RFC2866
-			"Accounting-Off":     8,  // RFC2866
-			"Tunnel-Start":       9,  // RFC2866
-			"Tunnel-Stop":        10, // RFC2866
-			"Tunnel-Reject":      11, // RFC2866
-			"Tunnel-Link-Start":  12, // RFC2866
-			"Tunnel-Link-Stop":   13, // RFC2866
-			"Tunnel-Link-Reject": 14, // RFC2866
-			"Failed":             15, // RFC2866
+			"start":              1,  // RFC2866
+			"stop":               2,  // RFC2866
+			"alive":              3,  // RFC2866
+			"interim-update":     3,  // RFC2866
+			"accounting-on":      7,  // RFC2866
+			"accounting-off":     8,  // RFC2866
+			"tunnel-start":       9,  // RFC2866
+			"tunnel-stop":        10, // RFC2866
+			"tunnel-reject":      11, // RFC2866
+			"tunnel-link-start":  12, // RFC2866
+			"tunnel-link-stop":   13, // RFC2866
+			"tunnel-link-reject": 14, // RFC2866
+			"failed":             15, // RFC2866
 		},
 	},
 	{ID: 41, Name: "acct-delay-time", DataType: DataTypeInteger},    // RFC2866
@@ -150,10 +150,10 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "acct-authentic",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"RADIUS":   1, // RFC2866
-			"Local":    2, // RFC2866
-			"Remote":   3, // RFC2866
-			"Diameter": 4, // RFC2866
+			"radius":   1, // RFC2866
+			"local":    2, // RFC2866
+			"remote":   3, // RFC2866
+			"diameter": 4, // RFC2866
 		},
 	},
 	{ID: 46, Name: "acct-session-time", DataType: DataTypeInteger},   // RFC2866
@@ -164,28 +164,28 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "acct-terminate-cause",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"User-Request":             1,  // RFC2866
-			"Lost-Carrier":             2,  // RFC2866
-			"Lost-Service":             3,  // RFC2866
+			"user-request":             1,  // RFC2866
+			"lost-carrier":             2,  // RFC2866
+			"lost-service":             3,  // RFC2866
 			"idle-timeout":             4,  // RFC2866
 			"session-timeout":          5,  // RFC2866
-			"Admin-Reset":              6,  // RFC2866
-			"Admin-Reboot":             7,  // RFC2866
-			"Port-Error":               8,  // RFC2866
-			"NAS-Error":                9,  // RFC2866
-			"NAS-Request":              10, // RFC2866
-			"NAS-Reboot":               11, // RFC2866
-			"Port-Unneeded":            12, // RFC2866
-			"Port-Preempted":           13, // RFC2866
-			"Port-Suspended":           14, // RFC2866
-			"Service-Unavailable":      15, // RFC2866
-			"Callback":                 16, // RFC2866
-			"User-Error":               17, // RFC2866
-			"Host-Request":             18, // RFC2866
-			"Supplicant-Restart":       19, // RFC2866
-			"Reauthentication-Failure": 20, // RFC2866
-			"Port-Reinit":              21, // RFC2866
-			"Port-Disabled":            22, // RFC2866
+			"admin-reset":              6,  // RFC2866
+			"admin-reboot":             7,  // RFC2866
+			"port-error":               8,  // RFC2866
+			"nas-error":                9,  // RFC2866
+			"nas-request":              10, // RFC2866
+			"nas-reboot":               11, // RFC2866
+			"port-unneeded":            12, // RFC2866
+			"port-preempted":           13, // RFC2866
+			"port-suspended":           14, // RFC2866
+			"service-unavailable":      15, // RFC2866
+			"callback":                 16, // RFC2866
+			"user-error":               17, // RFC2866
+			"host-request":             18, // RFC2866
+			"supplicant-restart":       19, // RFC2866
+			"reauthentication-failure": 20, // RFC2866
+			"port-reinit":              21, // RFC2866
+			"port-disabled":            22, // RFC2866
 		},
 	},
 	{ID: 50, Name: "acct-multi-session-id", DataType: DataTypeString},  // RFC2866
@@ -199,8 +199,8 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "ingress-filters",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Enabled":  1, // RFC4675
-			"Disabled": 2, // RFC4675
+			"enabled":  1, // RFC4675
+			"disabled": 2, // RFC4675
 		},
 	},
 	{ID: 58, Name: "egress-vlan-name", DataType: DataTypeString},    // RFC4675
@@ -211,33 +211,33 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "nas-port-type",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Async":              0,  // RFC2865
-			"Sync":               1,  // RFC2865
-			"ISDN":               2,  // RFC2865
-			"ISDN-V120":          3,  // RFC2865
-			"ISDN-V110":          4,  // RFC2865
-			"Virtual":            5,  // RFC2865
-			"PIAFS":              6,  // RFC2865
-			"HDLC-Clear-Channel": 7,  // RFC2865
-			"X.25":               8,  // RFC2865
-			"X.75":               9,  // RFC2865
-			"G.3-Fax":            10, // RFC2865
-			"SDSL":               11, // RFC2865
-			"ADSL-CAP":           12, // RFC2865
-			"ADSL-DMT":           13, // RFC2865
-			"IDSL":               14, // RFC2865
-			"Ethernet":           15, // RFC2865
-			"xDSL":               16, // RFC2865
-			"Cable":              17, // RFC2865
-			"Wireless-Other":     18, // RFC2865
-			"Wireless-802.11":    19, // RFC2865
-			"Token-Ring":         20, // RFC2865
-			"FDDI":               21, // RFC2865
-			"PPPoA":              30, // RFC2865
-			"PPPoEoA":            31, // RFC2865
-			"PPPoEoE":            32, // RFC2865
-			"PPPoEoVLAN":         33, // RFC2865
-			"PPPoEoQinQ":         34, // RFC2865
+			"async":              0,  // RFC2865
+			"sync":               1,  // RFC2865
+			"isdn":               2,  // RFC2865
+			"isdn-v120":          3,  // RFC2865
+			"isdn-v110":          4,  // RFC2865
+			"virtual":            5,  // RFC2865
+			"piafs":              6,  // RFC2865
+			"hdlc-clear-channel": 7,  // RFC2865
+			"x.25":               8,  // RFC2865
+			"x.75":               9,  // RFC2865
+			"g.3-fax":            10, // RFC2865
+			"sdsl":               11, // RFC2865
+			"adsl-cap":           12, // RFC2865
+			"adsl-dmt":           13, // RFC2865
+			"idsl":               14, // RFC2865
+			"ethernet":           15, // RFC2865
+			"xdsl":               16, // RFC2865
+			"cable":              17, // RFC2865
+			"wireless-other":     18, // RFC2865
+			"wireless-802.11":    19, // RFC2865
+			"token-ring":         20, // RFC2865
+			"fddi":               21, // RFC2865
+			"pppoa":              30, // RFC2865
+			"pppoeoa":            31, // RFC2865
+			"pppoeoe":            32, // RFC2865
+			"pppoeovlan":         33, // RFC2865
+			"pppoeoqinq":         34, // RFC2865
 		},
 	},
 	{ID: 62, Name: "port-limit", DataType: DataTypeInteger},    // RFC2865
@@ -248,19 +248,19 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		DataType: DataTypeInteger,
 		HasTag:   true,
 		Values: map[string]uint32{
-			"PPTP":     1,  // RFC2868
-			"L2F":      2,  // RFC2868
-			"L2TP":     3,  // RFC2868
-			"ATMP":     4,  // RFC2868
-			"VTP":      5,  // RFC2868
-			"AH":       6,  // RFC2868
-			"IP":       7,  // RFC2868
-			"MIN-IP":   8,  // RFC2868
-			"ESP":      9,  // RFC2868
-			"GRE":      10, // RFC2868
-			"DVS":      11, // RFC2868
-			"IP-in-IP": 12, // RFC2868
-			"VLAN":     13, // RFC2868
+			"pptp":     1,  // RFC2868
+			"l2f":      2,  // RFC2868
+			"l2tp":     3,  // RFC2868
+			"atmp":     4,  // RFC2868
+			"vtp":      5,  // RFC2868
+			"ah":       6,  // RFC2868
+			"ip":       7,  // RFC2868
+			"min-ip":   8,  // RFC2868
+			"esp":      9,  // RFC2868
+			"gre":      10, // RFC2868
+			"dvs":      11, // RFC2868
+			"ip-in-ip": 12, // RFC2868
+			"vlan":     13, // RFC2868
 		},
 	},
 	{ // RFC2868
@@ -269,22 +269,22 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		DataType: DataTypeInteger,
 		HasTag:   true,
 		Values: map[string]uint32{
-			"IP":           1,  // RFC2868
-			"IPv4":         1,  // RFC2868
-			"IPv6":         2,  // RFC2868
-			"NSAP":         3,  // RFC2868
-			"HDLC":         4,  // RFC2868
-			"BBN-1822":     5,  // RFC2868
-			"IEEE-802":     6,  // RFC2868
-			"E.163":        7,  // RFC2868
-			"E.164":        8,  // RFC2868
-			"F.69":         9,  // RFC2868
-			"X.121":        10, // RFC2868
-			"IPX":          11, // RFC2868
-			"Appletalk":    12, // RFC2868
-			"DecNet-IV":    13, // RFC2868
-			"Banyan-Vines": 14, // RFC2868
-			"E.164-NSAP":   15, // RFC2868
+			"ip":           1,  // RFC2868
+			"ipv4":         1,  // RFC2868
+			"ipv6":         2,  // RFC2868
+			"nsap":         3,  // RFC2868
+			"hdlc":         4,  // RFC2868
+			"bbn-1822":     5,  // RFC2868
+			"ieee-802":     6,  // RFC2868
+			"e.163":        7,  // RFC2868
+			"e.164":        8,  // RFC2868
+			"f.69":         9,  // RFC2868
+			"x.121":        10, // RFC2868
+			"ipx":          11, // RFC2868
+			"appletalk":    12, // RFC2868
+			"decnet-iv":    13, // RFC2868
+			"banyan-vines": 14, // RFC2868
+			"e.164-nsap":   15, // RFC2868
 		},
 	},
 	{ID: 66, Name: "tunnel-client-endpoint", DataType: DataTypeString, HasTag: true},                                // RFC2868
@@ -298,9 +298,9 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "arap-zone-access",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Default-Zone":          1, // RFC2869
-			"Zone-Filter-Inclusive": 2, // RFC2869
-			"Zone-Filter-Exclusive": 4, // RFC2869
+			"default-zone":          1, // RFC2869
+			"zone-filter-inclusive": 2, // RFC2869
+			"zone-filter-exclusive": 4, // RFC2869
 		},
 	},
 	{ID: 73, Name: "arap-security", DataType: DataTypeInteger},     // RFC2869
@@ -311,8 +311,8 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "prompt",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"No-Echo": 0, // RFC2869
-			"Echo":    1, // RFC2869
+			"no-echo": 0, // RFC2869
+			"echo":    1, // RFC2869
 		},
 	},
 	{ID: 77, Name: "connect-info", DataType: DataTypeString},                          // RFC2869
@@ -343,23 +343,23 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "error-cause",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Residual-Context-Removed":               201, // RFC3576
-			"Invalid-EAP-Packet":                     202, // RFC3576
-			"Unsupported-Attribute":                  401, // RFC3576
-			"Missing-Attribute":                      402, // RFC3576
-			"NAS-Identification-Mismatch":            403, // RFC3576
-			"Invalid-Request":                        404, // RFC3576
-			"Unsupported-Service":                    405, // RFC3576
-			"Unsupported-Extension":                  406, // RFC3576
-			"Invalid-Attribute-Value":                407, // RFC3576
-			"Administratively-Prohibited":            501, // RFC3576
-			"Proxy-Request-Not-Routable":             502, // RFC3576
-			"Session-Context-Not-Found":              503, // RFC3576
-			"Session-Context-Not-Removable":          504, // RFC3576
-			"Proxy-Processing-Error":                 505, // RFC3576
-			"Resources-Unavailable":                  506, // RFC3576
-			"Request-Initiated":                      507, // RFC3576
-			"Multiple-Session-Selection-Unsupported": 508, // RFC3576
+			"residual-context-removed":               201, // RFC3576
+			"invalid-eap-packet":                     202, // RFC3576
+			"unsupported-attribute":                  401, // RFC3576
+			"missing-attribute":                      402, // RFC3576
+			"nas-identification-mismatch":            403, // RFC3576
+			"invalid-request":                        404, // RFC3576
+			"unsupported-service":                    405, // RFC3576
+			"unsupported-extension":                  406, // RFC3576
+			"invalid-attribute-value":                407, // RFC3576
+			"administratively-prohibited":            501, // RFC3576
+			"proxy-request-not-routable":             502, // RFC3576
+			"session-context-not-found":              503, // RFC3576
+			"session-context-not-removable":          504, // RFC3576
+			"proxy-processing-error":                 505, // RFC3576
+			"resources-unavailable":                  506, // RFC3576
+			"request-initiated":                      507, // RFC3576
+			"multiple-session-selection-unsupported": 508, // RFC3576
 		},
 	},
 	{ID: 102, Name: "eap-key-name", DataType: DataTypeOctets},                   // RFC4072
@@ -396,10 +396,10 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "location-capable",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Civic-Location": 1, // RFC5580
-			"Geo-Location":   2, // RFC5580
-			"Users-Location": 4, // RFC5580
-			"NAS-Location":   8, // RFC5580
+			"civic-location": 1, // RFC5580
+			"geo-location":   2, // RFC5580
+			"users-location": 4, // RFC5580
+			"nas-location":   8, // RFC5580
 		},
 	},
 	{ // RFC5580
@@ -407,12 +407,12 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "requested-location-info",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Civic-Location":  1,  // RFC5580
-			"Geo-Location":    2,  // RFC5580
-			"Users-Location":  4,  // RFC5580
-			"NAS-Location":    8,  // RFC5580
-			"Future-Requests": 16, // RFC5580
-			"None":            32, // RFC5580
+			"civic-location":  1,  // RFC5580
+			"geo-location":    2,  // RFC5580
+			"users-location":  4,  // RFC5580
+			"nas-location":    8,  // RFC5580
+			"future-requests": 16, // RFC5580
+			"none":            32, // RFC5580
 		},
 	},
 	{ // RFC5607
@@ -420,14 +420,14 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "framed-management",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"SNMP":      1, // RFC5607
-			"Web-Based": 2, // RFC5607
-			"Netconf":   3, // RFC5607
-			"FTP":       4, // RFC5607
-			"TFTP":      5, // RFC5607
-			"SFTP":      6, // RFC5607
-			"RCP":       7, // RFC5607
-			"SCP":       8, // RFC5607
+			"snmp":      1, // RFC5607
+			"web-based": 2, // RFC5607
+			"netconf":   3, // RFC5607
+			"ftp":       4, // RFC5607
+			"tftp":      5, // RFC5607
+			"sftp":      6, // RFC5607
+			"rcp":       7, // RFC5607
+			"scp":       8, // RFC5607
 		},
 	},
 	{ // RFC5607
@@ -435,9 +435,9 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "management-transport-protection",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"No-Protection":                        1, // RFC5607
-			"Integrity-Protection":                 2, // RFC5607
-			"Integrity-Confidentiality-Protection": 3, // RFC5607
+			"no-protection":                        1, // RFC5607
+			"integrity-protection":                 2, // RFC5607
+			"integrity-confidentiality-protection": 3, // RFC5607
 		},
 	},
 	{ID: 135, Name: "management-policy-id", DataType: DataTypeString},                 // RFC5607
@@ -473,15 +473,15 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		Name:     "eap-lower-layer",
 		DataType: DataTypeInteger,
 		Values: map[string]uint32{
-			"Wired-IEEE-802.1X":      1, // RFC6677
-			"IEEE-802.1X-No-Preauth": 2, // RFC6677
-			"IEEE-802.1X-Preauth":    3, // RFC6677
-			"IEEE-802.16e":           4, // RFC6677
-			"IKEv2":                  5, // RFC6677
-			"PPP":                    6, // RFC6677
-			"PANA-No-Preauth":        7, // RFC6677
-			"GSS-API":                8, // RFC6677
-			"PANA-Preauth":           9, // RFC6677
+			"wired-ieee-802.1x":      1, // RFC6677
+			"ieee-802.1x-no-preauth": 2, // RFC6677
+			"ieee-802.1x-preauth":    3, // RFC6677
+			"ieee-802.16e":           4, // RFC6677
+			"ikev2":                  5, // RFC6677
+			"ppp":                    6, // RFC6677
+			"pana-no-preauth":        7, // RFC6677
+			"gss-api":                8, // RFC6677
+			"pana-preauth":           9, // RFC6677
 		},
 	},
 	{ID: 164, Name: "gss-acceptor-service-name", DataType: DataTypeString},      // RFC7055
