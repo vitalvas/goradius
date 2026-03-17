@@ -82,8 +82,8 @@ func TestCoA(t *testing.T) {
 	require.NoError(t, err)
 
 	resp, err := client.CoA(map[string]interface{}{
-		"User-Name":       "testuser",
-		"Session-Timeout": uint32(3600),
+		"user-name":       "testuser",
+		"session-timeout": uint32(3600),
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -131,7 +131,7 @@ func TestDisconnect(t *testing.T) {
 	require.NoError(t, err)
 
 	resp, err := client.Disconnect(map[string]interface{}{
-		"User-Name": "testuser",
+		"user-name": "testuser",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -193,7 +193,7 @@ func TestTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = client.CoA(map[string]interface{}{
-		"User-Name": "testuser",
+		"user-name": "testuser",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "timeout")
@@ -240,8 +240,8 @@ func TestAccessRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	resp, err := client.AccessRequest(map[string]interface{}{
-		"User-Name":     "testuser",
-		"User-Password": "testpass",
+		"user-name":     "testuser",
+		"user-password": "testpass",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -289,11 +289,11 @@ func TestAccountingRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	resp, err := client.AccountingRequest(map[string]interface{}{
-		"User-Name":         "testuser",
-		"Acct-Status-Type":  uint32(1), // Start
-		"Acct-Session-Id":   "session123",
-		"NAS-IP-Address":    "192.0.2.1",
-		"Acct-Session-Time": uint32(100),
+		"user-name":         "testuser",
+		"acct-status-type":  uint32(1), // Start
+		"acct-session-id":   "session123",
+		"nas-ip-address":    "192.0.2.1",
+		"acct-session-time": uint32(100),
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -391,8 +391,8 @@ func BenchmarkClientAccessRequest(b *testing.B) {
 	)
 
 	attrs := map[string]interface{}{
-		"User-Name":     "testuser",
-		"User-Password": "testpass",
+		"user-name":     "testuser",
+		"user-password": "testpass",
 	}
 
 	b.ResetTimer()
@@ -441,8 +441,8 @@ func BenchmarkClientAccessRequestParallel(b *testing.B) {
 	)
 
 	attrs := map[string]interface{}{
-		"User-Name":     "testuser",
-		"User-Password": "testpass",
+		"user-name":     "testuser",
+		"user-password": "testpass",
 	}
 
 	b.ResetTimer()
@@ -493,11 +493,11 @@ func BenchmarkClientAccountingRequest(b *testing.B) {
 	)
 
 	attrs := map[string]interface{}{
-		"User-Name":         "testuser",
-		"Acct-Status-Type":  uint32(1),
-		"Acct-Session-Id":   "session123",
-		"NAS-IP-Address":    "192.0.2.1",
-		"Acct-Session-Time": uint32(100),
+		"user-name":         "testuser",
+		"acct-status-type":  uint32(1),
+		"acct-session-id":   "session123",
+		"nas-ip-address":    "192.0.2.1",
+		"acct-session-time": uint32(100),
 	}
 
 	b.ResetTimer()
@@ -546,8 +546,8 @@ func BenchmarkClientCoA(b *testing.B) {
 	)
 
 	attrs := map[string]interface{}{
-		"User-Name":       "testuser",
-		"Session-Timeout": uint32(3600),
+		"user-name":       "testuser",
+		"session-timeout": uint32(3600),
 	}
 
 	b.ResetTimer()
@@ -596,7 +596,7 @@ func BenchmarkClientDisconnect(b *testing.B) {
 	)
 
 	attrs := map[string]interface{}{
-		"User-Name": "testuser",
+		"user-name": "testuser",
 	}
 
 	b.ResetTimer()

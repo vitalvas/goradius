@@ -69,7 +69,7 @@ func TestAttributeTypeValidation_RequestOnly(t *testing.T) {
 	err := dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       2,
-			Name:     "User-Password",
+			Name:     "user-password",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequest,
 		},
@@ -78,13 +78,13 @@ func TestAttributeTypeValidation_RequestOnly(t *testing.T) {
 
 	// Test adding to request packet - should succeed and add attribute
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByName("User-Password", "secret")
+	err = reqPacket.AddAttributeByName("user-password", "secret")
 	assert.NoError(t, err, "Should allow request-only attribute in request packet")
 	assert.Equal(t, 1, len(reqPacket.Attributes), "Attribute should be added to request packet")
 
 	// Test adding to reply packet - should succeed but silently filter
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByName("User-Password", "secret")
+	err = replyPacket.AddAttributeByName("user-password", "secret")
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 }
@@ -96,7 +96,7 @@ func TestAttributeTypeValidation_ReplyOnly(t *testing.T) {
 	err := dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       8,
-			Name:     "Framed-IP-Address",
+			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
 			Type:     AttributeTypeReply,
 		},
@@ -105,13 +105,13 @@ func TestAttributeTypeValidation_ReplyOnly(t *testing.T) {
 
 	// Test adding to reply packet - should succeed and add attribute
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+	err = replyPacket.AddAttributeByName("framed-ip-address", "10.0.0.1")
 	assert.NoError(t, err, "Should allow reply-only attribute in reply packet")
 	assert.Equal(t, 1, len(replyPacket.Attributes), "Attribute should be added to reply packet")
 
 	// Test adding to request packet - should succeed but silently filter
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+	err = reqPacket.AddAttributeByName("framed-ip-address", "10.0.0.1")
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(reqPacket.Attributes), "Attribute should be filtered out of request packet")
 }
@@ -123,7 +123,7 @@ func TestAttributeTypeValidation_RequestReply(t *testing.T) {
 	err := dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       1,
-			Name:     "User-Name",
+			Name:     "user-name",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequestReply,
 		},
@@ -132,12 +132,12 @@ func TestAttributeTypeValidation_RequestReply(t *testing.T) {
 
 	// Test adding to request packet - should succeed
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByName("User-Name", "john")
+	err = reqPacket.AddAttributeByName("user-name", "john")
 	assert.NoError(t, err, "Should allow request-reply attribute in request packet")
 
 	// Test adding to reply packet - should succeed
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByName("User-Name", "john")
+	err = replyPacket.AddAttributeByName("user-name", "john")
 	assert.NoError(t, err, "Should allow request-reply attribute in reply packet")
 }
 
@@ -147,17 +147,17 @@ func TestAttributeTypeValidation_VendorAttribute(t *testing.T) {
 	// Add vendor with request-only and reply-only attributes
 	err := dict.AddVendor(&VendorDefinition{
 		ID:   2636,
-		Name: "Juniper",
+		Name: "juniper",
 		Attributes: []*AttributeDefinition{
 			{
 				ID:       10,
-				Name:     "Juniper-User-Permissions",
+				Name:     "juniper-user-permissions",
 				DataType: DataTypeString,
 				Type:     AttributeTypeRequest,
 			},
 			{
 				ID:       1,
-				Name:     "Juniper-Local-User-Name",
+				Name:     "juniper-local-user-name",
 				DataType: DataTypeString,
 				Type:     AttributeTypeReply,
 			},
@@ -167,23 +167,23 @@ func TestAttributeTypeValidation_VendorAttribute(t *testing.T) {
 
 	// Test request-only vendor attribute
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByName("Juniper-User-Permissions", "admin")
+	err = reqPacket.AddAttributeByName("juniper-user-permissions", "admin")
 	assert.NoError(t, err, "Should allow request-only vendor attribute in request packet")
 	assert.Equal(t, 1, len(reqPacket.Attributes), "Attribute should be added to request packet")
 
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByName("Juniper-User-Permissions", "admin")
+	err = replyPacket.AddAttributeByName("juniper-user-permissions", "admin")
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 
 	// Test reply-only vendor attribute
 	replyPacket2 := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket2.AddAttributeByName("Juniper-Local-User-Name", "localuser")
+	err = replyPacket2.AddAttributeByName("juniper-local-user-name", "localuser")
 	assert.NoError(t, err, "Should allow reply-only vendor attribute in reply packet")
 	assert.Equal(t, 1, len(replyPacket2.Attributes), "Attribute should be added to reply packet")
 
 	reqPacket2 := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket2.AddAttributeByName("Juniper-Local-User-Name", "localuser")
+	err = reqPacket2.AddAttributeByName("juniper-local-user-name", "localuser")
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(reqPacket2.Attributes), "Attribute should be filtered out of request packet")
 }
@@ -195,7 +195,7 @@ func TestAttributeTypeValidation_WithSecret(t *testing.T) {
 	err := dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:         2,
-			Name:       "User-Password",
+			Name:       "user-password",
 			DataType:   DataTypeString,
 			Type:       AttributeTypeRequest,
 			Encryption: EncryptionUserPassword,
@@ -208,13 +208,13 @@ func TestAttributeTypeValidation_WithSecret(t *testing.T) {
 
 	// Test with request packet - should succeed and add attribute
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByNameWithSecret("User-Password", "password", secret, auth)
+	err = reqPacket.AddAttributeByNameWithSecret("user-password", "password", secret, auth)
 	assert.NoError(t, err, "Should allow request-only attribute in request packet")
 	assert.Equal(t, 1, len(reqPacket.Attributes), "Attribute should be added to request packet")
 
 	// Test with reply packet - should succeed but silently filter
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByNameWithSecret("User-Password", "password", secret, auth)
+	err = replyPacket.AddAttributeByNameWithSecret("user-password", "password", secret, auth)
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 }
@@ -226,19 +226,19 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	err := dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       1,
-			Name:     "User-Name",
+			Name:     "user-name",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequestReply,
 		},
 		{
 			ID:       2,
-			Name:     "User-Password",
+			Name:     "user-password",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequest,
 		},
 		{
 			ID:       8,
-			Name:     "Framed-IP-Address",
+			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
 			Type:     AttributeTypeReply,
 		},
@@ -269,7 +269,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	for _, code := range requestCodes {
 		t.Run("Request-only_in_"+code.String(), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
-			err := p.AddAttributeByName("User-Password", "secret")
+			err := p.AddAttributeByName("user-password", "secret")
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(p.Attributes), "Should add attribute in request packet")
 		})
@@ -278,7 +278,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	for _, code := range replyCodes {
 		t.Run("Request-only_in_"+code.String(), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
-			err := p.AddAttributeByName("User-Password", "secret")
+			err := p.AddAttributeByName("user-password", "secret")
 			assert.NoError(t, err)
 			assert.Equal(t, 0, len(p.Attributes), "Should filter attribute in reply packet")
 		})
@@ -288,7 +288,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	for _, code := range requestCodes {
 		t.Run("Reply-only_in_"+code.String(), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
-			err := p.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+			err := p.AddAttributeByName("framed-ip-address", "10.0.0.1")
 			assert.NoError(t, err)
 			assert.Equal(t, 0, len(p.Attributes), "Should filter attribute in request packet")
 		})
@@ -297,7 +297,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	for _, code := range replyCodes {
 		t.Run("Reply-only_in_"+code.String(), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
-			err := p.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+			err := p.AddAttributeByName("framed-ip-address", "10.0.0.1")
 			assert.NoError(t, err)
 			assert.Equal(t, 1, len(p.Attributes), "Should add attribute in reply packet")
 		})
@@ -310,7 +310,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	for _, code := range allCodes {
 		t.Run("Request-reply_in_"+code.String(), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
-			err := p.AddAttributeByName("User-Name", "john")
+			err := p.AddAttributeByName("user-name", "john")
 			assert.NoError(t, err)
 		})
 	}

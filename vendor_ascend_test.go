@@ -9,7 +9,7 @@ import (
 func TestAscendVendorDefinition(t *testing.T) {
 	assert.NotNil(t, AscendVendorDefinition)
 	assert.Equal(t, uint32(529), AscendVendorDefinition.ID)
-	assert.Equal(t, "Ascend", AscendVendorDefinition.Name)
+	assert.Equal(t, "ascend", AscendVendorDefinition.Name)
 	assert.NotEmpty(t, AscendVendorDefinition.Attributes)
 
 	// Verify vendor has attributes

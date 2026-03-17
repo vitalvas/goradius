@@ -835,7 +835,7 @@ func (p *Packet) addVendorArrayAttribute(vendor *VendorDefinition, attrDef *Attr
 // ListAttributes returns a list of unique attribute names found in the
 // Requires a dictionary to be set on the  Returns empty slice if dictionary is nil.
 // Attributes not found in dictionary are skipped.
-// VSA attributes return their attribute name (e.g., "ERX-Dhcp-Mac-Addr").
+// VSA attributes return their attribute name (e.g., "erx-dhcp-mac-addr").
 func (p *Packet) ListAttributes() []string {
 	if p.Dict == nil {
 		return []string{}

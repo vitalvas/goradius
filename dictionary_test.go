@@ -25,18 +25,18 @@ func TestAddStandardAttributes(t *testing.T) {
 	attrs := []*AttributeDefinition{
 		{
 			ID:       1,
-			Name:     "User-Name",
+			Name:     "user-name",
 			DataType: DataTypeString,
 		},
 		{
 			ID:         2,
-			Name:       "User-Password",
+			Name:       "user-password",
 			DataType:   DataTypeString,
 			Encryption: EncryptionUserPassword,
 		},
 		{
 			ID:       4,
-			Name:     "NAS-IP-Address",
+			Name:     "nas-ip-address",
 			DataType: DataTypeIPAddr,
 		},
 	}
@@ -46,10 +46,10 @@ func TestAddStandardAttributes(t *testing.T) {
 	// Verify lookup by ID
 	attr, exists := dict.LookupStandardByID(1)
 	assert.True(t, exists)
-	assert.Equal(t, "User-Name", attr.Name)
+	assert.Equal(t, "user-name", attr.Name)
 
 	// Verify lookup by name
-	attr, exists = dict.LookupStandardByName("User-Password")
+	attr, exists = dict.LookupStandardByName("user-password")
 	assert.True(t, exists)
 	assert.Equal(t, uint32(2), attr.ID)
 	assert.Equal(t, EncryptionUserPassword, attr.Encryption)
@@ -58,7 +58,7 @@ func TestAddStandardAttributes(t *testing.T) {
 func TestLookupStandardByID(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
 	})
 
 	tests := []struct {
@@ -81,7 +81,7 @@ func TestLookupStandardByID(t *testing.T) {
 func TestLookupStandardByName(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
 	})
 
 	tests := []struct {
@@ -89,9 +89,9 @@ func TestLookupStandardByName(t *testing.T) {
 		attrName string
 		exists   bool
 	}{
-		{"existing attribute", "User-Name", true},
+		{"existing attribute", "user-name", true},
 		{"non-existing attribute", "NonExistent", false},
-		{"case sensitive", "user-name", false},
+		{"case sensitive", "User-Name", false},
 	}
 
 	for _, tt := range tests {
@@ -107,18 +107,18 @@ func TestAddVendor(t *testing.T) {
 
 	vendor := &VendorDefinition{
 		ID:          4874,
-		Name:        "ERX",
+		Name:        "erx",
 		Description: "Juniper ERX",
 		Attributes: []*AttributeDefinition{
 			{
 				ID:       1,
-				Name:     "ERX-Service-Activate",
+				Name:     "erx-service-activate",
 				DataType: DataTypeString,
 				HasTag:   true,
 			},
 			{
 				ID:       13,
-				Name:     "ERX-Primary-Dns",
+				Name:     "erx-primary-dns",
 				DataType: DataTypeIPAddr,
 			},
 		},
@@ -129,17 +129,17 @@ func TestAddVendor(t *testing.T) {
 	// Verify vendor lookup
 	v, exists := dict.LookupVendorByID(4874)
 	assert.True(t, exists)
-	assert.Equal(t, "ERX", v.Name)
+	assert.Equal(t, "erx", v.Name)
 	assert.Len(t, v.Attributes, 2)
 
 	// Verify vendor attribute lookup by ID
 	attr, exists := dict.LookupVendorAttributeByID(4874, 1)
 	assert.True(t, exists)
-	assert.Equal(t, "ERX-Service-Activate", attr.Name)
+	assert.Equal(t, "erx-service-activate", attr.Name)
 	assert.True(t, attr.HasTag)
 
 	// Verify vendor attribute lookup by name (using unified lookup)
-	attr, exists = dict.LookupByAttributeName("ERX-Primary-Dns")
+	attr, exists = dict.LookupByAttributeName("erx-primary-dns")
 	assert.True(t, exists)
 	assert.Equal(t, uint32(13), attr.ID)
 	assert.Equal(t, DataTypeIPAddr, attr.DataType)
@@ -149,7 +149,7 @@ func TestLookupVendorByID(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 	})
 
 	tests := []struct {
@@ -173,9 +173,9 @@ func TestLookupVendorAttributeByID(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Test-Attr", DataType: DataTypeString},
+			{ID: 1, Name: "test-attr", DataType: DataTypeString},
 		},
 	})
 
@@ -202,9 +202,9 @@ func TestLookupByAttributeName(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Test-Attr", DataType: DataTypeString},
+			{ID: 1, Name: "test-attr", DataType: DataTypeString},
 		},
 	})
 
@@ -213,7 +213,7 @@ func TestLookupByAttributeName(t *testing.T) {
 		attrName string
 		exists   bool
 	}{
-		{"existing vendor attribute", "Test-Attr", true},
+		{"existing vendor attribute", "test-attr", true},
 		{"non-existent attribute", "NonExistent", false},
 	}
 
@@ -228,9 +228,9 @@ func TestLookupByAttributeName(t *testing.T) {
 func TestGetAllVendors(t *testing.T) {
 	dict := NewDictionary()
 
-	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 4874, Name: "ERX"}))
-	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 9, Name: "Cisco"}))
-	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 529, Name: "Ascend"}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 4874, Name: "erx"}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 9, Name: "cisco"}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{ID: 529, Name: "ascend"}))
 
 	vendors := dict.GetAllVendors()
 	assert.Len(t, vendors, 3)
@@ -240,9 +240,9 @@ func TestGetAllVendors(t *testing.T) {
 	for _, v := range vendors {
 		names[v.Name] = true
 	}
-	assert.True(t, names["ERX"])
-	assert.True(t, names["Cisco"])
-	assert.True(t, names["Ascend"])
+	assert.True(t, names["erx"])
+	assert.True(t, names["cisco"])
+	assert.True(t, names["ascend"])
 }
 
 func TestMultipleVendorsSameAttribute(t *testing.T) {
@@ -251,28 +251,28 @@ func TestMultipleVendorsSameAttribute(t *testing.T) {
 	// Add two vendors with same attribute ID but different vendor IDs
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "ERX-Attr", DataType: DataTypeString},
+			{ID: 1, Name: "erx-attr", DataType: DataTypeString},
 		},
 	})
 
 	dict.AddVendor(&VendorDefinition{
 		ID:   9,
-		Name: "Cisco",
+		Name: "cisco",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Cisco-Attr", DataType: DataTypeString},
+			{ID: 1, Name: "cisco-attr", DataType: DataTypeString},
 		},
 	})
 
 	// Both should be retrievable
 	erxAttr, exists := dict.LookupVendorAttributeByID(4874, 1)
 	assert.True(t, exists)
-	assert.Equal(t, "ERX-Attr", erxAttr.Name)
+	assert.Equal(t, "erx-attr", erxAttr.Name)
 
 	ciscoAttr, exists := dict.LookupVendorAttributeByID(9, 1)
 	assert.True(t, exists)
-	assert.Equal(t, "Cisco-Attr", ciscoAttr.Name)
+	assert.Equal(t, "cisco-attr", ciscoAttr.Name)
 }
 
 func TestAttributeWithEnumeratedValues(t *testing.T) {
@@ -281,7 +281,7 @@ func TestAttributeWithEnumeratedValues(t *testing.T) {
 	dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       6,
-			Name:     "Service-Type",
+			Name:     "service-type",
 			DataType: DataTypeInteger,
 			Values: map[string]uint32{
 				"Login":    1,
@@ -305,7 +305,7 @@ func TestAttributeWithTag(t *testing.T) {
 	dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       64,
-			Name:     "Tunnel-Type",
+			Name:     "tunnel-type",
 			DataType: DataTypeInteger,
 			HasTag:   true,
 		},
@@ -322,13 +322,13 @@ func TestAttributeWithEncryption(t *testing.T) {
 	dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:         2,
-			Name:       "User-Password",
+			Name:       "user-password",
 			DataType:   DataTypeString,
 			Encryption: EncryptionUserPassword,
 		},
 		{
 			ID:         69,
-			Name:       "Tunnel-Password",
+			Name:       "tunnel-password",
 			DataType:   DataTypeString,
 			Encryption: EncryptionTunnelPassword,
 		},
@@ -347,7 +347,7 @@ func TestEmptyDictionary(t *testing.T) {
 	_, exists := dict.LookupStandardByID(1)
 	assert.False(t, exists)
 
-	_, exists = dict.LookupStandardByName("User-Name")
+	_, exists = dict.LookupStandardByName("user-name")
 	assert.False(t, exists)
 
 	vendors := dict.GetAllVendors()
@@ -359,19 +359,19 @@ func TestDuplicateStandardAttributeName(t *testing.T) {
 
 	// Add initial standard attributes
 	attrs1 := []*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
-		{ID: 2, Name: "User-Password", DataType: DataTypeString},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 2, Name: "user-password", DataType: DataTypeString},
 	}
 	require.NoError(t, dict.AddStandardAttributes(attrs1))
 
 	// Try to add duplicate standard attribute name
 	attrs2 := []*AttributeDefinition{
-		{ID: 3, Name: "User-Name", DataType: DataTypeString}, // Duplicate!
+		{ID: 3, Name: "user-name", DataType: DataTypeString}, // Duplicate!
 	}
 	err := dict.AddStandardAttributes(attrs2)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
-	assert.Contains(t, err.Error(), "User-Name")
+	assert.Contains(t, err.Error(), "user-name")
 }
 
 func TestStandardAttributeConflictsWithVendorAttribute(t *testing.T) {
@@ -380,20 +380,20 @@ func TestStandardAttributeConflictsWithVendorAttribute(t *testing.T) {
 	// Add vendor with attribute first
 	require.NoError(t, dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Test-Attribute", DataType: DataTypeString},
+			{ID: 1, Name: "test-attribute", DataType: DataTypeString},
 		},
 	}))
 
 	// Try to add standard attribute with same name
 	attrs := []*AttributeDefinition{
-		{ID: 1, Name: "Test-Attribute", DataType: DataTypeString}, // Conflicts!
+		{ID: 1, Name: "test-attribute", DataType: DataTypeString}, // Conflicts!
 	}
 	err := dict.AddStandardAttributes(attrs)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
-	assert.Contains(t, err.Error(), "Test-Attribute")
+	assert.Contains(t, err.Error(), "test-attribute")
 }
 
 func TestDuplicateVendorAttributeName(t *testing.T) {
@@ -402,23 +402,23 @@ func TestDuplicateVendorAttributeName(t *testing.T) {
 	// Add first vendor
 	require.NoError(t, dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Shared-Attribute", DataType: DataTypeString},
+			{ID: 1, Name: "shared-attribute", DataType: DataTypeString},
 		},
 	}))
 
 	// Try to add second vendor with same attribute name
 	err := dict.AddVendor(&VendorDefinition{
 		ID:   9,
-		Name: "Cisco",
+		Name: "cisco",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "Shared-Attribute", DataType: DataTypeString}, // Duplicate!
+			{ID: 1, Name: "shared-attribute", DataType: DataTypeString}, // Duplicate!
 		},
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
-	assert.Contains(t, err.Error(), "Shared-Attribute")
+	assert.Contains(t, err.Error(), "shared-attribute")
 }
 
 func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
@@ -426,21 +426,69 @@ func TestVendorAttributeConflictsWithStandardAttribute(t *testing.T) {
 
 	// Add standard attribute first
 	attrs := []*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
 	}
 	require.NoError(t, dict.AddStandardAttributes(attrs))
 
 	// Try to add vendor attribute with same name
 	err := dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "User-Name", DataType: DataTypeString}, // Conflicts!
+			{ID: 1, Name: "user-name", DataType: DataTypeString}, // Conflicts!
 		},
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate attribute name")
-	assert.Contains(t, err.Error(), "User-Name")
+	assert.Contains(t, err.Error(), "user-name")
+}
+
+func TestAttributeNameMustBeLowercase(t *testing.T) {
+	t.Run("standard attribute rejects uppercase", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddStandardAttributes([]*AttributeDefinition{
+			{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must be lowercase")
+	})
+
+	t.Run("vendor attribute rejects uppercase", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   4874,
+			Name: "erx",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "ERX-Primary-Dns", DataType: DataTypeIPAddr},
+			},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must be lowercase")
+	})
+
+	t.Run("standard attribute accepts lowercase", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddStandardAttributes([]*AttributeDefinition{
+			{ID: 1, Name: "user-name", DataType: DataTypeString},
+		})
+		assert.NoError(t, err)
+	})
+
+	t.Run("vendor attribute accepts lowercase", func(t *testing.T) {
+		dict := NewDictionary()
+
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   4874,
+			Name: "erx",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+			},
+		})
+		assert.NoError(t, err)
+	})
 }
 
 func TestAttributeType(t *testing.T) {
@@ -449,25 +497,25 @@ func TestAttributeType(t *testing.T) {
 	attrs := []*AttributeDefinition{
 		{
 			ID:       1,
-			Name:     "User-Name",
+			Name:     "user-name",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequestReply, // Can be used in both requests and replies
 		},
 		{
 			ID:       2,
-			Name:     "User-Password",
+			Name:     "user-password",
 			DataType: DataTypeString,
 			Type:     AttributeTypeRequest, // Only in requests
 		},
 		{
 			ID:       8,
-			Name:     "Framed-IP-Address",
+			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
 			Type:     AttributeTypeReply, // Only in replies
 		},
 		{
 			ID:       4,
-			Name:     "NAS-IP-Address",
+			Name:     "nas-ip-address",
 			DataType: DataTypeIPAddr,
 			// Type not specified - should default to AttributeTypeRequestReply (0)
 		},
@@ -501,17 +549,17 @@ func TestVendorAttributeType(t *testing.T) {
 
 	vendor := &VendorDefinition{
 		ID:   2636,
-		Name: "Juniper",
+		Name: "juniper",
 		Attributes: []*AttributeDefinition{
 			{
 				ID:       1,
-				Name:     "Juniper-Local-User-Name",
+				Name:     "juniper-local-user-name",
 				DataType: DataTypeString,
 				Type:     AttributeTypeReply, // Reply only
 			},
 			{
 				ID:       10,
-				Name:     "Juniper-User-Permissions",
+				Name:     "juniper-user-permissions",
 				DataType: DataTypeString,
 				Type:     AttributeTypeRequest, // Request only
 			},
@@ -663,13 +711,13 @@ func BenchmarkAddVendor(b *testing.B) {
 		for j := 0; j < 50; j++ {
 			attrs[j] = &AttributeDefinition{
 				ID:       uint32(j + 1),
-				Name:     fmt.Sprintf("Attr-%d", j+1),
+				Name:     fmt.Sprintf("attr-%d", j+1),
 				DataType: DataTypeString,
 			}
 		}
 		vendor := &VendorDefinition{
 			ID:         4874,
-			Name:       "TestVendor",
+			Name:       "testvendor",
 			Attributes: attrs,
 		}
 		dict.AddVendor(vendor)
@@ -684,7 +732,7 @@ func BenchmarkAddStandardAttributes(b *testing.B) {
 		for j := 0; j < 100; j++ {
 			attrs[j] = &AttributeDefinition{
 				ID:       uint32(j + 1),
-				Name:     fmt.Sprintf("Attr-%d", j+1),
+				Name:     fmt.Sprintf("attr-%d", j+1),
 				DataType: DataTypeString,
 			}
 		}

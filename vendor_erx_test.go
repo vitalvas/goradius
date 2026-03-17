@@ -9,7 +9,7 @@ import (
 func TestERXVendorDefinition(t *testing.T) {
 	assert.NotNil(t, ERXVendorDefinition)
 	assert.Equal(t, uint32(4874), ERXVendorDefinition.ID)
-	assert.Equal(t, "ERX", ERXVendorDefinition.Name)
+	assert.Equal(t, "erx", ERXVendorDefinition.Name)
 	assert.NotEmpty(t, ERXVendorDefinition.Attributes)
 
 	// Check some known ERX attributes
@@ -19,7 +19,7 @@ func TestERXVendorDefinition(t *testing.T) {
 	}
 
 	// Verify ERX-Service-Activate exists and has tag
-	serviceActivate, exists := attrMap["ERX-Service-Activate"]
+	serviceActivate, exists := attrMap["erx-service-activate"]
 	assert.True(t, exists, "ERX-Service-Activate should exist")
 	if exists {
 		assert.True(t, serviceActivate.HasTag, "ERX-Service-Activate should support tags")
@@ -27,7 +27,7 @@ func TestERXVendorDefinition(t *testing.T) {
 	}
 
 	// Verify ERX-Primary-Dns exists
-	primaryDNS, exists := attrMap["ERX-Primary-Dns"]
+	primaryDNS, exists := attrMap["erx-primary-dns"]
 	assert.True(t, exists, "ERX-Primary-Dns should exist")
 	if exists {
 		assert.Equal(t, DataTypeIPAddr, primaryDNS.DataType)

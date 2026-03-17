@@ -9,7 +9,7 @@ import (
 func TestJuniperVendorDefinition(t *testing.T) {
 	assert.NotNil(t, JuniperVendorDefinition)
 	assert.Equal(t, uint32(2636), JuniperVendorDefinition.ID)
-	assert.Equal(t, "Juniper", JuniperVendorDefinition.Name)
+	assert.Equal(t, "juniper", JuniperVendorDefinition.Name)
 	assert.NotEmpty(t, JuniperVendorDefinition.Attributes)
 
 	// Check Juniper attributes
@@ -19,7 +19,7 @@ func TestJuniperVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Juniper-User-Permissions exists and has multiline enabled
-	userPerms, exists := attrMap["Juniper-User-Permissions"]
+	userPerms, exists := attrMap["juniper-user-permissions"]
 	assert.True(t, exists, "Juniper-User-Permissions should exist")
 	if exists {
 		assert.Equal(t, uint32(10), userPerms.ID)
@@ -28,7 +28,7 @@ func TestJuniperVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Juniper-Allow-Commands has multiline enabled
-	allowCmds, exists := attrMap["Juniper-Allow-Commands"]
+	allowCmds, exists := attrMap["juniper-allow-commands"]
 	assert.True(t, exists, "Juniper-Allow-Commands should exist")
 	if exists {
 		assert.Equal(t, uint32(2), allowCmds.ID)
@@ -36,7 +36,7 @@ func TestJuniperVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Juniper-CTP-Group has enumerated values
-	ctpGroup, exists := attrMap["Juniper-CTP-Group"]
+	ctpGroup, exists := attrMap["juniper-ctp-group"]
 	assert.True(t, exists, "Juniper-CTP-Group should exist")
 	if exists {
 		assert.Equal(t, uint32(21), ctpGroup.ID)
@@ -49,7 +49,7 @@ func TestJuniperVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Juniper-Primary-Dns exists
-	primaryDNS, exists := attrMap["Juniper-Primary-Dns"]
+	primaryDNS, exists := attrMap["juniper-primary-dns"]
 	assert.True(t, exists, "Juniper-Primary-Dns should exist")
 	if exists {
 		assert.Equal(t, uint32(31), primaryDNS.ID)

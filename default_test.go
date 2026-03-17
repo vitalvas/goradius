@@ -15,30 +15,30 @@ func TestNewDefault(t *testing.T) {
 	userNameAttr, ok := dict.LookupStandardByID(1)
 	assert.True(t, ok, "User-Name (ID 1) should be loaded")
 	if ok {
-		assert.Equal(t, "User-Name", userNameAttr.Name)
+		assert.Equal(t, "user-name", userNameAttr.Name)
 	}
 
 	// Verify standard RFC attributes are loaded by name
-	userPassAttr, ok := dict.LookupStandardByName("User-Password")
+	userPassAttr, ok := dict.LookupStandardByName("user-password")
 	assert.True(t, ok, "User-Password should be loaded")
 	if ok {
 		assert.Equal(t, uint32(2), userPassAttr.ID)
-		assert.Equal(t, "User-Password", userPassAttr.Name)
+		assert.Equal(t, "user-password", userPassAttr.Name)
 	}
 
 	// Verify Juniper vendor is loaded (ID 2636)
 	juniperVendor, ok := dict.LookupVendorByID(2636)
 	assert.True(t, ok, "Juniper vendor (ID 2636) should be loaded")
 	if ok {
-		assert.Equal(t, "Juniper", juniperVendor.Name)
+		assert.Equal(t, "juniper", juniperVendor.Name)
 		juniperAttr, ok := dict.LookupVendorAttributeByID(2636, 1)
 		assert.True(t, ok, "Juniper-Local-User-Name should be loaded")
 		if ok {
-			assert.Equal(t, "Juniper-Local-User-Name", juniperAttr.Name)
+			assert.Equal(t, "juniper-local-user-name", juniperAttr.Name)
 		}
 
 		// Verify lookup by name also works (using unified lookup)
-		juniperAttrByName, ok := dict.LookupByAttributeName("Juniper-User-Permissions")
+		juniperAttrByName, ok := dict.LookupByAttributeName("juniper-user-permissions")
 		assert.True(t, ok, "Juniper-User-Permissions should be found by name")
 		if ok {
 			assert.Equal(t, uint32(10), juniperAttrByName.ID)
@@ -49,28 +49,28 @@ func TestNewDefault(t *testing.T) {
 	erxVendor, ok := dict.LookupVendorByID(4874)
 	assert.True(t, ok, "ERX vendor (ID 4874) should be loaded")
 	if ok {
-		assert.Equal(t, "ERX", erxVendor.Name)
+		assert.Equal(t, "erx", erxVendor.Name)
 	}
 
 	// Verify Ascend vendor is loaded (ID 529)
 	ascendVendor, ok := dict.LookupVendorByID(529)
 	assert.True(t, ok, "Ascend vendor (ID 529) should be loaded")
 	if ok {
-		assert.Equal(t, "Ascend", ascendVendor.Name)
+		assert.Equal(t, "ascend", ascendVendor.Name)
 	}
 
 	// Verify WISPr vendor is loaded (ID 14122)
 	wisprVendor, ok := dict.LookupVendorByID(14122)
 	assert.True(t, ok, "WISPr vendor (ID 14122) should be loaded")
 	if ok {
-		assert.Equal(t, "WISPr", wisprVendor.Name)
+		assert.Equal(t, "wispr", wisprVendor.Name)
 	}
 
 	// Verify Mikrotik vendor is loaded (ID 14988)
 	mikrotikVendor, ok := dict.LookupVendorByID(14988)
 	assert.True(t, ok, "Mikrotik vendor (ID 14988) should be loaded")
 	if ok {
-		assert.Equal(t, "Mikrotik", mikrotikVendor.Name)
+		assert.Equal(t, "mikrotik", mikrotikVendor.Name)
 	}
 
 	// Verify GetAllVendors works
@@ -87,14 +87,14 @@ func TestNewDefaultMultilineAttributes(t *testing.T) {
 	juniperUserPerms, ok := dict.LookupVendorAttributeByID(2636, 10)
 	assert.True(t, ok, "Juniper-User-Permissions should exist")
 	if ok {
-		assert.Equal(t, "Juniper-User-Permissions", juniperUserPerms.Name)
+		assert.Equal(t, "juniper-user-permissions", juniperUserPerms.Name)
 		assert.True(t, juniperUserPerms.Multiline, "Juniper-User-Permissions should have multiline flag")
 	}
 
 	juniperAllowCmds, ok := dict.LookupVendorAttributeByID(2636, 2)
 	assert.True(t, ok, "Juniper-Allow-Commands should exist")
 	if ok {
-		assert.Equal(t, "Juniper-Allow-Commands", juniperAllowCmds.Name)
+		assert.Equal(t, "juniper-allow-commands", juniperAllowCmds.Name)
 		assert.True(t, juniperAllowCmds.Multiline, "Juniper-Allow-Commands should have multiline flag")
 	}
 }
@@ -108,7 +108,7 @@ func TestNewDefaultEnumeratedValues(t *testing.T) {
 	ctpGroup, ok := dict.LookupVendorAttributeByID(2636, 21)
 	assert.True(t, ok, "Juniper-CTP-Group should exist")
 	if ok {
-		assert.Equal(t, "Juniper-CTP-Group", ctpGroup.Name)
+		assert.Equal(t, "juniper-ctp-group", ctpGroup.Name)
 		assert.NotNil(t, ctpGroup.Values, "Juniper-CTP-Group should have enumerated values")
 		if ctpGroup.Values != nil {
 			assert.Equal(t, uint32(1), ctpGroup.Values["Read_Only"])
@@ -122,7 +122,7 @@ func TestNewDefaultEnumeratedValues(t *testing.T) {
 	encAlgo, ok := dict.LookupVendorAttributeByID(14988, 6)
 	assert.True(t, ok, "Mikrotik-Wireless-Enc-Algo should exist")
 	if ok {
-		assert.Equal(t, "Mikrotik-Wireless-Enc-Algo", encAlgo.Name)
+		assert.Equal(t, "mikrotik-wireless-enc-algo", encAlgo.Name)
 		assert.NotNil(t, encAlgo.Values, "Mikrotik-Wireless-Enc-Algo should have enumerated values")
 		if encAlgo.Values != nil {
 			assert.Equal(t, uint32(0), encAlgo.Values["No-encryption"])
@@ -147,7 +147,7 @@ func BenchmarkNewDefaultLookupStandard(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = dict.LookupStandardByName("User-Name")
+		_, _ = dict.LookupStandardByName("user-name")
 	}
 }
 
@@ -157,6 +157,6 @@ func BenchmarkNewDefaultLookupVendor(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = dict.LookupByAttributeName("Juniper-User-Permissions")
+		_, _ = dict.LookupByAttributeName("juniper-user-permissions")
 	}
 }

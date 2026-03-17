@@ -184,12 +184,12 @@ func TestPacketWithDictionary(t *testing.T) {
 	dict.AddStandardAttributes([]*AttributeDefinition{
 		{
 			ID:       1,
-			Name:     "User-Name",
+			Name:     "user-name",
 			DataType: DataTypeString,
 		},
 		{
 			ID:       8,
-			Name:     "Framed-IP-Address",
+			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
 		},
 	})
@@ -197,8 +197,8 @@ func TestPacketWithDictionary(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	assert.NotNil(t, pkt.Dict)
 
-	pkt.AddAttributeByName("User-Name", "testuser")
-	pkt.AddAttributeByName("Framed-IP-Address", "192.0.2.10")
+	pkt.AddAttributeByName("user-name", "testuser")
+	pkt.AddAttributeByName("framed-ip-address", "192.0.2.10")
 
 	assert.Len(t, pkt.Attributes, 2)
 
@@ -254,16 +254,16 @@ func TestPacketString(t *testing.T) {
 func TestPacketListAttributes(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
-		{ID: 4, Name: "NAS-IP-Address", DataType: DataTypeIPAddr},
-		{ID: 8, Name: "Framed-IP-Address", DataType: DataTypeIPAddr},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 4, Name: "nas-ip-address", DataType: DataTypeIPAddr},
+		{ID: 8, Name: "framed-ip-address", DataType: DataTypeIPAddr},
 	})
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 4, Name: "ERX-Primary-Dns", DataType: DataTypeIPAddr},
-			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: DataTypeString},
+			{ID: 4, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+			{ID: 138, Name: "erx-dhcp-mac-addr", DataType: DataTypeString},
 		},
 	})
 
@@ -282,8 +282,8 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Len(t, result, 2)
-		assert.Contains(t, result, "User-Name")
-		assert.Contains(t, result, "NAS-IP-Address")
+		assert.Contains(t, result, "user-name")
+		assert.Contains(t, result, "nas-ip-address")
 	})
 
 	t.Run("with dictionary - duplicate attributes", func(t *testing.T) {
@@ -294,8 +294,8 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Len(t, result, 2)
-		assert.Contains(t, result, "User-Name")
-		assert.Contains(t, result, "NAS-IP-Address")
+		assert.Contains(t, result, "user-name")
+		assert.Contains(t, result, "nas-ip-address")
 	})
 
 	t.Run("with dictionary - vendor attributes", func(t *testing.T) {
@@ -306,9 +306,9 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Len(t, result, 3)
-		assert.Contains(t, result, "User-Name")
-		assert.Contains(t, result, "ERX-Primary-Dns")
-		assert.Contains(t, result, "ERX-Dhcp-Mac-Addr")
+		assert.Contains(t, result, "user-name")
+		assert.Contains(t, result, "erx-primary-dns")
+		assert.Contains(t, result, "erx-dhcp-mac-addr")
 	})
 
 	t.Run("with dictionary - unknown attributes skipped", func(t *testing.T) {
@@ -319,8 +319,8 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Len(t, result, 2)
-		assert.Contains(t, result, "User-Name")
-		assert.Contains(t, result, "NAS-IP-Address")
+		assert.Contains(t, result, "user-name")
+		assert.Contains(t, result, "nas-ip-address")
 		assert.NotContains(t, result, "unknown")
 	})
 
@@ -332,8 +332,8 @@ func TestPacketListAttributes(t *testing.T) {
 
 		result := pkt.ListAttributes()
 		assert.Len(t, result, 2)
-		assert.Contains(t, result, "User-Name")
-		assert.Contains(t, result, "ERX-Primary-Dns")
+		assert.Contains(t, result, "user-name")
+		assert.Contains(t, result, "erx-primary-dns")
 	})
 
 	t.Run("empty packet", func(t *testing.T) {
@@ -347,16 +347,16 @@ func TestPacketListAttributes(t *testing.T) {
 func TestPacketGetAttributeByName(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
-		{ID: 4, Name: "NAS-IP-Address", DataType: DataTypeIPAddr},
-		{ID: 27, Name: "Session-Timeout", DataType: DataTypeInteger},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 4, Name: "nas-ip-address", DataType: DataTypeIPAddr},
+		{ID: 27, Name: "session-timeout", DataType: DataTypeInteger},
 	})
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 4, Name: "ERX-Primary-Dns", DataType: DataTypeIPAddr},
-			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: DataTypeString},
+			{ID: 4, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+			{ID: 138, Name: "erx-dhcp-mac-addr", DataType: DataTypeString},
 		},
 	})
 
@@ -364,7 +364,7 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt := NewPacket(CodeAccessRequest, 1)
 		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
 
-		result := pkt.GetAttribute("User-Name")
+		result := pkt.GetAttribute("user-name")
 		assert.Empty(t, result)
 	})
 
@@ -372,9 +372,9 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
 
-		values := pkt.GetAttribute("User-Name")
+		values := pkt.GetAttribute("user-name")
 		assert.Len(t, values, 1)
-		assert.Equal(t, "User-Name", values[0].Name)
+		assert.Equal(t, "user-name", values[0].Name)
 		assert.Equal(t, uint8(1), values[0].Type)
 		assert.Equal(t, DataTypeString, values[0].DataType)
 		assert.Equal(t, []byte("testuser"), values[0].Value)
@@ -387,7 +387,7 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt.AddAttribute(NewAttribute(1, []byte("user2")))
 		pkt.AddAttribute(NewAttribute(1, []byte("user3")))
 
-		values := pkt.GetAttribute("User-Name")
+		values := pkt.GetAttribute("user-name")
 		assert.Len(t, values, 3)
 		assert.Equal(t, []byte("user1"), values[0].Value)
 		assert.Equal(t, []byte("user2"), values[1].Value)
@@ -398,9 +398,9 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
 
-		values := pkt.GetAttribute("ERX-Primary-Dns")
+		values := pkt.GetAttribute("erx-primary-dns")
 		assert.Len(t, values, 1)
-		assert.Equal(t, "ERX-Primary-Dns", values[0].Name)
+		assert.Equal(t, "erx-primary-dns", values[0].Name)
 		assert.Equal(t, uint8(26), values[0].Type)
 		assert.Equal(t, DataTypeIPAddr, values[0].DataType)
 		assert.Equal(t, []byte{192, 0, 2, 1}, values[0].Value)
@@ -414,7 +414,7 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb:cc:dd:ee:ff")))
 		pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("11:22:33:44:55:66")))
 
-		values := pkt.GetAttribute("ERX-Dhcp-Mac-Addr")
+		values := pkt.GetAttribute("erx-dhcp-mac-addr")
 		assert.Len(t, values, 2)
 		assert.Equal(t, []byte("aa:bb:cc:dd:ee:ff"), values[0].Value)
 		assert.Equal(t, []byte("11:22:33:44:55:66"), values[1].Value)
@@ -444,17 +444,17 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
 		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
 
-		userValues := pkt.GetAttribute("User-Name")
+		userValues := pkt.GetAttribute("user-name")
 		assert.Len(t, userValues, 1)
-		assert.Equal(t, "User-Name", userValues[0].Name)
+		assert.Equal(t, "user-name", userValues[0].Name)
 
-		nasValues := pkt.GetAttribute("NAS-IP-Address")
+		nasValues := pkt.GetAttribute("nas-ip-address")
 		assert.Len(t, nasValues, 1)
-		assert.Equal(t, "NAS-IP-Address", nasValues[0].Name)
+		assert.Equal(t, "nas-ip-address", nasValues[0].Name)
 
-		dnsValues := pkt.GetAttribute("ERX-Primary-Dns")
+		dnsValues := pkt.GetAttribute("erx-primary-dns")
 		assert.Len(t, dnsValues, 1)
-		assert.Equal(t, "ERX-Primary-Dns", dnsValues[0].Name)
+		assert.Equal(t, "erx-primary-dns", dnsValues[0].Name)
 		assert.True(t, dnsValues[0].IsVSA)
 	})
 }
@@ -541,16 +541,16 @@ func TestAttributeValueString(t *testing.T) {
 func TestArrayAttributeHandling(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 18, Name: "Reply-Message", DataType: DataTypeString},
+		{ID: 18, Name: "reply-message", DataType: DataTypeString},
 	})
 
 	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 
 	t.Run("single value as array", func(t *testing.T) {
 		// Single value should still work
-		pkt.AddAttributeByName("Reply-Message", "Single message")
+		pkt.AddAttributeByName("reply-message", "Single message")
 
-		attrs := pkt.GetAttribute("Reply-Message")
+		attrs := pkt.GetAttribute("reply-message")
 		assert.Len(t, attrs, 1)
 		assert.Equal(t, "Single message", attrs[0].String())
 	})
@@ -560,9 +560,9 @@ func TestArrayAttributeHandling(t *testing.T) {
 
 		// Pass a slice of strings
 		messages := []string{"First message", "Second message", "Third message"}
-		pkt2.AddAttributeByName("Reply-Message", messages)
+		pkt2.AddAttributeByName("reply-message", messages)
 
-		attrs := pkt2.GetAttribute("Reply-Message")
+		attrs := pkt2.GetAttribute("reply-message")
 		assert.Len(t, attrs, 3)
 		assert.Equal(t, "First message", attrs[0].String())
 		assert.Equal(t, "Second message", attrs[1].String())
@@ -574,9 +574,9 @@ func TestArrayAttributeHandling(t *testing.T) {
 
 		// Pass a slice of interface{}
 		messages := []interface{}{"Message one", "Message two"}
-		pkt3.AddAttributeByName("Reply-Message", messages)
+		pkt3.AddAttributeByName("reply-message", messages)
 
-		attrs := pkt3.GetAttribute("Reply-Message")
+		attrs := pkt3.GetAttribute("reply-message")
 		assert.Len(t, attrs, 2)
 		assert.Equal(t, "Message one", attrs[0].String())
 		assert.Equal(t, "Message two", attrs[1].String())
@@ -586,10 +586,10 @@ func TestArrayAttributeHandling(t *testing.T) {
 func TestVendorArrayAttributeHandling(t *testing.T) {
 	vendor := &VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "ERX-Service-Activate", DataType: DataTypeString, HasTag: true},
-			{ID: 4, Name: "ERX-Primary-Dns", DataType: DataTypeIPAddr, HasTag: false},
+			{ID: 1, Name: "erx-service-activate", DataType: DataTypeString, HasTag: true},
+			{ID: 4, Name: "erx-primary-dns", DataType: DataTypeIPAddr, HasTag: false},
 		},
 	}
 
@@ -599,9 +599,9 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 
 	t.Run("single vendor value with tag", func(t *testing.T) {
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "service1")
+		pkt.AddAttributeByName("erx-service-activate:1", "service1")
 
-		attrs := pkt.GetAttribute("ERX-Service-Activate")
+		attrs := pkt.GetAttribute("erx-service-activate")
 		assert.Len(t, attrs, 1)
 		assert.Equal(t, uint8(1), attrs[0].Tag)
 		assert.Equal(t, "service1", attrs[0].String())
@@ -611,9 +611,9 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 		pkt2 := NewPacketWithDictionary(CodeAccessAccept, 2, dict)
 
 		services := []string{"service-a", "service-b", "service-c"}
-		pkt2.AddAttributeByName("ERX-Service-Activate:1", services)
+		pkt2.AddAttributeByName("erx-service-activate:1", services)
 
-		attrs := pkt2.GetAttribute("ERX-Service-Activate")
+		attrs := pkt2.GetAttribute("erx-service-activate")
 		assert.Len(t, attrs, 3)
 		assert.Equal(t, uint8(1), attrs[0].Tag)
 		assert.Equal(t, "service-a", attrs[0].String())
@@ -627,9 +627,9 @@ func TestVendorArrayAttributeHandling(t *testing.T) {
 		pkt3 := NewPacketWithDictionary(CodeAccessAccept, 3, dict)
 
 		dnsServers := []string{"8.8.8.8", "8.8.4.4", "1.1.1.1"}
-		pkt3.AddAttributeByName("ERX-Primary-Dns", dnsServers)
+		pkt3.AddAttributeByName("erx-primary-dns", dnsServers)
 
-		attrs := pkt3.GetAttribute("ERX-Primary-Dns")
+		attrs := pkt3.GetAttribute("erx-primary-dns")
 		assert.Len(t, attrs, 3)
 		assert.Equal(t, uint8(0), attrs[0].Tag) // No tag
 		assert.Equal(t, "8.8.8.8", attrs[0].String())
@@ -648,25 +648,25 @@ func TestRemoveAttributeByName(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 
 		// Add multiple Reply-Message attributes
-		pkt.AddAttributeByName("Reply-Message", "Message 1")
-		pkt.AddAttributeByName("Reply-Message", "Message 2")
-		pkt.AddAttributeByName("Reply-Message", "Message 3")
-		pkt.AddAttributeByName("Session-Timeout", 3600)
+		pkt.AddAttributeByName("reply-message", "Message 1")
+		pkt.AddAttributeByName("reply-message", "Message 2")
+		pkt.AddAttributeByName("reply-message", "Message 3")
+		pkt.AddAttributeByName("session-timeout", 3600)
 
 		// Verify all were added
-		msgs := pkt.GetAttribute("Reply-Message")
+		msgs := pkt.GetAttribute("reply-message")
 		assert.Len(t, msgs, 3)
 
 		// Remove all Reply-Message attributes
-		removed := pkt.RemoveAttributeByName("Reply-Message")
+		removed := pkt.RemoveAttributeByName("reply-message")
 		assert.Equal(t, 3, removed)
 
 		// Verify they were removed
-		msgs = pkt.GetAttribute("Reply-Message")
+		msgs = pkt.GetAttribute("reply-message")
 		assert.Len(t, msgs, 0)
 
 		// Verify other attributes still exist
-		timeout := pkt.GetAttribute("Session-Timeout")
+		timeout := pkt.GetAttribute("session-timeout")
 		assert.Len(t, timeout, 1)
 	})
 
@@ -674,38 +674,38 @@ func TestRemoveAttributeByName(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 2, dict)
 
 		// Add multiple ERX-Service-Activate attributes
-		require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1"))
-		require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2"))
-		require.NoError(t, pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8"))
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "Service 1"))
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "Service 2"))
+		require.NoError(t, pkt.AddAttributeByName("erx-primary-dns", "8.8.8.8"))
 
 		// Verify they were added
-		services := pkt.GetAttribute("ERX-Service-Activate")
+		services := pkt.GetAttribute("erx-service-activate")
 		assert.Len(t, services, 2)
 
 		// Remove all ERX-Service-Activate attributes
-		removed := pkt.RemoveAttributeByName("ERX-Service-Activate")
+		removed := pkt.RemoveAttributeByName("erx-service-activate")
 		assert.Equal(t, 2, removed)
 
 		// Verify they were removed
-		services = pkt.GetAttribute("ERX-Service-Activate")
+		services = pkt.GetAttribute("erx-service-activate")
 		assert.Len(t, services, 0)
 
 		// Verify other vendor attributes still exist
-		dns := pkt.GetAttribute("ERX-Primary-Dns")
+		dns := pkt.GetAttribute("erx-primary-dns")
 		assert.Len(t, dns, 1)
 	})
 
 	t.Run("remove non-existent attribute", func(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 3, dict)
 
-		pkt.AddAttributeByName("Reply-Message", "Test")
+		pkt.AddAttributeByName("reply-message", "Test")
 
 		// Try to remove attribute that doesn't exist
-		removed := pkt.RemoveAttributeByName("Session-Timeout")
+		removed := pkt.RemoveAttributeByName("session-timeout")
 		assert.Equal(t, 0, removed)
 
 		// Verify existing attributes weren't affected
-		msgs := pkt.GetAttribute("Reply-Message")
+		msgs := pkt.GetAttribute("reply-message")
 		assert.Len(t, msgs, 1)
 	})
 
@@ -713,7 +713,7 @@ func TestRemoveAttributeByName(t *testing.T) {
 		pkt := NewPacket(CodeAccessAccept, 4)
 
 		// Try to remove without dictionary
-		removed := pkt.RemoveAttributeByName("Reply-Message")
+		removed := pkt.RemoveAttributeByName("reply-message")
 		assert.Equal(t, 0, removed)
 	})
 }
@@ -725,11 +725,11 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 		// Add Juniper vendor with multiline attribute
 		juniperVendor := &VendorDefinition{
 			ID:   2636,
-			Name: "Juniper",
+			Name: "juniper",
 			Attributes: []*AttributeDefinition{
 				{
 					ID:        1,
-					Name:      "Juniper-User-Permissions",
+					Name:      "juniper-user-permissions",
 					DataType:  DataTypeString,
 					Multiline: true,
 				},
@@ -756,7 +756,7 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 		}
 
 		// Use GetAttributeString which should automatically join
-		result := pkt.GetAttributeString("Juniper-User-Permissions")
+		result := pkt.GetAttributeString("juniper-user-permissions")
 
 		expected := JoinMultilineAttribute(permissions)
 		assert.Equal(t, expected, result)
@@ -774,7 +774,7 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 		pkt.AddAttribute(NewAttribute(18, []byte("First message")))
 		pkt.AddAttribute(NewAttribute(18, []byte("Second message")))
 
-		result := pkt.GetAttributeString("Reply-Message")
+		result := pkt.GetAttributeString("reply-message")
 		assert.Equal(t, "First message", result)
 	})
 
@@ -783,11 +783,11 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 
 		vendor := &VendorDefinition{
 			ID:   2636,
-			Name: "Juniper",
+			Name: "juniper",
 			Attributes: []*AttributeDefinition{
 				{
 					ID:        1,
-					Name:      "Juniper-User-Permissions",
+					Name:      "juniper-user-permissions",
 					DataType:  DataTypeString,
 					Multiline: true,
 				},
@@ -804,7 +804,7 @@ func TestGetAttributeStringWithMultiline(t *testing.T) {
 		attr := va.ToVSA()
 		pkt.AddAttribute(attr)
 
-		result := pkt.GetAttributeString("Juniper-User-Permissions")
+		result := pkt.GetAttributeString("juniper-user-permissions")
 		assert.Equal(t, singleValue, result)
 	})
 
@@ -959,8 +959,8 @@ func BenchmarkPacketWithDictionary(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-			_ = pkt.AddAttributeByName("User-Name", "testuser")
-			_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+			_ = pkt.AddAttributeByName("user-name", "testuser")
+			_ = pkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 		}
 	})
 }
@@ -997,7 +997,7 @@ func BenchmarkMessageAuthenticator(b *testing.B) {
 func BenchmarkGetAttribute(b *testing.B) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
 	})
 
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
@@ -1007,7 +1007,7 @@ func BenchmarkGetAttribute(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = pkt.GetAttribute("User-Name")
+			_ = pkt.GetAttribute("user-name")
 		}
 	})
 }
@@ -1033,9 +1033,9 @@ func BenchmarkCompleteAccessRequest(b *testing.B) {
 		var i byte
 		for pb.Next() {
 			pkt := NewPacketWithDictionary(CodeAccessRequest, i, dict)
-			_ = pkt.AddAttributeByName("User-Name", "testuser")
-			_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
-			_ = pkt.AddAttributeByName("NAS-Port", uint32(1234))
+			_ = pkt.AddAttributeByName("user-name", "testuser")
+			_ = pkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
+			_ = pkt.AddAttributeByName("nas-port", uint32(1234))
 
 			reqAuth := pkt.CalculateRequestAuthenticator(secret)
 			pkt.SetAuthenticator(reqAuth)
@@ -1065,8 +1065,8 @@ func BenchmarkCompleteAccessResponse(b *testing.B) {
 		var i byte
 		for pb.Next() {
 			pkt := NewPacketWithDictionary(CodeAccessAccept, i, dict)
-			_ = pkt.AddAttributeByName("Session-Timeout", uint32(3600))
-			_ = pkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+			_ = pkt.AddAttributeByName("session-timeout", uint32(3600))
+			_ = pkt.AddAttributeByName("framed-ip-address", "10.0.0.1")
 
 			respAuth := pkt.CalculateResponseAuthenticator(secret, reqAuth)
 			pkt.SetAuthenticator(respAuth)
@@ -1089,9 +1089,9 @@ func BenchmarkE2EAuthenticationFlow(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		reqPkt := NewPacketWithDictionary(CodeAccessRequest, byte(i), dict)
-		_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-		_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
-		_ = reqPkt.AddAttributeByName("NAS-Port", uint32(1234))
+		_ = reqPkt.AddAttributeByName("user-name", "testuser")
+		_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
+		_ = reqPkt.AddAttributeByName("nas-port", uint32(1234))
 
 		reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 		reqPkt.SetAuthenticator(reqAuth)
@@ -1107,8 +1107,8 @@ func BenchmarkE2EAuthenticationFlow(b *testing.B) {
 		}
 
 		respPkt := NewPacketWithDictionary(CodeAccessAccept, byte(i), dict)
-		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
-		_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+		_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
+		_ = respPkt.AddAttributeByName("framed-ip-address", "10.0.0.1")
 
 		respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
 		respPkt.SetAuthenticator(respAuth)
@@ -1135,9 +1135,9 @@ func BenchmarkE2EAuthenticationFlowParallel(b *testing.B) {
 		var i byte
 		for pb.Next() {
 			reqPkt := NewPacketWithDictionary(CodeAccessRequest, i, dict)
-			_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-			_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
-			_ = reqPkt.AddAttributeByName("NAS-Port", uint32(1234))
+			_ = reqPkt.AddAttributeByName("user-name", "testuser")
+			_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
+			_ = reqPkt.AddAttributeByName("nas-port", uint32(1234))
 
 			reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 			reqPkt.SetAuthenticator(reqAuth)
@@ -1151,8 +1151,8 @@ func BenchmarkE2EAuthenticationFlowParallel(b *testing.B) {
 			_ = serverReqPkt.VerifyMessageAuthenticator(secret, reqAuth)
 
 			respPkt := NewPacketWithDictionary(CodeAccessAccept, i, dict)
-			_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
-			_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+			_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
+			_ = respPkt.AddAttributeByName("framed-ip-address", "10.0.0.1")
 
 			respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
 			respPkt.SetAuthenticator(respAuth)
@@ -1179,8 +1179,8 @@ func BenchmarkE2EAuthenticationFlowMinimal(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		reqPkt := NewPacketWithDictionary(CodeAccessRequest, byte(i), dict)
-		_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-		_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+		_ = reqPkt.AddAttributeByName("user-name", "testuser")
+		_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 		reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 		reqPkt.SetAuthenticator(reqAuth)
@@ -1190,7 +1190,7 @@ func BenchmarkE2EAuthenticationFlowMinimal(b *testing.B) {
 		_, _ = Decode(reqData)
 
 		respPkt := NewPacketWithDictionary(CodeAccessAccept, byte(i), dict)
-		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
 
 		respAuth := respPkt.CalculateResponseAuthenticator(secret, reqAuth)
 		respPkt.SetAuthenticator(respAuth)
@@ -1224,17 +1224,17 @@ func BenchmarkVSAParsingWithCache(b *testing.B) {
 func BenchmarkListAttributes(b *testing.B) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 1, Name: "User-Name", DataType: DataTypeString},
-		{ID: 4, Name: "NAS-IP-Address", DataType: DataTypeIPAddr},
-		{ID: 5, Name: "NAS-Port", DataType: DataTypeInteger},
-		{ID: 27, Name: "Session-Timeout", DataType: DataTypeInteger},
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 4, Name: "nas-ip-address", DataType: DataTypeIPAddr},
+		{ID: 5, Name: "nas-port", DataType: DataTypeInteger},
+		{ID: 27, Name: "session-timeout", DataType: DataTypeInteger},
 	})
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 4, Name: "ERX-Primary-Dns", DataType: DataTypeIPAddr},
-			{ID: 138, Name: "ERX-Dhcp-Mac-Addr", DataType: DataTypeString},
+			{ID: 4, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+			{ID: 138, Name: "erx-dhcp-mac-addr", DataType: DataTypeString},
 		},
 	})
 
@@ -1288,12 +1288,12 @@ func BenchmarkRemoveAttributeByName(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-		pkt.AddAttributeByName("Reply-Message", "Message 1")
-		pkt.AddAttributeByName("Reply-Message", "Message 2")
-		pkt.AddAttributeByName("Reply-Message", "Message 3")
-		pkt.AddAttributeByName("Session-Timeout", 3600)
+		pkt.AddAttributeByName("reply-message", "Message 1")
+		pkt.AddAttributeByName("reply-message", "Message 2")
+		pkt.AddAttributeByName("reply-message", "Message 3")
+		pkt.AddAttributeByName("session-timeout", 3600)
 
-		pkt.RemoveAttributeByName("Reply-Message")
+		pkt.RemoveAttributeByName("reply-message")
 	}
 }
 
@@ -1305,19 +1305,19 @@ func BenchmarkRemoveVendorAttributeByName(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1")
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2")
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 3")
-		pkt.AddAttributeByName("ERX-Primary-Dns", "8.8.8.8")
+		pkt.AddAttributeByName("erx-service-activate:1", "Service 1")
+		pkt.AddAttributeByName("erx-service-activate:1", "Service 2")
+		pkt.AddAttributeByName("erx-service-activate:1", "Service 3")
+		pkt.AddAttributeByName("erx-primary-dns", "8.8.8.8")
 
-		pkt.RemoveAttributeByName("ERX-Service-Activate")
+		pkt.RemoveAttributeByName("erx-service-activate")
 	}
 }
 
 func BenchmarkTaggedAttributeCreation(b *testing.B) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{
-		{ID: 64, Name: "Tunnel-Type", DataType: DataTypeInteger, HasTag: true},
+		{ID: 64, Name: "tunnel-type", DataType: DataTypeInteger, HasTag: true},
 	})
 
 	b.ResetTimer()
@@ -1325,7 +1325,7 @@ func BenchmarkTaggedAttributeCreation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-		pkt.AddAttributeByName("Tunnel-Type:1", uint32(3))
+		pkt.AddAttributeByName("tunnel-type:1", uint32(3))
 	}
 }
 
@@ -1333,9 +1333,9 @@ func BenchmarkTaggedVendorAttributeCreation(b *testing.B) {
 	dict := NewDictionary()
 	dict.AddVendor(&VendorDefinition{
 		ID:   4874,
-		Name: "ERX",
+		Name: "erx",
 		Attributes: []*AttributeDefinition{
-			{ID: 1, Name: "ERX-Service-Activate", DataType: DataTypeString, HasTag: true},
+			{ID: 1, Name: "erx-service-activate", DataType: DataTypeString, HasTag: true},
 		},
 	})
 
@@ -1344,7 +1344,7 @@ func BenchmarkTaggedVendorAttributeCreation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-		pkt.AddAttributeByName("ERX-Service-Activate:1", "test-service")
+		pkt.AddAttributeByName("erx-service-activate:1", "test-service")
 	}
 }
 
@@ -1377,18 +1377,18 @@ func TestVSACacheInvalidatedOnRemove(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 
 	// Add vendor attributes
-	require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 1"))
-	require.NoError(t, pkt.AddAttributeByName("ERX-Service-Activate:1", "Service 2"))
+	require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "Service 1"))
+	require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "Service 2"))
 
 	// Access to populate cache
-	attrs := pkt.GetAttribute("ERX-Service-Activate")
+	attrs := pkt.GetAttribute("erx-service-activate")
 	assert.Len(t, attrs, 2)
 
 	// Cache should exist
 	assert.NotNil(t, pkt.vsaCache)
 
 	// Remove attributes
-	removed := pkt.RemoveAttributeByName("ERX-Service-Activate")
+	removed := pkt.RemoveAttributeByName("erx-service-activate")
 	assert.Equal(t, 2, removed)
 
 	// Cache should be invalidated (nil)

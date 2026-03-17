@@ -9,7 +9,7 @@ import (
 func TestWISPrVendorDefinition(t *testing.T) {
 	assert.NotNil(t, WISPrVendorDefinition)
 	assert.Equal(t, uint32(14122), WISPrVendorDefinition.ID)
-	assert.Equal(t, "WISPr", WISPrVendorDefinition.Name)
+	assert.Equal(t, "wispr", WISPrVendorDefinition.Name)
 	assert.NotEmpty(t, WISPrVendorDefinition.Attributes)
 
 	// Check known WISPr attributes
@@ -19,7 +19,7 @@ func TestWISPrVendorDefinition(t *testing.T) {
 	}
 
 	// Verify WISPr-Location-Id exists
-	locationID, exists := attrMap["WISPr-Location-Id"]
+	locationID, exists := attrMap["wispr-location-id"]
 	assert.True(t, exists, "WISPr-Location-Id should exist")
 	if exists {
 		assert.Equal(t, uint32(1), locationID.ID)
@@ -27,7 +27,7 @@ func TestWISPrVendorDefinition(t *testing.T) {
 	}
 
 	// Verify WISPr-Bandwidth-Min-Up exists
-	bandwidthMinUp, exists := attrMap["WISPr-Bandwidth-Min-Up"]
+	bandwidthMinUp, exists := attrMap["wispr-bandwidth-min-up"]
 	assert.True(t, exists, "WISPr-Bandwidth-Min-Up should exist")
 	if exists {
 		assert.Equal(t, uint32(5), bandwidthMinUp.ID)

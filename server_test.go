@@ -365,8 +365,8 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 
 	// Create Access-Request packet
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = reqPkt.AddAttributeByName("user-name", "testuser")
+	_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 	reqPkt.SetAuthenticator(reqAuth)
@@ -394,7 +394,7 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 		for pb.Next() {
 			// Create fresh response packet for each iteration
 			respPkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-			_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+			_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
 			handler.SetRadiusResponse(Response{packet: respPkt})
 
 			// Copy data for concurrent access
@@ -450,7 +450,7 @@ func BenchmarkE2EServerRequestResponse(b *testing.B) {
 	// Use a handler function that creates fresh response each time
 	handler := HandlerFunc(func(req *Request) (Response, error) {
 		respPkt := NewPacketWithDictionary(CodeAccessAccept, req.packet.Identifier, dict)
-		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
 		return Response{packet: respPkt}, nil
 	})
 
@@ -475,8 +475,8 @@ func BenchmarkE2EServerRequestResponse(b *testing.B) {
 
 	// Pre-create request packet
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = reqPkt.AddAttributeByName("user-name", "testuser")
+	_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 	reqPkt.SetAuthenticator(reqAuth)
@@ -507,7 +507,7 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 	// Use a handler function that creates fresh response each time
 	handler := HandlerFunc(func(req *Request) (Response, error) {
 		respPkt := NewPacketWithDictionary(CodeAccessAccept, req.packet.Identifier, dict)
-		_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
+		_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
 		return Response{packet: respPkt}, nil
 	})
 
@@ -527,8 +527,8 @@ func BenchmarkE2EServerRequestResponseParallel(b *testing.B) {
 
 	// Pre-create request packet
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = reqPkt.AddAttributeByName("User-Name", "testuser")
-	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = reqPkt.AddAttributeByName("user-name", "testuser")
+	_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 	reqPkt.SetAuthenticator(reqAuth)
@@ -1384,25 +1384,25 @@ func TestServerServeWithTCPTransportMultiplePackets(t *testing.T) {
 func TestRequestGetAttribute(t *testing.T) {
 	dict, _ := NewDefault()
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = pkt.AddAttributeByName("User-Name", "testuser")
-	_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = pkt.AddAttributeByName("user-name", "testuser")
+	_ = pkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 	req := &Request{packet: pkt}
 
 	t.Run("existing attribute", func(t *testing.T) {
-		values := req.GetAttribute("User-Name")
+		values := req.GetAttribute("user-name")
 		require.Len(t, values, 1)
 		assert.Equal(t, "testuser", values[0].String())
 	})
 
 	t.Run("non-existing attribute", func(t *testing.T) {
-		values := req.GetAttribute("Called-Station-Id")
+		values := req.GetAttribute("called-station-id")
 		assert.Empty(t, values)
 	})
 
 	t.Run("nil packet", func(t *testing.T) {
 		nilReq := &Request{}
-		values := nilReq.GetAttribute("User-Name")
+		values := nilReq.GetAttribute("user-name")
 		assert.Empty(t, values)
 	})
 }
@@ -1410,16 +1410,16 @@ func TestRequestGetAttribute(t *testing.T) {
 func TestRequestListAttributes(t *testing.T) {
 	dict, _ := NewDefault()
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = pkt.AddAttributeByName("User-Name", "testuser")
-	_ = pkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
+	_ = pkt.AddAttributeByName("user-name", "testuser")
+	_ = pkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
 
 	req := &Request{packet: pkt}
 
 	t.Run("list attributes", func(t *testing.T) {
 		attrs := req.ListAttributes()
 		assert.Len(t, attrs, 2)
-		assert.Contains(t, attrs, "User-Name")
-		assert.Contains(t, attrs, "NAS-IP-Address")
+		assert.Contains(t, attrs, "user-name")
+		assert.Contains(t, attrs, "nas-ip-address")
 	})
 
 	t.Run("nil packet", func(t *testing.T) {
@@ -1460,16 +1460,16 @@ func TestResponseCode(t *testing.T) {
 func TestResponseListAttributes(t *testing.T) {
 	dict, _ := NewDefault()
 	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	_ = pkt.AddAttributeByName("Session-Timeout", uint32(3600))
-	_ = pkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
+	_ = pkt.AddAttributeByName("session-timeout", uint32(3600))
+	_ = pkt.AddAttributeByName("framed-ip-address", "10.0.0.1")
 
 	resp := Response{packet: pkt}
 
 	t.Run("list attributes", func(t *testing.T) {
 		attrs := resp.ListAttributes()
 		assert.Len(t, attrs, 2)
-		assert.Contains(t, attrs, "Session-Timeout")
-		assert.Contains(t, attrs, "Framed-IP-Address")
+		assert.Contains(t, attrs, "session-timeout")
+		assert.Contains(t, attrs, "framed-ip-address")
 	})
 
 	t.Run("nil packet", func(t *testing.T) {
@@ -1779,10 +1779,10 @@ func BenchmarkServerWithRealisticPacket(b *testing.B) {
 
 	// Create realistic response with multiple attributes
 	respPkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	_ = respPkt.AddAttributeByName("Session-Timeout", uint32(3600))
-	_ = respPkt.AddAttributeByName("Idle-Timeout", uint32(600))
-	_ = respPkt.AddAttributeByName("Framed-IP-Address", "10.0.0.1")
-	_ = respPkt.AddAttributeByName("Framed-IP-Netmask", "255.255.255.0")
+	_ = respPkt.AddAttributeByName("session-timeout", uint32(3600))
+	_ = respPkt.AddAttributeByName("idle-timeout", uint32(600))
+	_ = respPkt.AddAttributeByName("framed-ip-address", "10.0.0.1")
+	_ = respPkt.AddAttributeByName("framed-ip-netmask", "255.255.255.0")
 	handler.radiusResp = Response{packet: respPkt}
 
 	srv, _ := NewServer(
@@ -1800,12 +1800,12 @@ func BenchmarkServerWithRealisticPacket(b *testing.B) {
 
 	// Create realistic request with multiple attributes
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	_ = reqPkt.AddAttributeByName("User-Name", "testuser@example.com")
-	_ = reqPkt.AddAttributeByName("User-Password", "secretpassword123")
-	_ = reqPkt.AddAttributeByName("NAS-IP-Address", "192.168.1.1")
-	_ = reqPkt.AddAttributeByName("NAS-Port", uint32(12345))
-	_ = reqPkt.AddAttributeByName("Called-Station-Id", "00-11-22-33-44-55")
-	_ = reqPkt.AddAttributeByName("Calling-Station-Id", "AA-BB-CC-DD-EE-FF")
+	_ = reqPkt.AddAttributeByName("user-name", "testuser@example.com")
+	_ = reqPkt.AddAttributeByName("user-password", "secretpassword123")
+	_ = reqPkt.AddAttributeByName("nas-ip-address", "192.168.1.1")
+	_ = reqPkt.AddAttributeByName("nas-port", uint32(12345))
+	_ = reqPkt.AddAttributeByName("called-station-id", "00-11-22-33-44-55")
+	_ = reqPkt.AddAttributeByName("calling-station-id", "AA-BB-CC-DD-EE-FF")
 	reqAuth := reqPkt.CalculateRequestAuthenticator(secret)
 	reqPkt.SetAuthenticator(reqAuth)
 	reqPkt.AddMessageAuthenticator(secret, reqAuth)

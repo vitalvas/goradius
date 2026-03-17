@@ -2,6 +2,7 @@ package goradius
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -44,12 +45,17 @@ func NewDictionary() *Dictionary {
 
 // AddStandardAttributes adds standard RFC attributes to the
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
+// Attribute names must be lowercase only.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// Check for duplicates against unified attribute index
+	// Check for duplicates and validate lowercase against unified attribute index
 	for _, attr := range attrs {
+		if attr.Name != strings.ToLower(attr.Name) {
+			return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+		}
+
 		if _, exists := d.allAttrByName[attr.Name]; exists {
 			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
 		}
@@ -72,6 +78,10 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	defer d.mu.Unlock()
 
 	for _, attr := range vendor.Attributes {
+		if attr.Name != strings.ToLower(attr.Name) {
+			return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+		}
+
 		if _, exists := d.allAttrByName[attr.Name]; exists {
 			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
 		}

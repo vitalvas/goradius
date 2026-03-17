@@ -9,7 +9,7 @@ import (
 func TestMikrotikVendorDefinition(t *testing.T) {
 	assert.NotNil(t, MikrotikVendorDefinition)
 	assert.Equal(t, uint32(14988), MikrotikVendorDefinition.ID)
-	assert.Equal(t, "Mikrotik", MikrotikVendorDefinition.Name)
+	assert.Equal(t, "mikrotik", MikrotikVendorDefinition.Name)
 	assert.NotEmpty(t, MikrotikVendorDefinition.Attributes)
 
 	// Check known Mikrotik attributes
@@ -19,7 +19,7 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Mikrotik-Recv-Limit exists
-	recvLimit, exists := attrMap["Mikrotik-Recv-Limit"]
+	recvLimit, exists := attrMap["mikrotik-recv-limit"]
 	assert.True(t, exists, "Mikrotik-Recv-Limit should exist")
 	if exists {
 		assert.Equal(t, uint32(1), recvLimit.ID)
@@ -27,7 +27,7 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Mikrotik-Group exists
-	group, exists := attrMap["Mikrotik-Group"]
+	group, exists := attrMap["mikrotik-group"]
 	assert.True(t, exists, "Mikrotik-Group should exist")
 	if exists {
 		assert.Equal(t, uint32(3), group.ID)
@@ -35,7 +35,7 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Mikrotik-Host-IP exists
-	hostIP, exists := attrMap["Mikrotik-Host-IP"]
+	hostIP, exists := attrMap["mikrotik-host-ip"]
 	assert.True(t, exists, "Mikrotik-Host-IP should exist")
 	if exists {
 		assert.Equal(t, uint32(10), hostIP.ID)
@@ -43,7 +43,7 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 	}
 
 	// Verify Mikrotik-Wireless-Enc-Algo exists and has values
-	encAlgo, exists := attrMap["Mikrotik-Wireless-Enc-Algo"]
+	encAlgo, exists := attrMap["mikrotik-wireless-enc-algo"]
 	assert.True(t, exists, "Mikrotik-Wireless-Enc-Algo should exist")
 	if exists {
 		assert.Equal(t, uint32(6), encAlgo.ID)
