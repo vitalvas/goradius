@@ -1489,7 +1489,7 @@ func TestHandlerFuncServeSecret(t *testing.T) {
 	resp, err := handler.ServeSecret(SecretRequest{})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Secret)
-	assert.Nil(t, resp.Metadata)
+	assert.Nil(t, resp.UserData)
 }
 
 func TestHandlerFuncServeRADIUS(t *testing.T) {
@@ -1831,13 +1831,13 @@ func BenchmarkServerWithRealisticPacket(b *testing.B) {
 // rotationHandler supports secret rotation in tests.
 type rotationHandler struct {
 	secrets  []string
-	metadata map[string]any
+	userData map[string]string
 }
 
 func (h *rotationHandler) ServeSecret(req SecretRequest) (SecretResponse, error) {
 	return SecretResponse{
 		Secret:   []byte(h.secrets[req.Attempt]),
-		Metadata: h.metadata,
+		UserData: h.userData,
 		Attempts: len(h.secrets),
 	}, nil
 }
@@ -2024,20 +2024,20 @@ func TestServerSecretRotation(t *testing.T) {
 		mu.Unlock()
 	})
 
-	t.Run("metadata preserved from resolved secret", func(t *testing.T) {
+	t.Run("user data preserved from resolved secret", func(t *testing.T) {
 		var mu sync.Mutex
-		var capturedMetadata map[string]any
+		var capturedUserData map[string]string
 
 		srv, err := NewServer(WithHandler(&rotationHandler{
 			secrets:  []string{"oldsecret", "newsecret"},
-			metadata: map[string]any{"client": "test-nas"},
+			userData: map[string]string{"client": "test-nas"},
 		}))
 		require.NoError(t, err)
 
 		srv.Use(func(next Handler) Handler {
 			return HandlerFunc(func(req *Request) (Response, error) {
 				mu.Lock()
-				capturedMetadata = req.Secret.Metadata
+				capturedUserData = req.Secret.UserData
 				mu.Unlock()
 				return next.ServeRADIUS(req)
 			})
@@ -2062,7 +2062,7 @@ func TestServerSecretRotation(t *testing.T) {
 		require.NoError(t, err)
 
 		mu.Lock()
-		assert.Equal(t, "test-nas", capturedMetadata["client"])
+		assert.Equal(t, "test-nas", capturedUserData["client"])
 		mu.Unlock()
 	})
 }

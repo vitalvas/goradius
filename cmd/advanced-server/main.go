@@ -18,7 +18,7 @@ func (h *advancedHandler) ServeSecret(req goradius.SecretRequest) (goradius.Secr
 
 	return goradius.SecretResponse{
 		Secret: []byte("testing123"),
-		Metadata: map[string]interface{}{
+		UserData: map[string]string{
 			"client":  req.RemoteAddr.String(),
 			"nastype": "generic",
 		},

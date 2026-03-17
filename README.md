@@ -24,4 +24,3 @@ Go library for RADIUS servers and clients
 - `cmd/simple-server/` - basic RADIUS server
 - `cmd/advanced-server/` - server with middleware
 - `cmd/radclient/` - CoA/Disconnect client tool
-

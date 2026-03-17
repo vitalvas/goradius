@@ -30,7 +30,7 @@ func (h *myHandler) ServeSecret(
 
     return goradius.SecretResponse{
         Secret: []byte("testing123"),
-        Metadata: map[string]interface{}{
+        UserData: map[string]string{
             "client":  req.RemoteAddr.String(),
             "nastype": "generic",
         },
@@ -111,7 +111,7 @@ type SecretRequest struct {
 
 type SecretResponse struct {
     Secret   []byte
-    Metadata map[string]interface{}
+    UserData map[string]string
 }
 
 func (h *myHandler) ServeSecret(
@@ -123,7 +123,7 @@ func (h *myHandler) ServeSecret(
 
     return goradius.SecretResponse{
         Secret: []byte(secret),
-        Metadata: map[string]interface{}{
+        UserData: map[string]string{
             "client": req.RemoteAddr.String(),
         },
     }, nil
@@ -487,7 +487,7 @@ func (s *SecretStore) ServeSecret(
 
     return goradius.SecretResponse{
         Secret: []byte(secret),
-        Metadata: map[string]interface{}{
+        UserData: map[string]string{
             "client": clientIP,
         },
     }, nil

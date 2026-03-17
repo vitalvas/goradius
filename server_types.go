@@ -85,7 +85,7 @@ type SecretRequest struct {
 
 type SecretResponse struct {
 	Secret   []byte
-	Metadata map[string]any
+	UserData map[string]string
 	// Attempts is the total number of secrets available for rotation.
 	// A value of 0 or 1 means no rotation (single secret).
 	// When greater than 1, the server will try each secret in order

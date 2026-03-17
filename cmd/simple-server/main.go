@@ -16,7 +16,7 @@ func (h *simpleHandler) ServeSecret(req goradius.SecretRequest) (goradius.Secret
 
 	return goradius.SecretResponse{
 		Secret: []byte("testing123"),
-		Metadata: map[string]interface{}{
+		UserData: map[string]string{
 			"client":  req.RemoteAddr.String(),
 			"nastype": "generic",
 		},
@@ -26,11 +26,11 @@ func (h *simpleHandler) ServeSecret(req goradius.SecretRequest) (goradius.Secret
 func (h *simpleHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, error) {
 	fmt.Printf("Received %s from %s\n", req.Code().String(), req.RemoteAddr)
 
-	// Access metadata from the secret response
-	if nastype, ok := req.Secret.Metadata["nastype"].(string); ok {
+	// Access user data from the secret response
+	if nastype, ok := req.Secret.UserData["nastype"]; ok {
 		fmt.Printf("NAS Type: %s\n", nastype)
 	}
-	if client, ok := req.Secret.Metadata["client"].(string); ok {
+	if client, ok := req.Secret.UserData["client"]; ok {
 		fmt.Printf("Client: %s\n", client)
 	}
 
