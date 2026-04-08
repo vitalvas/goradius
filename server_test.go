@@ -2066,3 +2066,101 @@ func TestServerSecretRotation(t *testing.T) {
 		mu.Unlock()
 	})
 }
+
+func TestServerPerSecretRequireMessageAuthenticator(t *testing.T) {
+	sendPacket := func(t *testing.T, addr *net.UDPAddr, pkt *Packet) (*Packet, error) {
+		t.Helper()
+		conn, err := net.DialUDP("udp", nil, addr)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+		_, err = conn.Write(data)
+		require.NoError(t, err)
+
+		conn.SetReadDeadline(time.Now().Add(time.Second))
+		buf := make([]byte, 4096)
+		n, err := conn.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		return Decode(buf[:n])
+	}
+
+	t.Run("per_secret_required_overrides_global_false", func(t *testing.T) {
+		// Global: require=false, per-secret: Required → packet without MA must be rejected
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{
+				Secret:            secret,
+				MessageAuthPolicy: MessageAuthPolicyRequired,
+			},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithRequireMessageAuthenticator(false),
+		)
+		require.NoError(t, err)
+		defer srv.Close()
+
+		transport := startTestServer(t, srv)
+		addr := transport.LocalAddr().(*net.UDPAddr)
+
+		pkt := NewPacket(CodeAccessRequest, 1)
+		_, err = sendPacket(t, addr, pkt)
+		assert.Error(t, err, "should be rejected without Message-Authenticator")
+	})
+
+	t.Run("per_secret_optional_overrides_global_true", func(t *testing.T) {
+		// Global: require=true, per-secret: Optional → packet without MA must be accepted
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{
+				Secret:            secret,
+				MessageAuthPolicy: MessageAuthPolicyOptional,
+			},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithRequireMessageAuthenticator(true),
+		)
+		require.NoError(t, err)
+		defer srv.Close()
+
+		transport := startTestServer(t, srv)
+		addr := transport.LocalAddr().(*net.UDPAddr)
+
+		pkt := NewPacket(CodeAccessRequest, 1)
+		resp, err := sendPacket(t, addr, pkt)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, resp.Code)
+	})
+
+	t.Run("per_secret_nil_uses_global_default", func(t *testing.T) {
+		// Global: require=true, per-secret: nil → use global (require=true), reject without MA
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		srv, err := NewServer(
+			WithHandler(handler),
+			WithRequireMessageAuthenticator(true),
+		)
+		require.NoError(t, err)
+		defer srv.Close()
+
+		transport := startTestServer(t, srv)
+		addr := transport.LocalAddr().(*net.UDPAddr)
+
+		pkt := NewPacket(CodeAccessRequest, 1)
+		_, err = sendPacket(t, addr, pkt)
+		assert.Error(t, err, "should be rejected without Message-Authenticator when global requires it")
+	})
+}

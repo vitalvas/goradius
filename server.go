@@ -153,7 +153,7 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 	// Validate packet with secret rotation support
 	if totalAttempts <= 1 {
 		// Fast path: single secret
-		if !s.validatePacketSecret(pkt, secretResp.Secret) {
+		if !s.validatePacketSecret(pkt, secretResp) {
 			return
 		}
 	} else {
@@ -199,7 +199,10 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 
 // validatePacketSecret validates the packet against the given secret
 // using Message-Authenticator and/or Request Authenticator checks.
-func (s *Server) validatePacketSecret(pkt *Packet, secret []byte) bool {
+// The per-secret RequireMessageAuthenticator overrides the server default when set.
+func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bool {
+	secret := secretResp.Secret
+
 	if s.requireRequestAuth && pkt.Code != CodeAccessRequest {
 		expectedAuth := pkt.CalculateRequestAuthenticator(secret)
 		if pkt.Authenticator != expectedAuth {
@@ -207,7 +210,15 @@ func (s *Server) validatePacketSecret(pkt *Packet, secret []byte) bool {
 		}
 	}
 
-	if s.requireMessageAuth {
+	requireMsgAuth := s.requireMessageAuth
+	switch secretResp.MessageAuthPolicy {
+	case MessageAuthPolicyRequired:
+		requireMsgAuth = true
+	case MessageAuthPolicyOptional:
+		requireMsgAuth = false
+	}
+
+	if requireMsgAuth {
 		if !pkt.VerifyMessageAuthenticator(secret, pkt.Authenticator) {
 			return false
 		}
@@ -221,7 +232,7 @@ func (s *Server) validatePacketSecret(pkt *Packet, secret []byte) bool {
 // if all attempts fail.
 func (s *Server) resolveSecret(ctx context.Context, localAddr, remoteAddr net.Addr, pkt *Packet, firstResp SecretResponse, totalAttempts int) SecretResponse {
 	// Try first secret (already fetched)
-	if s.validatePacketSecret(pkt, firstResp.Secret) {
+	if s.validatePacketSecret(pkt, firstResp) {
 		return firstResp
 	}
 
@@ -237,7 +248,7 @@ func (s *Server) resolveSecret(ctx context.Context, localAddr, remoteAddr net.Ad
 			continue
 		}
 
-		if s.validatePacketSecret(pkt, resp.Secret) {
+		if s.validatePacketSecret(pkt, resp) {
 			return resp
 		}
 	}

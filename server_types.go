@@ -83,6 +83,18 @@ type SecretRequest struct {
 	Attempt int
 }
 
+// MessageAuthPolicy controls per-secret Message-Authenticator enforcement.
+type MessageAuthPolicy uint8
+
+const (
+	// MessageAuthPolicyDefault defers to the server-level WithRequireMessageAuthenticator setting.
+	MessageAuthPolicyDefault MessageAuthPolicy = 0
+	// MessageAuthPolicyRequired enforces Message-Authenticator for this secret regardless of server setting.
+	MessageAuthPolicyRequired MessageAuthPolicy = 1
+	// MessageAuthPolicyOptional skips Message-Authenticator enforcement for this secret regardless of server setting.
+	MessageAuthPolicyOptional MessageAuthPolicy = 2
+)
+
 type SecretResponse struct {
 	Secret   []byte
 	UserData map[string]string
@@ -91,6 +103,9 @@ type SecretResponse struct {
 	// When greater than 1, the server will try each secret in order
 	// until one validates the packet.
 	Attempts int
+	// MessageAuthPolicy overrides the server-level WithRequireMessageAuthenticator
+	// option for this specific secret. Default defers to the server setting.
+	MessageAuthPolicy MessageAuthPolicy
 }
 
 type Handler interface {
