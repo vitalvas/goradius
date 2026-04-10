@@ -533,7 +533,14 @@ func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte,
 	}
 
 	processedValue := p.processEnumeratedValue(value, attrDef)
-	return p.addVendorArrayAttribute(vendor, attrDef, processedValue, tag, secret, authenticator)
+	return p.addVendorArrayAttribute(vendorAttrParams{
+		vendor:        vendor,
+		attrDef:       attrDef,
+		value:         processedValue,
+		tag:           tag,
+		secret:        secret,
+		authenticator: authenticator,
+	})
 }
 
 // isAttributeAllowed checks if an attribute can be used in the current packet type
@@ -767,9 +774,19 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 	return nil
 }
 
+type vendorAttrParams struct {
+	vendor        *VendorDefinition
+	attrDef       *AttributeDefinition
+	value         any
+	tag           uint8
+	secret        []byte
+	authenticator [16]byte
+}
+
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
-func (p *Packet) addVendorArrayAttribute(vendor *VendorDefinition, attrDef *AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) error {
+func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
+	vendor, attrDef, value, tag, secret, authenticator := params.vendor, params.attrDef, params.value, params.tag, params.secret, params.authenticator
 	if vendor == nil || attrDef == nil {
 		return nil
 	}

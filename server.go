@@ -158,7 +158,14 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		}
 	} else {
 		// Rotation path: try multiple secrets
-		secretResp = s.resolveSecret(ctx, localAddr, remoteAddr, pkt, secretResp, totalAttempts)
+		secretResp = s.resolveSecret(resolveSecretParams{
+			ctx:           ctx,
+			localAddr:     localAddr,
+			remoteAddr:    remoteAddr,
+			pkt:           pkt,
+			firstResp:     secretResp,
+			totalAttempts: totalAttempts,
+		})
 		if secretResp.Secret == nil {
 			return
 		}
@@ -227,28 +234,37 @@ func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bo
 	return true
 }
 
+type resolveSecretParams struct {
+	ctx           context.Context
+	localAddr     net.Addr
+	remoteAddr    net.Addr
+	pkt           *Packet
+	firstResp     SecretResponse
+	totalAttempts int
+}
+
 // resolveSecret tries each secret in order until one validates the packet.
 // Returns the SecretResponse with the resolved secret, or one with nil Secret
 // if all attempts fail.
-func (s *Server) resolveSecret(ctx context.Context, localAddr, remoteAddr net.Addr, pkt *Packet, firstResp SecretResponse, totalAttempts int) SecretResponse {
+func (s *Server) resolveSecret(params resolveSecretParams) SecretResponse {
 	// Try first secret (already fetched)
-	if s.validatePacketSecret(pkt, firstResp) {
-		return firstResp
+	if s.validatePacketSecret(params.pkt, params.firstResp) {
+		return params.firstResp
 	}
 
 	// Try remaining secrets
-	for i := 1; i < totalAttempts; i++ {
+	for i := 1; i < params.totalAttempts; i++ {
 		resp, err := s.handler.ServeSecret(SecretRequest{
-			Context:    ctx,
-			LocalAddr:  localAddr,
-			RemoteAddr: remoteAddr,
+			Context:    params.ctx,
+			LocalAddr:  params.localAddr,
+			RemoteAddr: params.remoteAddr,
 			Attempt:    i,
 		})
 		if err != nil {
 			continue
 		}
 
-		if s.validatePacketSecret(pkt, resp) {
+		if s.validatePacketSecret(params.pkt, resp) {
 			return resp
 		}
 	}

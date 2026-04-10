@@ -110,8 +110,9 @@ type SecretRequest struct {
 }
 
 type SecretResponse struct {
-    Secret   []byte
-    UserData map[string]string
+    Secret            []byte
+    UserData          map[string]string
+    MessageAuthPolicy goradius.MessageAuthPolicy
 }
 
 func (h *myHandler) ServeSecret(
@@ -494,6 +495,28 @@ func (s *SecretStore) ServeSecret(
 }
 ```
 
+### Per-Secret Message-Authenticator Policy
+
+`MessageAuthPolicy` on `SecretResponse` overrides the server-level
+`WithRequireMessageAuthenticator` for that specific secret:
+
+| Value | Behaviour |
+|---|---|
+| `MessageAuthPolicyDefault` | Use the server setting (default) |
+| `MessageAuthPolicyRequired` | Enforce Message-Authenticator for this secret |
+| `MessageAuthPolicyOptional` | Skip enforcement for this secret |
+
+```go
+return goradius.SecretResponse{
+    Secret:            []byte(secret),
+    MessageAuthPolicy: goradius.MessageAuthPolicyRequired,
+}, nil
+```
+
+This allows incremental adoption — legacy devices can use
+`MessageAuthPolicyOptional` while new devices use
+`MessageAuthPolicyRequired`, without changing the global server setting.
+
 ## Server Control
 
 ### Graceful Shutdown
@@ -533,5 +556,5 @@ srv.Close()
 
 ## Complete Example
 
-See `cmd/simple-server/main.go` in the repository
+See `examples/simple-server/main.go` in the repository
 for a complete working example.

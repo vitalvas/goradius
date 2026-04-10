@@ -1,6 +1,7 @@
 package goradius
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -267,7 +268,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 
 	// Test request-only attribute across all packet types
 	for _, code := range requestCodes {
-		t.Run("Request-only_in_"+code.String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Request-only_in_%s", code.String()), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
 			err := p.AddAttributeByName("user-password", "secret")
 			assert.NoError(t, err)
@@ -276,7 +277,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	}
 
 	for _, code := range replyCodes {
-		t.Run("Request-only_in_"+code.String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Request-only_in_%s", code.String()), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
 			err := p.AddAttributeByName("user-password", "secret")
 			assert.NoError(t, err)
@@ -286,7 +287,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 
 	// Test reply-only attribute across all packet types
 	for _, code := range requestCodes {
-		t.Run("Reply-only_in_"+code.String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Reply-only_in_%s", code.String()), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
 			err := p.AddAttributeByName("framed-ip-address", "10.0.0.1")
 			assert.NoError(t, err)
@@ -295,7 +296,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	}
 
 	for _, code := range replyCodes {
-		t.Run("Reply-only_in_"+code.String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Reply-only_in_%s", code.String()), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
 			err := p.AddAttributeByName("framed-ip-address", "10.0.0.1")
 			assert.NoError(t, err)
@@ -308,7 +309,7 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	allCodes = append(allCodes, requestCodes...)
 	allCodes = append(allCodes, replyCodes...)
 	for _, code := range allCodes {
-		t.Run("Request-reply_in_"+code.String(), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Request-reply_in_%s", code.String()), func(t *testing.T) {
 			p := NewPacketWithDictionary(code, 1, dict)
 			err := p.AddAttributeByName("user-name", "john")
 			assert.NoError(t, err)

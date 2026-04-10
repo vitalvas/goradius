@@ -158,11 +158,17 @@ var ERXVendorDefinition = &VendorDefinition{
 		{ID: 55, Name: "erx-dhcp-options", DataType: DataTypeOctets},
 		{ID: 56, Name: "erx-dhcp-mac-addr", DataType: DataTypeString},
 		{ID: 57, Name: "erx-dhcp-gi-address", DataType: DataTypeIPAddr},
-		{ID: 58, Name: "erx-li-action", DataType: DataTypeInteger, Encryption: EncryptionTunnelPassword, Values: map[string]uint32{
-			"off":  0,
-			"on":   1,
-			"noop": 2,
-		}},
+		{
+			ID:         58,
+			Name:       "erx-li-action",
+			DataType:   DataTypeInteger,
+			Encryption: EncryptionTunnelPassword,
+			Values: map[string]uint32{
+				"off":  0,
+				"on":   1,
+				"noop": 2,
+			},
+		},
 		{ID: 59, Name: "erx-med-dev-handle", DataType: DataTypeOctets, Encryption: EncryptionTunnelPassword},
 		{ID: 60, Name: "erx-med-ip-address", DataType: DataTypeIPAddr, Encryption: EncryptionTunnelPassword},
 		{ID: 61, Name: "erx-med-port-number", DataType: DataTypeInteger, Encryption: EncryptionTunnelPassword},
