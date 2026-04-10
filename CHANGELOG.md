@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/vitalvas/goradius/compare/v0.1.0...v0.2.0) (2026-04-10)
+
+
+### Features
+
+* add per-secret Message-Authenticator policy via MessageAuthPolicy ([4ece114](https://github.com/vitalvas/goradius/commit/4ece114920c695c3639d750c33fe1da4bd5e7f06))
+
+
+### Bug Fixes
+
+* rename cmd/ to examples/, resolve policy violations, add doc.go ([f431f1e](https://github.com/vitalvas/goradius/commit/f431f1e387c09ffda2c5d39cc5c77762c43b5003))
+
 ## [0.1.0](https://github.com/vitalvas/goradius/compare/v0.0.1...v0.1.0) (2026-03-17)
 
 
