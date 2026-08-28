@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vitalvas/goradius/compare/v0.2.0...v0.3.0) (2026-08-28)
+
+
+### Features
+
+* add Server.ProcessRawPacket to process packets sans transport ([88916b1](https://github.com/vitalvas/goradius/commit/88916b1e0bfed9de2d5ba70d56cac17ff7eeee4f))
+
 ## [0.2.0](https://github.com/vitalvas/goradius/compare/v0.1.0...v0.2.0) (2026-04-10)
 
 
