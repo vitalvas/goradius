@@ -2164,3 +2164,172 @@ func TestServerPerSecretRequireMessageAuthenticator(t *testing.T) {
 		assert.Error(t, err, "should be rejected without Message-Authenticator when global requires it")
 	})
 }
+
+// Tests for Server.ProcessRawPacket
+
+func TestServerProcessRawPacket(t *testing.T) {
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 54321}
+
+	t.Run("access request matches Serve over UDP", func(t *testing.T) {
+		secret := []byte("testing123")
+
+		newHandler := func() *testHandler {
+			return &testHandler{
+				secretResp: SecretResponse{Secret: secret},
+				radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+			}
+		}
+
+		// Build an Access-Request with a valid Message-Authenticator.
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, err := reqPkt.Encode()
+		require.NoError(t, err)
+
+		// Deliver the same bytes over UDP via Serve, from clientAddr.
+		serveHandler := newHandler()
+		serveSrv, err := NewServer(WithHandler(serveHandler))
+		require.NoError(t, err)
+		transport := startTestServer(t, serveSrv)
+		defer serveSrv.Close()
+
+		serverAddr := transport.LocalAddr().(*net.UDPAddr)
+		clientConn, err := net.DialUDP("udp", clientAddr, serverAddr)
+		require.NoError(t, err)
+		defer clientConn.Close()
+
+		_, err = clientConn.Write(data)
+		require.NoError(t, err)
+
+		clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		buf := make([]byte, 4096)
+		n, err := clientConn.Read(buf)
+		require.NoError(t, err)
+		serveReply := buf[:n]
+
+		// Process the same bytes via ProcessRawPacket, from the same source address.
+		rawHandler := newHandler()
+		rawSrv, err := NewServer(WithHandler(rawHandler))
+		require.NoError(t, err)
+		defer rawSrv.Close()
+
+		rawReply, err := rawSrv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		require.NotNil(t, rawReply)
+
+		// Same reply bytes and same decision.
+		assert.Equal(t, serveReply, rawReply)
+
+		rawDecoded, err := Decode(rawReply)
+		require.NoError(t, err)
+		serveDecoded, err := Decode(serveReply)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, rawDecoded.Code)
+		assert.Equal(t, serveDecoded.Code, rawDecoded.Code)
+		assert.Equal(t, serveDecoded.Identifier, rawDecoded.Identifier)
+
+		assert.True(t, rawHandler.WasSecretCalled())
+		assert.True(t, rawHandler.WasRADIUSCalled())
+	})
+
+	t.Run("accounting request succeeds", func(t *testing.T) {
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			radiusResp: Response{packet: NewPacket(CodeAccountingResponse, 7)},
+		}
+
+		srv, err := NewServer(WithHandler(handler))
+		require.NoError(t, err)
+		defer srv.Close()
+
+		reqPkt := NewPacket(CodeAccountingRequest, 7)
+		reqPkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, err := reqPkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		require.NotNil(t, reply)
+
+		decoded, err := Decode(reply)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccountingResponse, decoded.Code)
+		assert.Equal(t, uint8(7), decoded.Identifier)
+	})
+
+	t.Run("unknown client is rejected", func(t *testing.T) {
+		secret := []byte("testing123")
+
+		// Handler returns an error from ServeSecret for an unknown client,
+		// exactly as it would for a packet delivered over a transport.
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			secretErr:  assert.AnError,
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		srv, err := NewServer(WithHandler(handler))
+		require.NoError(t, err)
+		defer srv.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, err := reqPkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply, "unknown client must not receive a reply")
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("works with no transport bound", func(t *testing.T) {
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+
+		// Serve is never called: no transport is bound.
+		srv, err := NewServer(WithHandler(handler))
+		require.NoError(t, err)
+		defer srv.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, err := reqPkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		require.NotNil(t, reply)
+
+		decoded, err := Decode(reply)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, decoded.Code)
+	})
+
+	t.Run("handler declines to respond returns nil", func(t *testing.T) {
+		secret := []byte("testing123")
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			// No radiusResp packet: handler chooses not to respond.
+		}
+
+		srv, err := NewServer(WithHandler(handler))
+		require.NoError(t, err)
+		defer srv.Close()
+
+		reqPkt := NewPacket(CodeAccessRequest, 1)
+		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		data, err := reqPkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+	})
+}

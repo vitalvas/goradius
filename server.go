@@ -67,6 +67,30 @@ func (s *Server) Addr() net.Addr {
 	return s.transport.LocalAddr()
 }
 
+// ProcessRawPacket processes a single RADIUS packet from raw bytes and the
+// source address, without owning a transport. It reuses the same pipeline as
+// Serve: secret lookup, secret rotation, packet validation, and ServeRADIUS
+// dispatch. remoteAddr is used as the client identity for secret lookup.
+//
+// It returns the raw reply bytes to send back to remoteAddr, or nil when the
+// handler chooses not to respond (or the packet is dropped by validation).
+// This works even when Serve has never been called and no transport is bound.
+//
+// The pipeline only reads data and never mutates it, but data is not copied.
+// The caller must not modify data concurrently with this call. The returned
+// reply is a freshly-allocated slice that does not alias data.
+func (s *Server) ProcessRawPacket(data []byte, remoteAddr net.Addr) ([]byte, error) {
+	var reply []byte
+	respond := func(respData []byte) error {
+		reply = respData
+		return nil
+	}
+
+	s.handlePacket(data, remoteAddr, respond)
+
+	return reply, nil
+}
+
 // Close stops the server and waits for in-flight requests to complete.
 func (s *Server) Close() error {
 	s.mu.Lock()
