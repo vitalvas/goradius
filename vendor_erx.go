@@ -527,5 +527,35 @@ var ERXVendorDefinition = &VendorDefinition{
 		{ID: 231, Name: "erx-gamma-data-rate-downstream", DataType: DataTypeInteger},
 		{ID: 232, Name: "erx-attainable-gamma-data-rate-upstream", DataType: DataTypeInteger},
 		{ID: 233, Name: "erx-attainable-gamma-data-rate-downstream", DataType: DataTypeInteger},
+
+		// Junos BNG attributes not present in the FreeRADIUS dictionary.
+		// Source: Juniper AAA Service Framework table "Supported Juniper Networks VSAs",
+		// https://www.juniper.net/documentation/us/en/software/junos/subscriber-mgmt-sessions/topics/topic-map/radius-std-attributes-vsas-support.html
+		// The queue output counters are reported by Junos OS Evolved; 237/238 carry
+		// the CGNAT NAPT mode and NAT port-block information.
+		{ID: 215, Name: "erx-queue-7-output-packets", DataType: DataTypeInteger},
+		{
+			ID:       237,
+			Name:     "erx-cgnat-napt-mode-enable",
+			DataType: DataTypeString,
+			HasTag:   true,
+		},
+		{ID: 238, Name: "erx-napt-block-info", DataType: DataTypeString},
+		{ID: 239, Name: "erx-queue-0-output-gigawords", DataType: DataTypeInteger},
+		{ID: 240, Name: "erx-queue-0-output-octets", DataType: DataTypeInteger},
+		{ID: 241, Name: "erx-queue-1-output-gigawords", DataType: DataTypeInteger},
+		{ID: 242, Name: "erx-queue-1-output-octets", DataType: DataTypeInteger},
+		{ID: 243, Name: "erx-queue-2-output-gigawords", DataType: DataTypeInteger},
+		{ID: 244, Name: "erx-queue-2-output-octets", DataType: DataTypeInteger},
+		{ID: 245, Name: "erx-queue-3-output-gigawords", DataType: DataTypeInteger},
+		{ID: 246, Name: "erx-queue-3-output-octets", DataType: DataTypeInteger},
+		{ID: 247, Name: "erx-queue-4-output-gigawords", DataType: DataTypeInteger},
+		{ID: 248, Name: "erx-queue-4-output-octets", DataType: DataTypeInteger},
+		{ID: 249, Name: "erx-queue-5-output-gigawords", DataType: DataTypeInteger},
+		{ID: 250, Name: "erx-queue-5-output-octets", DataType: DataTypeInteger},
+		{ID: 251, Name: "erx-queue-6-output-gigawords", DataType: DataTypeInteger},
+		{ID: 252, Name: "erx-queue-6-output-octets", DataType: DataTypeInteger},
+		{ID: 253, Name: "erx-queue-7-output-gigawords", DataType: DataTypeInteger},
+		{ID: 254, Name: "erx-queue-7-output-octets", DataType: DataTypeInteger},
 	},
 }

@@ -10,6 +10,8 @@ package goradius
 //   - WISPr vendor attributes
 //   - Mikrotik vendor attributes
 //   - Cisco vendor attributes
+//   - DSL Forum access-line attributes
+//   - Microsoft vendor attributes
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -49,6 +51,14 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(CiscoVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(DSLForumVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(MicrosoftVendorDefinition); err != nil {
 		return nil, err
 	}
 

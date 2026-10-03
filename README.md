@@ -10,7 +10,8 @@ RFC 5176, RFC 6613, RFC 6614, RFC 6929).
   TLS / RadSec (RFC 6614)
 - Packet encoding/decoding with attribute type safety
 - Built-in dictionary with RFC and vendor attributes
-  (Juniper, ERX, Ascend, Mikrotik, WISPr, Cisco)
+  (Juniper, ERX, Ascend, Mikrotik, WISPr, Cisco,
+  DSL Forum, Microsoft)
 - Vendor-Specific Attributes (VSA) and tagged
   attributes (RFC 2868)
 - IPv6 attributes: ipv6addr, ipv6prefix, and

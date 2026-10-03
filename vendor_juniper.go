@@ -14,6 +14,9 @@ var JuniperVendorDefinition = &VendorDefinition{
 		{ID: 9, Name: "juniper-configuration-change", DataType: DataTypeString},
 		{ID: 10, Name: "juniper-user-permissions", DataType: DataTypeString, Multiline: true},
 		{ID: 11, Name: "juniper-authentication-type", DataType: DataTypeString},
+		// IDs 12-14 are not present in the FreeRADIUS dictionary. Source: Juniper
+		// "Juniper Networks Vendor-Specific RADIUS Attributes" user-access docs,
+		// https://www.juniper.net/documentation/us/en/software/junos/user-access/topics/topic-map/user-access-radius-authentication.html
 		{ID: 12, Name: "juniper-session-port", DataType: DataTypeInteger},
 		{ID: 13, Name: "juniper-allow-configuration-regexps", DataType: DataTypeString, Multiline: true},
 		{ID: 14, Name: "juniper-deny-configuration-regexps", DataType: DataTypeString, Multiline: true},
