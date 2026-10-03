@@ -16,10 +16,12 @@ type Attribute struct {
 }
 
 // VendorAttribute represents a vendor-specific attribute (VSA) per RFC 2865 Section 5.26
-// Format: Vendor-Id (4) + Vendor-Type (1) + Vendor-Length (1) + Value (variable)
+// Format: Vendor-Id (4) + Vendor-Type (1) + Vendor-Length (1) + Value (variable).
+// VendorType is widened to uint32 to carry vendors that use a 2-octet type
+// field (FreeRADIUS "format=2,1", e.g. Alcatel-ESAM).
 type VendorAttribute struct {
 	VendorID   uint32
-	VendorType uint8
+	VendorType uint32
 	Value      []byte
 	Tag        uint8 // For tagged vendor attributes per RFC 2868 (0 = no tag)
 }
@@ -52,7 +54,7 @@ func NewTaggedAttribute(attrType uint8, tag uint8, value []byte) *Attribute {
 
 // NewVendorAttribute creates a new vendor-specific attribute per RFC 2865 Section 5.26
 // Note: value length must not exceed MaxVSAValueLength (247 bytes)
-func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *VendorAttribute {
+func NewVendorAttribute(vendorID uint32, vendorType uint32, value []byte) *VendorAttribute {
 	return &VendorAttribute{
 		VendorID:   vendorID,
 		VendorType: vendorType,
@@ -62,7 +64,7 @@ func NewVendorAttribute(vendorID uint32, vendorType uint8, value []byte) *Vendor
 
 // NewTaggedVendorAttribute creates a new tagged vendor-specific attribute per RFC 2868
 // Note: value length must not exceed MaxVSAValueLength-1 (246 bytes, accounting for tag byte)
-func NewTaggedVendorAttribute(vendorID uint32, vendorType uint8, tag uint8, value []byte) *VendorAttribute {
+func NewTaggedVendorAttribute(vendorID uint32, vendorType uint32, tag uint8, value []byte) *VendorAttribute {
 	// Per RFC 2868, the tag is the first byte of the value
 	taggedValue := make([]byte, len(value)+1)
 	taggedValue[0] = tag
@@ -175,12 +177,21 @@ func (va *VendorAttribute) String() string {
 	return b.String()
 }
 
-// ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific) per RFC 2865 Section 5.26
+// ToVSA converts a VendorAttribute to a standard Attribute (Type 26 - Vendor-Specific)
+// using the RFC 2865 Section 5.26 format (1-octet type, 1-octet length).
 // Note: vendor value length must not exceed MaxVSAValueLength (247 bytes)
 func (va *VendorAttribute) ToVSA() *Attribute {
-	// Per RFC 2865 Section 5.26: Type(1) + Length(1) + Vendor-ID(4) + Vendor-Type(1) + Vendor-Length(1) + Vendor-Data
-	vendorLength := uint8(len(va.Value) + 2)  // +2 for Vendor-Type and Vendor-Length
-	vsaValue := make([]byte, 6+len(va.Value)) // 4 bytes Vendor-ID + 2 bytes header + data
+	return va.ToVSAFormat(1, 1)
+}
+
+// ToVSAFormat converts a VendorAttribute to a standard Attribute (Type 26) using
+// a vendor-specific header format: typeOctets wide Vendor-Type field and
+// lengthOctets wide Vendor-Length field (0 means the vendor carries no length
+// field). The fields are big-endian. This supports vendors whose VSA layout
+// differs from RFC 2865, matching the FreeRADIUS "format=t,l" flag.
+func (va *VendorAttribute) ToVSAFormat(typeOctets, lengthOctets int) *Attribute {
+	header := typeOctets + lengthOctets
+	vsaValue := make([]byte, 4+header+len(va.Value))
 
 	// Vendor-ID (4 bytes, big-endian)
 	vsaValue[0] = uint8(va.VendorID >> 24)
@@ -188,14 +199,22 @@ func (va *VendorAttribute) ToVSA() *Attribute {
 	vsaValue[2] = uint8(va.VendorID >> 8)
 	vsaValue[3] = uint8(va.VendorID)
 
-	// Vendor-Type (1 byte)
-	vsaValue[4] = va.VendorType
+	// Vendor-Type (typeOctets bytes, big-endian)
+	for i := 0; i < typeOctets; i++ {
+		shift := uint(8 * (typeOctets - 1 - i))
+		vsaValue[4+i] = uint8(va.VendorType >> shift)
+	}
 
-	// Vendor-Length (1 byte)
-	vsaValue[5] = vendorLength
+	// Vendor-Length (lengthOctets bytes, big-endian) counts the type, length,
+	// and data octets, per the RFC 2865 convention.
+	vendorLength := header + len(va.Value)
+	for i := 0; i < lengthOctets; i++ {
+		shift := uint(8 * (lengthOctets - 1 - i))
+		vsaValue[4+typeOctets+i] = uint8(uint(vendorLength) >> shift)
+	}
 
 	// Vendor-Data
-	copy(vsaValue[6:], va.Value)
+	copy(vsaValue[4+header:], va.Value)
 
 	return &Attribute{
 		Type:   26, // Vendor-Specific attribute type
@@ -204,32 +223,47 @@ func (va *VendorAttribute) ToVSA() *Attribute {
 	}
 }
 
-// ParseVSA parses a Vendor-Specific Attribute (Type 26) into VendorAttribute per RFC 2865 Section 5.26
+// ParseVSA parses a Vendor-Specific Attribute (Type 26) into VendorAttribute
+// using the RFC 2865 Section 5.26 format (1-octet type, 1-octet length).
 func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
+	return ParseVSAFormat(attr, 1, 1)
+}
+
+// ParseVSAFormat parses a Vendor-Specific Attribute (Type 26) using a
+// vendor-specific header format: typeOctets wide Vendor-Type and lengthOctets
+// wide Vendor-Length (0 means no length field). The fields are big-endian.
+func ParseVSAFormat(attr *Attribute, typeOctets, lengthOctets int) (*VendorAttribute, error) {
 	if attr.Type != 26 {
 		return nil, fmt.Errorf("not a vendor-specific attribute (type %d)", attr.Type)
 	}
 
-	if len(attr.Value) < 6 {
+	header := typeOctets + lengthOctets
+	if len(attr.Value) < 4+header {
 		return nil, fmt.Errorf("invalid VSA length: %d", len(attr.Value))
 	}
 
 	// Extract Vendor-ID (4 bytes, big-endian)
 	vendorID := uint32(attr.Value[0])<<24 | uint32(attr.Value[1])<<16 | uint32(attr.Value[2])<<8 | uint32(attr.Value[3])
 
-	// Extract Vendor-Type (1 byte)
-	vendorType := attr.Value[4]
+	// Extract Vendor-Type (typeOctets bytes, big-endian)
+	var vendorType uint32
+	for i := 0; i < typeOctets; i++ {
+		vendorType = vendorType<<8 | uint32(attr.Value[4+i])
+	}
 
-	// Extract Vendor-Length (1 byte)
-	vendorLength := attr.Value[5]
-
-	// Validate vendor length
-	if int(vendorLength) != len(attr.Value)-4 {
-		return nil, fmt.Errorf("invalid vendor length: %d, expected %d", vendorLength, len(attr.Value)-4)
+	// Extract and validate Vendor-Length when present
+	if lengthOctets > 0 {
+		var vendorLength int
+		for i := 0; i < lengthOctets; i++ {
+			vendorLength = vendorLength<<8 | int(attr.Value[4+typeOctets+i])
+		}
+		if vendorLength != len(attr.Value)-4 {
+			return nil, fmt.Errorf("invalid vendor length: %d, expected %d", vendorLength, len(attr.Value)-4)
+		}
 	}
 
 	// Extract vendor data
-	vendorData := attr.Value[6:]
+	vendorData := attr.Value[4+header:]
 
 	va := &VendorAttribute{
 		VendorID:   vendorID,

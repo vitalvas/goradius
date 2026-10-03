@@ -236,7 +236,7 @@ func TestPacketVendorAttributes(t *testing.T) {
 	foundVA, ok := pkt.GetVendorAttribute(4874, 13)
 	assert.True(t, ok)
 	assert.Equal(t, uint32(4874), foundVA.VendorID)
-	assert.Equal(t, uint8(13), foundVA.VendorType)
+	assert.Equal(t, uint32(13), foundVA.VendorType)
 	assert.Equal(t, []byte("8.8.8.8"), foundVA.Value)
 }
 
@@ -417,7 +417,7 @@ func TestPacketGetAttributeByName(t *testing.T) {
 		assert.Equal(t, []byte{192, 0, 2, 1}, values[0].Value)
 		assert.True(t, values[0].IsVSA)
 		assert.Equal(t, uint32(4874), values[0].VendorID)
-		assert.Equal(t, uint8(4), values[0].VendorType)
+		assert.Equal(t, uint32(4), values[0].VendorType)
 	})
 
 	t.Run("VSA attribute - multiple values", func(t *testing.T) {
@@ -1216,7 +1216,7 @@ func BenchmarkVSAParsingWithCache(b *testing.B) {
 	pkt := NewPacket(CodeAccessRequest, 1)
 
 	for i := 0; i < 10; i++ {
-		va := NewVendorAttribute(4874, uint8(i+1), []byte("test-value"))
+		va := NewVendorAttribute(4874, uint32(i+1), []byte("test-value"))
 		pkt.AddVendorAttribute(va)
 	}
 
@@ -1366,13 +1366,13 @@ func TestVSACacheIsBounded(t *testing.T) {
 
 	// Add many VSA attributes with different indices
 	for i := 0; i < 100; i++ {
-		va := NewVendorAttribute(4874, uint8(i%256), []byte("test-value"))
+		va := NewVendorAttribute(4874, uint32(i%256), []byte("test-value"))
 		pkt.AddVendorAttribute(va)
 	}
 
 	// Access all VSAs to populate cache
 	for i := 0; i < len(pkt.Attributes); i++ {
-		pkt.GetVendorAttribute(4874, uint8(i%256))
+		pkt.GetVendorAttribute(4874, uint32(i%256))
 	}
 
 	// The cache size should be bounded (not exceed the number of actual attributes)

@@ -103,7 +103,7 @@ func TestPacketEVSRoundTrip(t *testing.T) {
 	require.Len(t, vals, 1)
 	assert.True(t, vals[0].IsVSA)
 	assert.Equal(t, uint32(9), vals[0].VendorID)
-	assert.Equal(t, uint8(1), vals[0].VendorType)
+	assert.Equal(t, uint32(1), vals[0].VendorType)
 	assert.Equal(t, []byte{0xDE, 0xAD, 0xBE, 0xEF}, vals[0].Value)
 }
 
@@ -125,7 +125,7 @@ func TestPacketEVSWithTLVChild(t *testing.T) {
 	vals := decoded.GetAttribute("evs-tlv")
 	require.Len(t, vals, 1)
 	assert.Equal(t, uint32(9), vals[0].VendorID)
-	assert.Equal(t, uint8(2), vals[0].VendorType)
+	assert.Equal(t, uint32(2), vals[0].VendorType)
 
 	children, err := vals[0].Children()
 	require.NoError(t, err)

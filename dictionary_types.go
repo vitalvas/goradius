@@ -81,6 +81,35 @@ type VendorDefinition struct {
 	ID         uint32                 `yaml:"id" json:"id"`
 	Name       string                 `yaml:"name" json:"name"`
 	Attributes []*AttributeDefinition `yaml:"attributes" json:"attributes"`
+
+	// TypeOctets and LengthOctets describe the width of the Vendor-Type and
+	// Vendor-Length fields inside the VSA, matching the FreeRADIUS
+	// "format=t,l" dictionary flag. RFC 2865 Section 5.26 uses 1,1, which is
+	// also the zero value: a VendorDefinition with both fields zero encodes
+	// and decodes as standard 1-octet type / 1-octet length. Some vendors use
+	// a wider type field (for example Alcatel-ESAM uses format=2,1), and a few
+	// use no length field at all (LengthOctets 0 with TypeOctets set).
+	TypeOctets   uint8 `yaml:"type_octets,omitempty" json:"type_octets,omitempty"`
+	LengthOctets uint8 `yaml:"length_octets,omitempty" json:"length_octets,omitempty"`
+}
+
+// vsaTypeOctets returns the configured Vendor-Type width, defaulting to the
+// RFC 2865 standard of 1 octet when unset.
+func (v *VendorDefinition) vsaTypeOctets() int {
+	if v.TypeOctets == 0 {
+		return 1
+	}
+	return int(v.TypeOctets)
+}
+
+// vsaLengthOctets returns the configured Vendor-Length width. The zero value
+// means the standard 1-octet length field; a vendor with a non-zero TypeOctets
+// but a zero LengthOctets explicitly carries no length field.
+func (v *VendorDefinition) vsaLengthOctets() int {
+	if v.TypeOctets == 0 {
+		return 1
+	}
+	return int(v.LengthOctets)
 }
 
 // Extended attribute type range per RFC 6929 Section 2.

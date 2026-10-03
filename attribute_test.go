@@ -90,7 +90,7 @@ func TestAttributeString(t *testing.T) {
 
 func TestNewVendorAttribute(t *testing.T) {
 	vendorID := uint32(4874)
-	vendorType := uint8(13)
+	vendorType := uint32(13)
 	value := []byte("testvalue")
 
 	va := NewVendorAttribute(vendorID, vendorType, value)
@@ -103,7 +103,7 @@ func TestNewVendorAttribute(t *testing.T) {
 
 func TestNewTaggedVendorAttribute(t *testing.T) {
 	vendorID := uint32(4874)
-	vendorType := uint8(1)
+	vendorType := uint32(1)
 	tag := uint8(3)
 	value := []byte("testvalue")
 
@@ -204,7 +204,7 @@ func TestParseVSA(t *testing.T) {
 			wantErr: false,
 			check: func(t *testing.T, va *VendorAttribute) {
 				assert.Equal(t, uint32(4874), va.VendorID)
-				assert.Equal(t, uint8(13), va.VendorType)
+				assert.Equal(t, uint32(13), va.VendorType)
 				assert.Equal(t, []byte("test"), va.Value)
 			},
 		},
@@ -217,7 +217,7 @@ func TestParseVSA(t *testing.T) {
 			wantErr: false,
 			check: func(t *testing.T, va *VendorAttribute) {
 				assert.Equal(t, uint32(4874), va.VendorID)
-				assert.Equal(t, uint8(1), va.VendorType)
+				assert.Equal(t, uint32(1), va.VendorType)
 				assert.Equal(t, uint8(5), va.Tag)
 			},
 		},
@@ -262,7 +262,7 @@ func TestVSARoundTrip(t *testing.T) {
 	tests := []struct {
 		name     string
 		vendorID uint32
-		typeID   uint8
+		typeID   uint32
 		value    []byte
 	}{
 		{"simple", 9, 1, []byte("test")},
@@ -285,6 +285,35 @@ func TestVSARoundTrip(t *testing.T) {
 			// Verify
 			assert.Equal(t, tt.vendorID, parsed.VendorID)
 			assert.Equal(t, tt.typeID, parsed.VendorType)
+			assert.Equal(t, tt.value, parsed.Value)
+		})
+	}
+}
+
+func TestVSAFormatRoundTrip(t *testing.T) {
+	tests := []struct {
+		name         string
+		typeOctets   int
+		lengthOctets int
+		vendorID     uint32
+		vendorType   uint32
+		value        []byte
+	}{
+		{"standard 1,1", 1, 1, 9, 1, []byte("avpair")},
+		{"wide type 2,1", 2, 1, 637, 0x0700, []byte("vrf-name")},
+		{"wide type empty value", 2, 1, 637, 0x0716, []byte{}},
+		{"no length field 2,0", 2, 0, 637, 0x0701, []byte{0, 0, 0, 7}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			va := NewVendorAttribute(tt.vendorID, tt.vendorType, tt.value)
+			attr := va.ToVSAFormat(tt.typeOctets, tt.lengthOctets)
+
+			parsed, err := ParseVSAFormat(attr, tt.typeOctets, tt.lengthOctets)
+			require.NoError(t, err)
+			assert.Equal(t, tt.vendorID, parsed.VendorID)
+			assert.Equal(t, tt.vendorType, parsed.VendorType)
 			assert.Equal(t, tt.value, parsed.Value)
 		})
 	}

@@ -157,9 +157,45 @@ func TestNewDefault(t *testing.T) {
 		}
 	}
 
+	// Verify ZTE vendor is loaded (ID 3902)
+	zteVendor, ok := dict.LookupVendorByID(3902)
+	assert.True(t, ok, "ZTE vendor (ID 3902) should be loaded")
+	if ok {
+		assert.Equal(t, "zte", zteVendor.Name)
+		zteAttr, ok := dict.LookupByAttributeName("zte-qos-profile-down")
+		assert.True(t, ok, "zte-qos-profile-down should be found by name")
+		if ok {
+			assert.Equal(t, uint32(82), zteAttr.ID)
+		}
+	}
+
+	// Verify Huawei vendor is loaded (ID 2011)
+	huaweiVendor, ok := dict.LookupVendorByID(2011)
+	assert.True(t, ok, "Huawei vendor (ID 2011) should be loaded")
+	if ok {
+		assert.Equal(t, "huawei", huaweiVendor.Name)
+		huaweiAttr, ok := dict.LookupByAttributeName("huawei-avpair")
+		assert.True(t, ok, "huawei-avpair should be found by name")
+		if ok {
+			assert.Equal(t, uint32(188), huaweiAttr.ID)
+		}
+	}
+
+	// Verify Alcatel vendor is loaded (ID 3041)
+	alcatelVendor, ok := dict.LookupVendorByID(3041)
+	assert.True(t, ok, "Alcatel vendor (ID 3041) should be loaded")
+	if ok {
+		assert.Equal(t, "alcatel", alcatelVendor.Name)
+		alcatelAttr, ok := dict.LookupByAttributeName("aat-client-primary-dns")
+		assert.True(t, ok, "aat-client-primary-dns should be found by name")
+		if ok {
+			assert.Equal(t, uint32(5), alcatelAttr.ID)
+		}
+	}
+
 	// Verify GetAllVendors works
 	allVendors := dict.GetAllVendors()
-	assert.GreaterOrEqual(t, len(allVendors), 14, "Should have at least 14 vendors loaded")
+	assert.GreaterOrEqual(t, len(allVendors), 17, "Should have at least 17 vendors loaded")
 }
 
 func TestNewDefaultMultilineAttributes(t *testing.T) {

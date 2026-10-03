@@ -37,7 +37,7 @@ type AttributeValue struct {
 	Tag        uint8    // Tag value for tagged attributes (0 = no tag)
 	IsVSA      bool     // True if this is a vendor-specific attribute
 	VendorID   uint32   // Vendor ID (only for VSA)
-	VendorType uint8    // Vendor attribute type (only for VSA)
+	VendorType uint32   // Vendor attribute type (only for VSA)
 	Multiline  bool     // True if attribute supports multiline continuation
 
 	def *AttributeDefinition // Attribute definition (for decoding container types)
@@ -163,10 +163,23 @@ func (p *Packet) AddAttribute(attr *Attribute) {
 	p.Length += uint16(attr.Length)
 }
 
-// AddVendorAttribute adds a vendor-specific attribute to the packet
+// AddVendorAttribute adds a vendor-specific attribute to the packet, encoding
+// it with the vendor's VSA header format when the dictionary defines one.
 func (p *Packet) AddVendorAttribute(va *VendorAttribute) {
-	attr := va.ToVSA()
+	typeOctets, lengthOctets := p.vsaFormat(va.VendorID)
+	attr := va.ToVSAFormat(typeOctets, lengthOctets)
 	p.AddAttribute(attr)
+}
+
+// vsaFormat returns the VSA header widths for a vendor, defaulting to the
+// RFC 2865 standard (1,1) when the vendor is unknown or uses the default.
+func (p *Packet) vsaFormat(vendorID uint32) (typeOctets, lengthOctets int) {
+	if p.Dict != nil {
+		if vendor, ok := p.Dict.LookupVendorByID(vendorID); ok {
+			return vendor.vsaTypeOctets(), vendor.vsaLengthOctets()
+		}
+	}
+	return 1, 1
 }
 
 // GetAttributes returns all attributes with the specified type
@@ -192,7 +205,15 @@ func (p *Packet) getParsedVSA(index int, attr *Attribute) (*VendorAttribute, err
 		return va, nil
 	}
 
-	va, err := ParseVSA(attr)
+	// The Vendor-ID is always the first 4 octets regardless of format; read it
+	// to resolve the vendor's VSA header widths, then parse with those.
+	typeOctets, lengthOctets := 1, 1
+	if len(attr.Value) >= 4 {
+		vendorID := uint32(attr.Value[0])<<24 | uint32(attr.Value[1])<<16 | uint32(attr.Value[2])<<8 | uint32(attr.Value[3])
+		typeOctets, lengthOctets = p.vsaFormat(vendorID)
+	}
+
+	va, err := ParseVSAFormat(attr, typeOctets, lengthOctets)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +223,7 @@ func (p *Packet) getParsedVSA(index int, attr *Attribute) (*VendorAttribute, err
 }
 
 // GetVendorAttribute returns the first vendor attribute with the specified vendor ID and type
-func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorAttribute, bool) {
+func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint32) (*VendorAttribute, bool) {
 	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
 			if va, err := p.getParsedVSA(i, attr); err == nil {
@@ -216,7 +237,7 @@ func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint8) (*VendorA
 }
 
 // GetVendorAttributes returns all vendor attributes with the specified vendor ID and type
-func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint8) []*VendorAttribute {
+func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint32) []*VendorAttribute {
 	var attrs []*VendorAttribute
 	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
@@ -302,7 +323,7 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 	for i := len(p.Attributes) - 1; i >= 0; i-- {
 		if p.Attributes[i].Type == AttributeTypeVendorSpecific {
 			va, err := p.getParsedVSA(i, p.Attributes[i])
-			if err == nil && va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
+			if err == nil && va.VendorID == vendorID && va.VendorType == attrDef.ID {
 				p.Length -= uint16(p.Attributes[i].Length)
 				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 				removed++
@@ -1012,7 +1033,7 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 		// the last ending with the continuation marker (observed Junos behavior)
 		if multilineSplittable(attrDef, attrValue, MaxVSAValueLength) {
 			for _, chunk := range SplitMultilineAttribute(string(attrValue), MaxVSAValueLength) {
-				p.AddVendorAttribute(NewVendorAttribute(vendor.ID, uint8(attrDef.ID), []byte(chunk)))
+				p.AddVendorAttribute(NewVendorAttribute(vendor.ID, attrDef.ID, []byte(chunk)))
 			}
 			continue
 		}
@@ -1037,13 +1058,13 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 			if len(attrValue)+1 > MaxVSAValueLength {
 				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxVSAValueLength)
 			}
-			vsa = NewTaggedVendorAttribute(vendor.ID, uint8(attrDef.ID), tag, attrValue)
+			vsa = NewTaggedVendorAttribute(vendor.ID, attrDef.ID, tag, attrValue)
 		} else {
 			// Validate length for vendor attribute
 			if len(attrValue) > MaxVSAValueLength {
 				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxVSAValueLength)
 			}
-			vsa = NewVendorAttribute(vendor.ID, uint8(attrDef.ID), attrValue)
+			vsa = NewVendorAttribute(vendor.ID, attrDef.ID, attrValue)
 		}
 		p.AddVendorAttribute(vsa)
 	}
@@ -1071,7 +1092,7 @@ func (p *Packet) ListAttributes() []string {
 				continue
 			}
 
-			attrDef, found := p.Dict.LookupVendorAttributeByID(va.VendorID, uint32(va.VendorType))
+			attrDef, found := p.Dict.LookupVendorAttributeByID(va.VendorID, va.VendorType)
 			if !found {
 				continue
 			}
@@ -1155,7 +1176,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 					continue
 				}
 
-				if va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
+				if va.VendorID == vendorID && va.VendorType == attrDef.ID {
 					// For tagged attributes (HasTag=true), a first octet of 0x00-0x1F is
 					// the tag; RFC 2868 Section 3 treats a greater first octet as part
 					// of the attribute data, sent without a tag octet
@@ -1210,7 +1231,7 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 			av := p.newExtendedValue(attrDef, baseType, value)
 			av.IsVSA = true
 			av.VendorID = vendorID
-			av.VendorType = vendorType
+			av.VendorType = uint32(vendorType)
 			result = append(result, av)
 		}
 		return result
