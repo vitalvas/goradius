@@ -60,8 +60,8 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 		}
 	}
 
-	// Verify all 29 attributes exist
-	assert.Len(t, MikrotikVendorDefinition.Attributes, 29)
+	// Verify all 30 attributes exist
+	assert.Len(t, MikrotikVendorDefinition.Attributes, 30)
 }
 
 func TestNoDuplicateMikrotikAttributeIDs(t *testing.T) {

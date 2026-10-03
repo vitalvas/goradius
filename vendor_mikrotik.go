@@ -42,8 +42,17 @@ var MikrotikVendorDefinition = &VendorDefinition{
 		{ID: 24, Name: "mikrotik-dhcp-option-param-str1", DataType: DataTypeString},
 		{ID: 25, Name: "mikrotik-dhcp-option-paramstr2", DataType: DataTypeString},
 		{ID: 26, Name: "mikrotik-wireless-vlanid", DataType: DataTypeInteger},
-		{ID: 27, Name: "mikrotik-wireless-vlanid-type", DataType: DataTypeInteger},
+		{
+			ID:       27,
+			Name:     "mikrotik-wireless-vlanid-type",
+			DataType: DataTypeInteger,
+			Values: map[string]uint32{
+				"802.1q":  0,
+				"802.1ad": 1,
+			},
+		},
 		{ID: 28, Name: "mikrotik-wireless-minsignal", DataType: DataTypeString},
 		{ID: 29, Name: "mikrotik-wireless-maxsignal", DataType: DataTypeString},
+		{ID: 30, Name: "mikrotik-switching-filter", DataType: DataTypeString},
 	},
 }

@@ -360,6 +360,8 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"resources-unavailable":                  506, // RFC3576
 			"request-initiated":                      507, // RFC3576
 			"multiple-session-selection-unsupported": 508, // RFC3576
+			"location-info-required":                 509, // RFC5580
+			"response-too-big":                       601, // RFC7930
 		},
 	},
 	{ID: 102, Name: "eap-key-name", DataType: DataTypeOctets},                   // RFC4072

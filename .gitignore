@@ -1,3 +1,6 @@
 # Binaries
 /simple-server
 /advanced-server
+
+# Temporary files
+/.tmp/

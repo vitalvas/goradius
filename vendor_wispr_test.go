@@ -34,8 +34,8 @@ func TestWISPrVendorDefinition(t *testing.T) {
 		assert.Equal(t, DataTypeInteger, bandwidthMinUp.DataType)
 	}
 
-	// Verify all 9 attributes exist
-	assert.Len(t, WISPrVendorDefinition.Attributes, 9)
+	// Verify all 17 attributes exist (WISPr 1-11 plus WBA 12-17)
+	assert.Len(t, WISPrVendorDefinition.Attributes, 17)
 }
 
 func TestNoDuplicateWISPrAttributeIDs(t *testing.T) {

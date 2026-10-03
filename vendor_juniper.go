@@ -69,5 +69,19 @@ var JuniperVendorDefinition = &VendorDefinition{
 		{ID: 49, Name: "juniper-voip-vlan", DataType: DataTypeString},
 		{ID: 50, Name: "juniper-cwa-redirect", DataType: DataTypeString},
 		{ID: 52, Name: "juniper-av-pair", DataType: DataTypeString},
+		{ID: 55, Name: "juniper-dhcpv4-options", DataType: DataTypeOctets},
+		{ID: 207, Name: "juniper-dhcpv6-options", DataType: DataTypeOctets},
+		{ID: 208, Name: "juniper-dhcpv4-packet-header", DataType: DataTypeOctets},
+		{ID: 209, Name: "juniper-dhcpv6-packet-header", DataType: DataTypeOctets},
+		{
+			ID:       210,
+			Name:     "juniper-acct-request-reason",
+			DataType: DataTypeInteger,
+			Values: map[string]uint32{
+				"ipv4-active":    0x0004,
+				"ipv6-active":    0x0010,
+				"session-active": 0x0040,
+			},
+		},
 	},
 }
