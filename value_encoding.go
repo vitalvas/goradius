@@ -77,6 +77,79 @@ func DecodeIPv6Addr(data []byte) (net.IP, error) {
 	return net.IP(data), nil
 }
 
+// EncodeIPv6Prefix encodes an IPv6 prefix per RFC 3162 Section 2.3:
+// Reserved(1, zero) + Prefix-Length(1) + Prefix (enough octets to hold the prefix bits).
+func EncodeIPv6Prefix(prefix *net.IPNet) ([]byte, error) {
+	if prefix == nil {
+		return nil, fmt.Errorf("nil IPv6 prefix")
+	}
+
+	ones, bits := prefix.Mask.Size()
+	if bits != 128 {
+		return nil, fmt.Errorf("not an IPv6 prefix: mask is %d bits", bits)
+	}
+
+	ip := prefix.IP.To16()
+	if ip == nil {
+		return nil, fmt.Errorf("not an IPv6 prefix address")
+	}
+
+	octets := (ones + 7) / 8
+	out := make([]byte, 2+octets)
+	out[1] = byte(ones)
+	copy(out[2:], ip[:octets])
+	return out, nil
+}
+
+// DecodeIPv6Prefix decodes an IPv6 prefix per RFC 3162 Section 2.3.
+// The prefix field may carry fewer than 16 octets; missing octets are zero.
+func DecodeIPv6Prefix(data []byte) (*net.IPNet, error) {
+	if len(data) < 2 || len(data) > 18 {
+		return nil, fmt.Errorf("invalid IPv6 prefix length: %d", len(data))
+	}
+
+	prefixLen := int(data[1])
+	if prefixLen > 128 {
+		return nil, fmt.Errorf("invalid IPv6 prefix length value: %d", prefixLen)
+	}
+
+	if len(data)-2 < (prefixLen+7)/8 {
+		return nil, fmt.Errorf("IPv6 prefix field too short for prefix length %d", prefixLen)
+	}
+
+	ip := make(net.IP, net.IPv6len)
+	copy(ip, data[2:])
+
+	// RFC 3162 Section 2.3: bits outside the Prefix-Length must be zero;
+	// normalize so decoded prefixes are canonical
+	mask := net.CIDRMask(prefixLen, 128)
+
+	return &net.IPNet{
+		IP:   ip.Mask(mask),
+		Mask: mask,
+	}, nil
+}
+
+// EncodeIfID encodes an IPv6 interface identifier per RFC 3162 Section 2.2 (8 octets).
+func EncodeIfID(ifid []byte) ([]byte, error) {
+	if len(ifid) != 8 {
+		return nil, fmt.Errorf("invalid interface identifier length: %d", len(ifid))
+	}
+	out := make([]byte, 8)
+	copy(out, ifid)
+	return out, nil
+}
+
+// DecodeIfID decodes an IPv6 interface identifier per RFC 3162 Section 2.2 (8 octets).
+func DecodeIfID(data []byte) ([]byte, error) {
+	if len(data) != 8 {
+		return nil, fmt.Errorf("invalid interface identifier length: %d", len(data))
+	}
+	out := make([]byte, 8)
+	copy(out, data)
+	return out, nil
+}
+
 // EncodeDate encodes a Unix timestamp for RADIUS attributes per RFC 2865 Section 5
 func EncodeDate(t time.Time) []byte {
 	timestamp := uint32(t.Unix())
@@ -154,6 +227,25 @@ func EncodeValue(value any, dataType DataType) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("expected net.IP or string for ipv6addr data type")
 
+	case DataTypeIPv6Prefix:
+		if prefix, ok := value.(*net.IPNet); ok {
+			return EncodeIPv6Prefix(prefix)
+		}
+		if s, ok := value.(string); ok {
+			_, prefix, err := net.ParseCIDR(s)
+			if err != nil {
+				return nil, fmt.Errorf("invalid IPv6 prefix %q: %w", s, err)
+			}
+			return EncodeIPv6Prefix(prefix)
+		}
+		return nil, fmt.Errorf("expected *net.IPNet or string for ipv6prefix data type")
+
+	case DataTypeIfID:
+		if ifid, ok := value.([]byte); ok {
+			return EncodeIfID(ifid)
+		}
+		return nil, fmt.Errorf("expected []byte for ifid data type")
+
 	case DataTypeDate:
 		if t, ok := value.(time.Time); ok {
 			return EncodeDate(t), nil
@@ -185,6 +277,12 @@ func DecodeValue(data []byte, dataType DataType) (any, error) {
 
 	case DataTypeIPv6Addr:
 		return DecodeIPv6Addr(data)
+
+	case DataTypeIPv6Prefix:
+		return DecodeIPv6Prefix(data)
+
+	case DataTypeIfID:
+		return DecodeIfID(data)
 
 	case DataTypeDate:
 		return DecodeDate(data)

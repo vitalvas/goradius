@@ -77,6 +77,28 @@ func BenchmarkPacketEncodeDecode(b *testing.B) {
 	})
 }
 
+func TestDecodeIgnoresTrailingPadding(t *testing.T) {
+	pkt := NewPacket(CodeAccessRequest, 9)
+	pkt.AddAttribute(NewAttribute(1, []byte("user")))
+	data, err := pkt.Encode()
+	require.NoError(t, err)
+
+	t.Run("padding ignored", func(t *testing.T) {
+		// RFC 2865 Section 3: octets outside the range of the Length field MUST
+		// be treated as padding and ignored on reception.
+		padded := append(append([]byte{}, data...), 0, 0, 0)
+		decoded, err := Decode(padded)
+		require.NoError(t, err)
+		assert.Equal(t, pkt.Length, decoded.Length)
+		assert.Len(t, decoded.Attributes, 1)
+	})
+
+	t.Run("shorter than length field discarded", func(t *testing.T) {
+		_, err := Decode(data[:len(data)-1])
+		require.Error(t, err)
+	})
+}
+
 // FuzzDecode ensures the packet parser never panics on arbitrary input and that a
 // successfully decoded and re-encoded packet reproduces the original bytes.
 func FuzzDecode(f *testing.F) {
@@ -105,8 +127,10 @@ func FuzzDecode(f *testing.F) {
 		if err != nil {
 			return // e.g. an invalid code is rejected by IsValid; framing was still parseable
 		}
-		if !bytes.Equal(encoded, data) {
-			t.Fatalf("re-encoded packet differs from input: in=%x out=%x", data, encoded)
+		// Octets beyond the Length field are padding (RFC 2865 Section 3), so
+		// re-encoding reproduces only the first Length bytes of the input.
+		if !bytes.Equal(encoded, data[:pkt.Length]) {
+			t.Fatalf("re-encoded packet differs from input: in=%x out=%x", data[:pkt.Length], encoded)
 		}
 	})
 }

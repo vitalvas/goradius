@@ -46,8 +46,10 @@ func Decode(data []byte) (*Packet, error) {
 	identifier := data[1]
 	length := uint16(data[2])<<8 | uint16(data[3])
 
-	if int(length) != len(data) {
-		return nil, fmt.Errorf("packet length mismatch: header says %d, got %d", length, len(data))
+	// RFC 2865 Section 3: a packet shorter than the Length field is silently
+	// discarded; octets beyond the Length field are padding and ignored
+	if int(length) > len(data) {
+		return nil, fmt.Errorf("packet shorter than length field: header says %d, got %d", length, len(data))
 	}
 
 	if length < MinPacketLength {

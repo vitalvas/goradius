@@ -94,6 +94,21 @@ func (av AttributeValue) String() string {
 		}
 		return ip.String()
 
+	case DataTypeIPv6Prefix:
+		prefix, err := DecodeIPv6Prefix(av.Value)
+		if err != nil {
+			return formatHex(av.Value)
+		}
+		return prefix.String()
+
+	case DataTypeIfID:
+		ifid, err := DecodeIfID(av.Value)
+		if err != nil {
+			return formatHex(av.Value)
+		}
+		return fmt.Sprintf("%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+			ifid[0], ifid[1], ifid[2], ifid[3], ifid[4], ifid[5], ifid[6], ifid[7])
+
 	case DataTypeDate:
 		t, err := DecodeDate(av.Value)
 		if err != nil {
@@ -884,6 +899,11 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 			return fmt.Errorf("failed to encode attribute %q: %w", attrDef.Name, err)
 		}
 
+		// RFC 2865 Section 5.2: passwords are limited to 128 octets
+		if attrDef.Encryption == EncryptionUserPassword && len(attrValue) > MaxUserPasswordLength {
+			return fmt.Errorf("attribute %q password length %d exceeds maximum %d octets", attrDef.Name, len(attrValue), MaxUserPasswordLength)
+		}
+
 		if attrDef.Encryption != "" && secret != nil {
 			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
 		}
@@ -965,6 +985,11 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 		attrValue, err := p.encodeAttributeValue(val, attrDef)
 		if err != nil {
 			return fmt.Errorf("failed to encode vendor attribute %q: %w", attrDef.Name, err)
+		}
+
+		// RFC 2865 Section 5.2: passwords are limited to 128 octets
+		if attrDef.Encryption == EncryptionUserPassword && len(attrValue) > MaxUserPasswordLength {
+			return fmt.Errorf("attribute %q password length %d exceeds maximum %d octets", attrDef.Name, len(attrValue), MaxUserPasswordLength)
 		}
 
 		if attrDef.Encryption != "" && secret != nil {
@@ -1059,11 +1084,12 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 		}
 		for _, attr := range p.Attributes {
 			if attr.Type == uint8(attrDef.ID) {
-				// For tagged attributes (HasTag=true), the first byte is always the tag
-				// per RFC 2868, even when tag value is 0 (which means "untagged")
+				// For tagged attributes (HasTag=true), a first octet of 0x00-0x1F is
+				// the tag; RFC 2868 Section 3 treats a greater first octet as part
+				// of the attribute data, sent without a tag octet
 				tag := uint8(0)
 				value := attr.Value
-				if attrDef.HasTag && len(attr.Value) > 0 {
+				if attrDef.HasTag && len(attr.Value) > 0 && attr.Value[0] <= MaxAttributeTag {
 					tag = attr.Value[0]
 					value = padTaggedInteger(attrDef, attr.Value[1:]) // Strip tag byte
 				}
@@ -1100,11 +1126,12 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 				}
 
 				if va.VendorID == vendorID && va.VendorType == uint8(attrDef.ID) {
-					// For tagged attributes (HasTag=true), the first byte is always the tag
-					// per RFC 2868, even when tag value is 0 (which means "untagged")
+					// For tagged attributes (HasTag=true), a first octet of 0x00-0x1F is
+					// the tag; RFC 2868 Section 3 treats a greater first octet as part
+					// of the attribute data, sent without a tag octet
 					tag := uint8(0)
 					value := va.Value
-					if attrDef.HasTag && len(va.Value) > 0 {
+					if attrDef.HasTag && len(va.Value) > 0 && va.Value[0] <= MaxAttributeTag {
 						tag = va.Value[0]
 						value = padTaggedInteger(attrDef, va.Value[1:]) // Strip tag byte
 					}

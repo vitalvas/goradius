@@ -467,6 +467,11 @@ req.AddAttributeByName("evs-example", map[string]any{
 })
 ```
 
+EVS is supported for the short extended base types
+(241-244). RFC 6929 also permits EVS inside long
+extended attributes (245-246); that combination is not
+implemented and is rejected with an error.
+
 ## Built-in Dictionaries
 
 The library provides pre-defined dictionaries for

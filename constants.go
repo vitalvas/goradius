@@ -18,6 +18,11 @@ const (
 	MaxAttributeValueLength = 253
 	// MaxVSAValueLength is the maximum vendor data length for a VSA (255 - 2 - 4 - 2 for headers)
 	MaxVSAValueLength = 247
+	// MaxUserPasswordLength is the maximum User-Password length per RFC 2865 Section 5.2
+	MaxUserPasswordLength = 128
+	// MaxAttributeTag is the highest valid tag value for tagged attributes per RFC 2868 Section 3;
+	// a first octet above this value is part of the attribute data, not a tag
+	MaxAttributeTag = 0x1F
 )
 
 const (

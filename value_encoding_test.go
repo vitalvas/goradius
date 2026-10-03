@@ -497,6 +497,185 @@ func TestSplitMultilineAttribute(t *testing.T) {
 	})
 }
 
+func TestEncodeDecodeIPv6Prefix(t *testing.T) {
+	t.Run("round trip /32", func(t *testing.T) {
+		_, ipnet, err := net.ParseCIDR("2001:db8::/32")
+		require.NoError(t, err)
+
+		encoded, err := EncodeIPv6Prefix(ipnet)
+		require.NoError(t, err)
+		// RFC 3162 Section 2.3: reserved(0) + prefix-length + 4 prefix octets
+		assert.Equal(t, []byte{0, 32, 0x20, 0x01, 0x0d, 0xb8}, encoded)
+
+		decoded, err := DecodeIPv6Prefix(encoded)
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::/32", decoded.String())
+	})
+
+	t.Run("zero-length prefix", func(t *testing.T) {
+		_, ipnet, err := net.ParseCIDR("::/0")
+		require.NoError(t, err)
+
+		encoded, err := EncodeIPv6Prefix(ipnet)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{0, 0}, encoded)
+
+		decoded, err := DecodeIPv6Prefix(encoded)
+		require.NoError(t, err)
+		assert.Equal(t, "::/0", decoded.String())
+	})
+
+	t.Run("full /128", func(t *testing.T) {
+		_, ipnet, err := net.ParseCIDR("2001:db8::1/128")
+		require.NoError(t, err)
+
+		encoded, err := EncodeIPv6Prefix(ipnet)
+		require.NoError(t, err)
+		require.Len(t, encoded, 18)
+
+		decoded, err := DecodeIPv6Prefix(encoded)
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::1/128", decoded.String())
+	})
+
+	t.Run("nil prefix", func(t *testing.T) {
+		_, err := EncodeIPv6Prefix(nil)
+		require.Error(t, err)
+	})
+
+	t.Run("ipv4 prefix rejected", func(t *testing.T) {
+		_, ipnet, err := net.ParseCIDR("10.0.0.0/8")
+		require.NoError(t, err)
+		_, err = EncodeIPv6Prefix(ipnet)
+		require.Error(t, err)
+	})
+
+	t.Run("decode too short", func(t *testing.T) {
+		_, err := DecodeIPv6Prefix([]byte{0})
+		require.Error(t, err)
+	})
+
+	t.Run("decode prefix length over 128", func(t *testing.T) {
+		_, err := DecodeIPv6Prefix([]byte{0, 129})
+		require.Error(t, err)
+	})
+
+	t.Run("decode prefix field too short for prefix length", func(t *testing.T) {
+		_, err := DecodeIPv6Prefix([]byte{0, 64, 0x20})
+		require.Error(t, err)
+	})
+
+	t.Run("decode too long", func(t *testing.T) {
+		_, err := DecodeIPv6Prefix(make([]byte, 19))
+		require.Error(t, err)
+	})
+}
+
+func TestEncodeDecodeIfID(t *testing.T) {
+	ifid := []byte{0, 0, 0, 0, 0, 0, 0, 1}
+
+	t.Run("round trip", func(t *testing.T) {
+		encoded, err := EncodeIfID(ifid)
+		require.NoError(t, err)
+		assert.Equal(t, ifid, encoded)
+
+		decoded, err := DecodeIfID(encoded)
+		require.NoError(t, err)
+		assert.Equal(t, ifid, decoded)
+	})
+
+	t.Run("wrong length rejected", func(t *testing.T) {
+		_, err := EncodeIfID([]byte{1, 2, 3})
+		require.Error(t, err)
+		_, err = DecodeIfID([]byte{1, 2, 3})
+		require.Error(t, err)
+	})
+}
+
+func TestEncodeDecodeValueRFC3162(t *testing.T) {
+	t.Run("ipv6prefix via EncodeValue string", func(t *testing.T) {
+		encoded, err := EncodeValue("2001:db8::/32", DataTypeIPv6Prefix)
+		require.NoError(t, err)
+
+		decoded, err := DecodeValue(encoded, DataTypeIPv6Prefix)
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::/32", decoded.(*net.IPNet).String())
+	})
+
+	t.Run("ipv6prefix via EncodeValue IPNet", func(t *testing.T) {
+		_, ipnet, err := net.ParseCIDR("fd00::/8")
+		require.NoError(t, err)
+		encoded, err := EncodeValue(ipnet, DataTypeIPv6Prefix)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{0, 8, 0xfd}, encoded)
+	})
+
+	t.Run("ipv6prefix invalid string", func(t *testing.T) {
+		_, err := EncodeValue("not-a-cidr", DataTypeIPv6Prefix)
+		require.Error(t, err)
+	})
+
+	t.Run("ifid via EncodeValue", func(t *testing.T) {
+		ifid := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+		encoded, err := EncodeValue(ifid, DataTypeIfID)
+		require.NoError(t, err)
+
+		decoded, err := DecodeValue(encoded, DataTypeIfID)
+		require.NoError(t, err)
+		assert.Equal(t, ifid, decoded)
+	})
+
+	t.Run("ifid wrong type", func(t *testing.T) {
+		_, err := EncodeValue("string", DataTypeIfID)
+		require.Error(t, err)
+	})
+}
+
+// FuzzDecodeIPv6Prefix ensures the prefix decoder never panics and that decoded
+// prefixes re-encode and decode to the same prefix.
+func FuzzDecodeIPv6Prefix(f *testing.F) {
+	f.Add([]byte{0, 32, 0x20, 0x01, 0x0d, 0xb8})
+	f.Add([]byte{0, 0})
+	f.Add([]byte{0})
+	f.Add([]byte{0, 129})
+	f.Add([]byte{0, 64, 0x20})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		decoded, err := DecodeIPv6Prefix(data)
+		if err != nil {
+			return
+		}
+
+		reencoded, err := EncodeIPv6Prefix(decoded)
+		if err != nil {
+			t.Fatalf("re-encode of decoded prefix failed: %v", err)
+		}
+		redecoded, err := DecodeIPv6Prefix(reencoded)
+		if err != nil {
+			t.Fatalf("re-decode failed: %v", err)
+		}
+		if decoded.String() != redecoded.String() {
+			t.Fatalf("prefix round trip mismatch: %s != %s", decoded, redecoded)
+		}
+	})
+}
+
+func BenchmarkEncodeIPv6Prefix(b *testing.B) {
+	_, ipnet, _ := net.ParseCIDR("2001:db8::/32")
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = EncodeIPv6Prefix(ipnet)
+	}
+}
+
+func BenchmarkDecodeIPv6Prefix(b *testing.B) {
+	data := []byte{0, 32, 0x20, 0x01, 0x0d, 0xb8}
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = DecodeIPv6Prefix(data)
+	}
+}
+
 // FuzzDecodeValue ensures the scalar value decoder never panics for any data type
 // selector and arbitrary payload bytes.
 func FuzzDecodeValue(f *testing.F) {
@@ -505,6 +684,8 @@ func FuzzDecodeValue(f *testing.F) {
 		DataTypeInteger,
 		DataTypeIPAddr,
 		DataTypeIPv6Addr,
+		DataTypeIPv6Prefix,
+		DataTypeIfID,
 		DataTypeDate,
 		DataTypeOctets,
 		DataTypeABinary,

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -1577,6 +1578,87 @@ func TestAddTaggedStandardAttributeByName(t *testing.T) {
 	require.Len(t, vals, 1)
 	assert.Equal(t, uint8(3), vals[0].Tag)
 	assert.Equal(t, "1", vals[0].String())
+}
+
+func TestTaggedStringWithoutTagOctet(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 66, Name: "tunnel-client-endpoint", DataType: DataTypeString, HasTag: true},
+	}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "erx",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "erx-service-activate", DataType: DataTypeString, HasTag: true},
+		},
+	}))
+
+	t.Run("standard", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		// RFC 2868 Section 3.3: a first octet greater than 0x1F is part of the
+		// String field, not a tag.
+		pkt.AddAttribute(NewAttribute(66, []byte("abc")))
+
+		vals := pkt.GetAttribute("tunnel-client-endpoint")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(0), vals[0].Tag)
+		assert.Equal(t, "abc", vals[0].String())
+	})
+
+	t.Run("vendor", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 1, []byte("svc")))
+
+		vals := pkt.GetAttribute("erx-service-activate")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(0), vals[0].Tag)
+		assert.Equal(t, "svc", vals[0].String())
+	})
+}
+
+func TestRFC3162AttributesEndToEnd(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("framed-ipv6-prefix", "2001:db8::/32"))
+	require.NoError(t, pkt.AddAttributeByName("framed-interface-id", []byte{0, 0, 0, 0, 0, 0, 0, 1}))
+
+	raw, err := pkt.Encode()
+	require.NoError(t, err)
+	decoded, err := Decode(raw)
+	require.NoError(t, err)
+	decoded.Dict = dict
+
+	assert.Equal(t, "2001:db8::/32", decoded.GetAttributeString("framed-ipv6-prefix"))
+	assert.Equal(t, "0000:0000:0000:0001", decoded.GetAttributeString("framed-interface-id"))
+}
+
+func TestUserPasswordLengthLimit(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{
+			ID:         2,
+			Name:       "user-password",
+			DataType:   DataTypeString,
+			Encryption: EncryptionUserPassword,
+		},
+	}))
+
+	secret := []byte("testing123")
+
+	t.Run("over limit rejected", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		err := pkt.AddAttributeByNameWithSecret("user-password", strings.Repeat("x", MaxUserPasswordLength+1), secret, [16]byte{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "128")
+	})
+
+	t.Run("at limit accepted", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		err := pkt.AddAttributeByNameWithSecret("user-password", strings.Repeat("x", MaxUserPasswordLength), secret, [16]byte{})
+		require.NoError(t, err)
+	})
 }
 
 func TestEncodeRejectsInconsistentAttributeLength(t *testing.T) {
