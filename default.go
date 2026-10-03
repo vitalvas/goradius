@@ -21,6 +21,8 @@ package goradius
 //   - ZTE vendor attributes
 //   - Huawei vendor attributes
 //   - Alcatel vendor attributes
+//   - Alcatel-Lucent AAA vendor attributes
+//   - Alcatel-ESAM vendor attributes (format=2,1)
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -104,6 +106,14 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(AlcatelVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(ALUAAAVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(AlcatelESAMVendorDefinition); err != nil {
 		return nil, err
 	}
 

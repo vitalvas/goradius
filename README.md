@@ -12,7 +12,8 @@ RFC 5176, RFC 6613, RFC 6614, RFC 6929).
 - Built-in dictionary with RFC and vendor attributes
   (Juniper, ERX, Ascend, Mikrotik, WISPr, Cisco,
   DSL Forum, Microsoft, F5, A10, Arista, Arista WiFi,
-  Ciena, Benu, ZTE, Huawei, Alcatel)
+  Ciena, Benu, ZTE, Huawei, Alcatel, Alcatel-Lucent AAA,
+  Alcatel-ESAM)
 - Vendor-Specific Attributes (VSA) and tagged
   attributes (RFC 2868)
 - IPv6 attributes: ipv6addr, ipv6prefix, and

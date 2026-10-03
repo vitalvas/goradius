@@ -26,176 +26,51 @@ func TestNewDefault(t *testing.T) {
 		assert.Equal(t, "user-password", userPassAttr.Name)
 	}
 
-	// Verify Juniper vendor is loaded (ID 2636)
-	juniperVendor, ok := dict.LookupVendorByID(2636)
-	assert.True(t, ok, "Juniper vendor (ID 2636) should be loaded")
-	if ok {
-		assert.Equal(t, "juniper", juniperVendor.Name)
-		juniperAttr, ok := dict.LookupVendorAttributeByID(2636, 1)
-		assert.True(t, ok, "juniper-local-user-name should be loaded")
-		if ok {
-			assert.Equal(t, "juniper-local-user-name", juniperAttr.Name)
+	// Each vendor: its ID, expected name, and one representative attribute
+	// (name and ID) that must resolve through the unified lookup.
+	vendors := []struct {
+		id       uint32
+		name     string
+		attrName string
+		attrID   uint32
+	}{
+		{2636, "juniper", "juniper-user-permissions", 10},
+		{4874, "erx", "erx-service-activate", 65},
+		{529, "ascend", "ascend-data-filter", 242},
+		{14122, "wispr", "wispr-location-id", 1},
+		{14988, "mikrotik", "mikrotik-rate-limit", 8},
+		{9, "cisco", "cisco-avpair", 1},
+		{3375, "f5", "f5-ltm-user-role", 1},
+		{22610, "a10", "a10-admin-privilege", 2},
+		{30065, "arista", "arista-avpair", 1},
+		{16901, "arista-wifi", "arista-wifi-client-role", 7},
+		{1271, "ciena", "ciena-ces-priv-level", 10},
+		{39406, "benu", "benu-subscriber-id", 43},
+		{3902, "zte", "zte-qos-profile-down", 82},
+		{2011, "huawei", "huawei-avpair", 188},
+		{3041, "alcatel", "aat-client-primary-dns", 5},
+		{831, "alu-aaa", "alu-aaa-service-profile", 9},
+		{637, "alcatel-esam", "alcatel-esam-vrf-name", 0x0700},
+	}
+
+	for _, v := range vendors {
+		vendor, ok := dict.LookupVendorByID(v.id)
+		assert.True(t, ok, "vendor %s (ID %d) should be loaded", v.name, v.id)
+		if !ok {
+			continue
 		}
+		assert.Equal(t, v.name, vendor.Name)
 
-		// Verify lookup by name also works (using unified lookup)
-		juniperAttrByName, ok := dict.LookupByAttributeName("juniper-user-permissions")
-		assert.True(t, ok, "juniper-user-permissions should be found by name")
+		attr, ok := dict.LookupByAttributeName(v.attrName)
+		assert.True(t, ok, "%s should be found by name", v.attrName)
 		if ok {
-			assert.Equal(t, uint32(10), juniperAttrByName.ID)
-		}
-	}
-
-	// Verify ERX vendor is loaded (ID 4874)
-	erxVendor, ok := dict.LookupVendorByID(4874)
-	assert.True(t, ok, "ERX vendor (ID 4874) should be loaded")
-	if ok {
-		assert.Equal(t, "erx", erxVendor.Name)
-	}
-
-	// Verify Ascend vendor is loaded (ID 529)
-	ascendVendor, ok := dict.LookupVendorByID(529)
-	assert.True(t, ok, "Ascend vendor (ID 529) should be loaded")
-	if ok {
-		assert.Equal(t, "ascend", ascendVendor.Name)
-	}
-
-	// Verify WISPr vendor is loaded (ID 14122)
-	wisprVendor, ok := dict.LookupVendorByID(14122)
-	assert.True(t, ok, "WISPr vendor (ID 14122) should be loaded")
-	if ok {
-		assert.Equal(t, "wispr", wisprVendor.Name)
-	}
-
-	// Verify Mikrotik vendor is loaded (ID 14988)
-	mikrotikVendor, ok := dict.LookupVendorByID(14988)
-	assert.True(t, ok, "Mikrotik vendor (ID 14988) should be loaded")
-	if ok {
-		assert.Equal(t, "mikrotik", mikrotikVendor.Name)
-	}
-
-	// Verify Cisco vendor is loaded (ID 9)
-	ciscoVendor, ok := dict.LookupVendorByID(9)
-	assert.True(t, ok, "Cisco vendor (ID 9) should be loaded")
-	if ok {
-		assert.Equal(t, "cisco", ciscoVendor.Name)
-		ciscoAttr, ok := dict.LookupByAttributeName("cisco-avpair")
-		assert.True(t, ok, "cisco-avpair should be found by name")
-		if ok {
-			assert.Equal(t, uint32(1), ciscoAttr.ID)
-		}
-	}
-
-	// Verify F5 vendor is loaded (ID 3375)
-	f5Vendor, ok := dict.LookupVendorByID(3375)
-	assert.True(t, ok, "F5 vendor (ID 3375) should be loaded")
-	if ok {
-		assert.Equal(t, "f5", f5Vendor.Name)
-		f5Attr, ok := dict.LookupByAttributeName("f5-ltm-user-role")
-		assert.True(t, ok, "f5-ltm-user-role should be found by name")
-		if ok {
-			assert.Equal(t, uint32(1), f5Attr.ID)
-		}
-	}
-
-	// Verify A10 vendor is loaded (ID 22610)
-	a10Vendor, ok := dict.LookupVendorByID(22610)
-	assert.True(t, ok, "A10 vendor (ID 22610) should be loaded")
-	if ok {
-		assert.Equal(t, "a10", a10Vendor.Name)
-		a10Attr, ok := dict.LookupByAttributeName("a10-admin-privilege")
-		assert.True(t, ok, "a10-admin-privilege should be found by name")
-		if ok {
-			assert.Equal(t, uint32(2), a10Attr.ID)
-		}
-	}
-
-	// Verify Arista vendor is loaded (ID 30065)
-	aristaVendor, ok := dict.LookupVendorByID(30065)
-	assert.True(t, ok, "Arista vendor (ID 30065) should be loaded")
-	if ok {
-		assert.Equal(t, "arista", aristaVendor.Name)
-		aristaAttr, ok := dict.LookupByAttributeName("arista-avpair")
-		assert.True(t, ok, "arista-avpair should be found by name")
-		if ok {
-			assert.Equal(t, uint32(1), aristaAttr.ID)
-		}
-	}
-
-	// Verify Arista WiFi vendor is loaded (ID 16901)
-	aristaWiFiVendor, ok := dict.LookupVendorByID(16901)
-	assert.True(t, ok, "Arista WiFi vendor (ID 16901) should be loaded")
-	if ok {
-		assert.Equal(t, "arista-wifi", aristaWiFiVendor.Name)
-		wifiAttr, ok := dict.LookupByAttributeName("arista-wifi-client-role")
-		assert.True(t, ok, "arista-wifi-client-role should be found by name")
-		if ok {
-			assert.Equal(t, uint32(7), wifiAttr.ID)
-		}
-	}
-
-	// Verify Ciena vendor is loaded (ID 1271)
-	cienaVendor, ok := dict.LookupVendorByID(1271)
-	assert.True(t, ok, "Ciena vendor (ID 1271) should be loaded")
-	if ok {
-		assert.Equal(t, "ciena", cienaVendor.Name)
-		cienaAttr, ok := dict.LookupByAttributeName("ciena-ces-priv-level")
-		assert.True(t, ok, "ciena-ces-priv-level should be found by name")
-		if ok {
-			assert.Equal(t, uint32(10), cienaAttr.ID)
-		}
-	}
-
-	// Verify Benu vendor is loaded (ID 39406)
-	benuVendor, ok := dict.LookupVendorByID(39406)
-	assert.True(t, ok, "Benu vendor (ID 39406) should be loaded")
-	if ok {
-		assert.Equal(t, "benu", benuVendor.Name)
-		benuAttr, ok := dict.LookupByAttributeName("benu-subscriber-id")
-		assert.True(t, ok, "benu-subscriber-id should be found by name")
-		if ok {
-			assert.Equal(t, uint32(43), benuAttr.ID)
-		}
-	}
-
-	// Verify ZTE vendor is loaded (ID 3902)
-	zteVendor, ok := dict.LookupVendorByID(3902)
-	assert.True(t, ok, "ZTE vendor (ID 3902) should be loaded")
-	if ok {
-		assert.Equal(t, "zte", zteVendor.Name)
-		zteAttr, ok := dict.LookupByAttributeName("zte-qos-profile-down")
-		assert.True(t, ok, "zte-qos-profile-down should be found by name")
-		if ok {
-			assert.Equal(t, uint32(82), zteAttr.ID)
-		}
-	}
-
-	// Verify Huawei vendor is loaded (ID 2011)
-	huaweiVendor, ok := dict.LookupVendorByID(2011)
-	assert.True(t, ok, "Huawei vendor (ID 2011) should be loaded")
-	if ok {
-		assert.Equal(t, "huawei", huaweiVendor.Name)
-		huaweiAttr, ok := dict.LookupByAttributeName("huawei-avpair")
-		assert.True(t, ok, "huawei-avpair should be found by name")
-		if ok {
-			assert.Equal(t, uint32(188), huaweiAttr.ID)
-		}
-	}
-
-	// Verify Alcatel vendor is loaded (ID 3041)
-	alcatelVendor, ok := dict.LookupVendorByID(3041)
-	assert.True(t, ok, "Alcatel vendor (ID 3041) should be loaded")
-	if ok {
-		assert.Equal(t, "alcatel", alcatelVendor.Name)
-		alcatelAttr, ok := dict.LookupByAttributeName("aat-client-primary-dns")
-		assert.True(t, ok, "aat-client-primary-dns should be found by name")
-		if ok {
-			assert.Equal(t, uint32(5), alcatelAttr.ID)
+			assert.Equal(t, v.attrID, attr.ID, v.attrName)
 		}
 	}
 
 	// Verify GetAllVendors works
 	allVendors := dict.GetAllVendors()
-	assert.GreaterOrEqual(t, len(allVendors), 17, "Should have at least 17 vendors loaded")
+	assert.GreaterOrEqual(t, len(allVendors), len(vendors), "all configured vendors should be loaded")
 }
 
 func TestNewDefaultMultilineAttributes(t *testing.T) {
