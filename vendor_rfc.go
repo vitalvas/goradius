@@ -2,15 +2,42 @@ package goradius
 
 // StandardRFCAttributes contains all RFC standard attributes
 var StandardRFCAttributes = []*AttributeDefinition{
-	{ID: 1, Name: "user-name", DataType: DataTypeString},                                         // RFC2865
-	{ID: 2, Name: "user-password", DataType: DataTypeString, Encryption: EncryptionUserPassword}, // RFC2865
-	{ID: 3, Name: "chap-password", DataType: DataTypeOctets},                                     // RFC2865
-	{ID: 4, Name: "nas-ip-address", DataType: DataTypeIPAddr},                                    // RFC2865
-	{ID: 5, Name: "nas-port", DataType: DataTypeInteger},                                         // RFC2865
+	{ // RFC2865
+		ID:       1,
+		Name:     "user-name",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:         2,
+		Name:       "user-password",
+		DataType:   DataTypeString,
+		Encryption: EncryptionUserPassword,
+		Usage:      UsageAccessRequest,
+	},
+	{ // RFC2865
+		ID:       3,
+		Name:     "chap-password",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest,
+	},
+	{ // RFC2865
+		ID:       4,
+		Name:     "nas-ip-address",
+		DataType: DataTypeIPAddr,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       5,
+		Name:     "nas-port",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
 	{ // RFC2865
 		ID:       6,
 		Name:     "service-type",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest | UsageCoANAK,
 		Values: map[string]uint32{
 			"login-user":              1,  // RFC2865
 			"framed-user":             2,  // RFC2865
@@ -31,6 +58,7 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		ID:       7,
 		Name:     "framed-protocol",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"ppp":               1, // RFC2865
 			"slip":              2, // RFC2865
@@ -40,12 +68,23 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"x.75-synchronous":  6, // RFC2865
 		},
 	},
-	{ID: 8, Name: "framed-ip-address", DataType: DataTypeIPAddr}, // RFC2865
-	{ID: 9, Name: "framed-ip-netmask", DataType: DataTypeIPAddr}, // RFC2865
+	{ // RFC2865
+		ID:       8,
+		Name:     "framed-ip-address",
+		DataType: DataTypeIPAddr,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       9,
+		Name:     "framed-ip-netmask",
+		DataType: DataTypeIPAddr,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC2865
 		ID:       10,
 		Name:     "framed-routing",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"none":             0, // RFC2865
 			"broadcast":        1, // RFC2865
@@ -53,12 +92,23 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"broadcast-listen": 3, // RFC2865
 		},
 	},
-	{ID: 11, Name: "filter-id", DataType: DataTypeString},   // RFC2865
-	{ID: 12, Name: "framed-mtu", DataType: DataTypeInteger}, // RFC2865
+	{ // RFC2865
+		ID:       11,
+		Name:     "filter-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       12,
+		Name:     "framed-mtu",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC2865
 		ID:       13,
 		Name:     "framed-compression",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"none":                   0, // RFC2865
 			"van-jacobson-tcp-ip":    1, // RFC2865
@@ -66,11 +116,17 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"stac-lzs":               3, // RFC2865
 		},
 	},
-	{ID: 14, Name: "login-ip-host", DataType: DataTypeIPAddr}, // RFC2865
+	{ // RFC2865
+		ID:       14,
+		Name:     "login-ip-host",
+		DataType: DataTypeIPAddr,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC2865
 		ID:       15,
 		Name:     "login-service",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"telnet":          0, // RFC2865
 			"rlogin":          1, // RFC2865
@@ -86,45 +142,148 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		ID:       16,
 		Name:     "login-tcp-port",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"telnet": 23,  // RFC2865
 			"rlogin": 513, // RFC2865
 			"rsh":    514, // RFC2865
 		},
 	},
-	{ID: 18, Name: "reply-message", DataType: DataTypeString},      // RFC2865
-	{ID: 19, Name: "callback-number", DataType: DataTypeString},    // RFC2865
-	{ID: 20, Name: "callback-id", DataType: DataTypeString},        // RFC2865
-	{ID: 22, Name: "framed-route", DataType: DataTypeString},       // RFC2865
-	{ID: 23, Name: "framed-ipx-network", DataType: DataTypeIPAddr}, // RFC2865
-	{ID: 24, Name: "state", DataType: DataTypeOctets},              // RFC2865
-	{ID: 25, Name: "class", DataType: DataTypeOctets},              // RFC2865
-	{ID: 26, Name: "vendor-specific", DataType: DataTypeOctets},    // RFC2865
-	{ID: 27, Name: "session-timeout", DataType: DataTypeInteger},   // RFC2865
-	{ID: 28, Name: "idle-timeout", DataType: DataTypeInteger},      // RFC2865
+	{ // RFC2865
+		ID:       18,
+		Name:     "reply-message",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccessReject | UsageAccessChallenge | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       19,
+		Name:     "callback-number",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       20,
+		Name:     "callback-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       22,
+		Name:     "framed-route",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       23,
+		Name:     "framed-ipx-network",
+		DataType: DataTypeIPAddr,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       24,
+		Name:     "state",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccessChallenge | UsageCoARequest | UsageCoAACK | UsageCoANAK,
+	},
+	{ // RFC2865
+		ID:       25,
+		Name:     "class",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       26,
+		Name:     "vendor-specific",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccessChallenge | UsageAccountingRequest | UsageAccountingResponse | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       27,
+		Name:     "session-timeout",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccessChallenge | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       28,
+		Name:     "idle-timeout",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccessChallenge | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC2865
 		ID:       29,
 		Name:     "termination-action",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"default":        0, // RFC2865
 			"radius-request": 1, // RFC2865
 		},
 	},
-	{ID: 30, Name: "called-station-id", DataType: DataTypeString},         // RFC2865
-	{ID: 31, Name: "calling-station-id", DataType: DataTypeString},        // RFC2865
-	{ID: 32, Name: "nas-identifier", DataType: DataTypeString},            // RFC2865
-	{ID: 33, Name: "proxy-state", DataType: DataTypeOctets},               // RFC2865
-	{ID: 34, Name: "login-lat-service", DataType: DataTypeString},         // RFC2865
-	{ID: 35, Name: "login-lat-node", DataType: DataTypeString},            // RFC2865
-	{ID: 36, Name: "login-lat-group", DataType: DataTypeOctets},           // RFC2865
-	{ID: 37, Name: "framed-appletalk-link", DataType: DataTypeInteger},    // RFC2865
-	{ID: 38, Name: "framed-appletalk-network", DataType: DataTypeInteger}, // RFC2865
-	{ID: 39, Name: "framed-appletalk-zone", DataType: DataTypeString},     // RFC2865
+	{ // RFC2865
+		ID:       30,
+		Name:     "called-station-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       31,
+		Name:     "calling-station-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       32,
+		Name:     "nas-identifier",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2865
+		ID:       33,
+		Name:     "proxy-state",
+		DataType: DataTypeOctets,
+		Usage:    UsageAll,
+	},
+	{ // RFC2865
+		ID:       34,
+		Name:     "login-lat-service",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       35,
+		Name:     "login-lat-node",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       36,
+		Name:     "login-lat-group",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       37,
+		Name:     "framed-appletalk-link",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       38,
+		Name:     "framed-appletalk-network",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       39,
+		Name:     "framed-appletalk-zone",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC2866
 		ID:       40,
 		Name:     "acct-status-type",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
 		Values: map[string]uint32{
 			"start":              1,  // RFC2866
 			"stop":               2,  // RFC2866
@@ -141,14 +300,35 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"failed":             15, // RFC2866
 		},
 	},
-	{ID: 41, Name: "acct-delay-time", DataType: DataTypeInteger},    // RFC2866
-	{ID: 42, Name: "acct-input-octets", DataType: DataTypeInteger},  // RFC2866
-	{ID: 43, Name: "acct-output-octets", DataType: DataTypeInteger}, // RFC2866
-	{ID: 44, Name: "acct-session-id", DataType: DataTypeString},     // RFC2866
+	{ // RFC2866
+		ID:       41,
+		Name:     "acct-delay-time",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2866
+		ID:       42,
+		Name:     "acct-input-octets",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2866
+		ID:       43,
+		Name:     "acct-output-octets",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2866
+		ID:       44,
+		Name:     "acct-session-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
 	{ // RFC2866
 		ID:       45,
 		Name:     "acct-authentic",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
 		Values: map[string]uint32{
 			"radius":   1, // RFC2866
 			"local":    2, // RFC2866
@@ -156,13 +336,29 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"diameter": 4, // RFC2866
 		},
 	},
-	{ID: 46, Name: "acct-session-time", DataType: DataTypeInteger},   // RFC2866
-	{ID: 47, Name: "acct-input-packets", DataType: DataTypeInteger},  // RFC2866
-	{ID: 48, Name: "acct-output-packets", DataType: DataTypeInteger}, // RFC2866
+	{ // RFC2866
+		ID:       46,
+		Name:     "acct-session-time",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2866
+		ID:       47,
+		Name:     "acct-input-packets",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2866
+		ID:       48,
+		Name:     "acct-output-packets",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
 	{ // RFC2866
 		ID:       49,
 		Name:     "acct-terminate-cause",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest | UsageDisconnectRequest | UsageDisconnectACK,
 		Values: map[string]uint32{
 			"user-request":             1,  // RFC2866
 			"lost-carrier":             2,  // RFC2866
@@ -188,28 +384,75 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"port-disabled":            22, // RFC2866
 		},
 	},
-	{ID: 50, Name: "acct-multi-session-id", DataType: DataTypeString},  // RFC2866
-	{ID: 51, Name: "acct-link-count", DataType: DataTypeInteger},       // RFC2866
-	{ID: 52, Name: "acct-input-gigawords", DataType: DataTypeInteger},  // RFC2869
-	{ID: 53, Name: "acct-output-gigawords", DataType: DataTypeInteger}, // RFC2869
-	{ID: 55, Name: "event-timestamp", DataType: DataTypeDate},          // RFC2869
-	{ID: 56, Name: "egress-vlanid", DataType: DataTypeInteger},         // RFC4675
+	{ // RFC2866
+		ID:       50,
+		Name:     "acct-multi-session-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2866
+		ID:       51,
+		Name:     "acct-link-count",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2869
+		ID:       52,
+		Name:     "acct-input-gigawords",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2869
+		ID:       53,
+		Name:     "acct-output-gigawords",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2869
+		ID:       55,
+		Name:     "event-timestamp",
+		DataType: DataTypeDate,
+		Usage:    UsageAccountingRequest | UsageCoARequest | UsageCoAACK | UsageCoANAK | UsageDisconnectRequest | UsageDisconnectACK | UsageDisconnectNAK,
+	},
+	{ // RFC4675
+		ID:       56,
+		Name:     "egress-vlanid",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC4675
 		ID:       57,
 		Name:     "ingress-filters",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"enabled":  1, // RFC4675
 			"disabled": 2, // RFC4675
 		},
 	},
-	{ID: 58, Name: "egress-vlan-name", DataType: DataTypeString},    // RFC4675
-	{ID: 59, Name: "user-priority-table", DataType: DataTypeOctets}, // RFC4675
-	{ID: 60, Name: "chap-challenge", DataType: DataTypeOctets},      // RFC2865
+	{ // RFC4675
+		ID:       58,
+		Name:     "egress-vlan-name",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC4675
+		ID:       59,
+		Name:     "user-priority-table",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       60,
+		Name:     "chap-challenge",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest,
+	},
 	{ // RFC2865
 		ID:       61,
 		Name:     "nas-port-type",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest,
 		Values: map[string]uint32{
 			"async":              0,  // RFC2865
 			"sync":               1,  // RFC2865
@@ -240,12 +483,23 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"pppoeoqinq":         34, // RFC2865
 		},
 	},
-	{ID: 62, Name: "port-limit", DataType: DataTypeInteger},    // RFC2865
-	{ID: 63, Name: "login-lat-port", DataType: DataTypeString}, // RFC2865
+	{ // RFC2865
+		ID:       62,
+		Name:     "port-limit",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2865
+		ID:       63,
+		Name:     "login-lat-port",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageCoARequest,
+	},
 	{ // RFC2868
 		ID:       64,
 		Name:     "tunnel-type",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		HasTag:   true,
 		Values: map[string]uint32{
 			"pptp":     1,  // RFC2868
@@ -267,6 +521,7 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		ID:       65,
 		Name:     "tunnel-medium-type",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 		HasTag:   true,
 		Values: map[string]uint32{
 			"ip":           1,  // RFC2868
@@ -287,61 +542,233 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"e.164-nsap":   15, // RFC2868
 		},
 	},
-	{ID: 66, Name: "tunnel-client-endpoint", DataType: DataTypeString, HasTag: true},                                // RFC2868
-	{ID: 67, Name: "tunnel-server-endpoint", DataType: DataTypeString, HasTag: true},                                // RFC2868
-	{ID: 68, Name: "acct-tunnel-connection", DataType: DataTypeString},                                              // RFC2867
-	{ID: 69, Name: "tunnel-password", DataType: DataTypeString, HasTag: true, Encryption: EncryptionTunnelPassword}, // RFC2868
-	{ID: 70, Name: "arap-password", DataType: DataTypeOctets},                                                       // RFC2869
-	{ID: 71, Name: "arap-features", DataType: DataTypeOctets},                                                       // RFC2869
+	{ // RFC2868
+		ID:       66,
+		Name:     "tunnel-client-endpoint",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2868
+		ID:       67,
+		Name:     "tunnel-server-endpoint",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2867
+		ID:       68,
+		Name:     "acct-tunnel-connection",
+		DataType: DataTypeString,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2868
+		ID:         69,
+		Name:       "tunnel-password",
+		DataType:   DataTypeString,
+		HasTag:     true,
+		Encryption: EncryptionTunnelPassword,
+		Usage:      UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2869
+		ID:       70,
+		Name:     "arap-password",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest,
+	},
+	{ // RFC2869
+		ID:       71,
+		Name:     "arap-features",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessAccept | UsageAccessChallenge | UsageCoARequest,
+	},
 	{ // RFC2869
 		ID:       72,
 		Name:     "arap-zone-access",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageCoARequest,
 		Values: map[string]uint32{
 			"default-zone":          1, // RFC2869
 			"zone-filter-inclusive": 2, // RFC2869
 			"zone-filter-exclusive": 4, // RFC2869
 		},
 	},
-	{ID: 73, Name: "arap-security", DataType: DataTypeInteger},     // RFC2869
-	{ID: 74, Name: "arap-security-data", DataType: DataTypeString}, // RFC2869
-	{ID: 75, Name: "password-retry", DataType: DataTypeInteger},    // RFC2869
+	{ // RFC2869
+		ID:       73,
+		Name:     "arap-security",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessRequest | UsageAccessChallenge,
+	},
+	{ // RFC2869
+		ID:       74,
+		Name:     "arap-security-data",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccessChallenge,
+	},
+	{ // RFC2869
+		ID:       75,
+		Name:     "password-retry",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessReject,
+	},
 	{ // RFC2869
 		ID:       76,
 		Name:     "prompt",
 		DataType: DataTypeInteger,
+		Usage:    UsageAccessChallenge,
 		Values: map[string]uint32{
 			"no-echo": 0, // RFC2869
 			"echo":    1, // RFC2869
 		},
 	},
-	{ID: 77, Name: "connect-info", DataType: DataTypeString},                          // RFC2869
-	{ID: 78, Name: "configuration-token", DataType: DataTypeString},                   // RFC2869
-	{ID: 79, Name: "eap-message", DataType: DataTypeOctets},                           // RFC2869
-	{ID: 80, Name: "message-authenticator", DataType: DataTypeOctets},                 // RFC2869
-	{ID: 81, Name: "tunnel-private-group-id", DataType: DataTypeString, HasTag: true}, // RFC2868
-	{ID: 82, Name: "tunnel-assignment-id", DataType: DataTypeString, HasTag: true},    // RFC2868
-	{ID: 83, Name: "tunnel-preference", DataType: DataTypeInteger, HasTag: true},      // RFC2868
-	{ID: 84, Name: "arap-challenge-response", DataType: DataTypeOctets},               // RFC2869
-	{ID: 85, Name: "acct-interim-interval", DataType: DataTypeInteger},                // RFC2869
-	{ID: 86, Name: "acct-tunnel-packets-lost", DataType: DataTypeInteger},             // RFC2867
-	{ID: 87, Name: "nas-port-id", DataType: DataTypeString},                           // RFC2869
-	{ID: 88, Name: "framed-pool", DataType: DataTypeString},                           // RFC2869
-	{ID: 89, Name: "chargeable-user-identity", DataType: DataTypeOctets},              // RFC4372
-	{ID: 90, Name: "tunnel-client-auth-id", DataType: DataTypeString, HasTag: true},   // RFC2868
-	{ID: 91, Name: "tunnel-server-auth-id", DataType: DataTypeString, HasTag: true},   // RFC2868
-	{ID: 92, Name: "nas-filter-rule", DataType: DataTypeString},                       // RFC4849
-	{ID: 94, Name: "originating-line-info", DataType: DataTypeOctets},                 // RFC7155
-	{ID: 95, Name: "nas-ipv6-address", DataType: DataTypeIPv6Addr},                    // RFC3162
-	{ID: 96, Name: "framed-interface-id", DataType: DataTypeIfID},                     // RFC3162
-	{ID: 97, Name: "framed-ipv6-prefix", DataType: DataTypeIPv6Prefix},                // RFC3162
-	{ID: 98, Name: "login-ipv6-host", DataType: DataTypeIPv6Addr},                     // RFC3162
-	{ID: 99, Name: "framed-ipv6-route", DataType: DataTypeString},                     // RFC3162
-	{ID: 100, Name: "framed-ipv6-pool", DataType: DataTypeString},                     // RFC3162
+	{ // RFC2869
+		ID:       77,
+		Name:     "connect-info",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccountingRequest,
+	},
+	{ // RFC2869
+		ID:       78,
+		Name:     "configuration-token",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2869
+		ID:       79,
+		Name:     "eap-message",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccessReject | UsageAccessChallenge | UsageCoARequest | UsageCoAACK | UsageDisconnectRequest | UsageDisconnectACK,
+	},
+	{ // RFC2869
+		ID:       80,
+		Name:     "message-authenticator",
+		DataType: DataTypeOctets,
+		Usage:    UsageAll,
+	},
+	{ // RFC2868
+		ID:       81,
+		Name:     "tunnel-private-group-id",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2868
+		ID:       82,
+		Name:     "tunnel-assignment-id",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2868
+		ID:       83,
+		Name:     "tunnel-preference",
+		DataType: DataTypeInteger,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2869
+		ID:       84,
+		Name:     "arap-challenge-response",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessAccept | UsageAccessChallenge,
+	},
+	{ // RFC2869
+		ID:       85,
+		Name:     "acct-interim-interval",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC2867
+		ID:       86,
+		Name:     "acct-tunnel-packets-lost",
+		DataType: DataTypeInteger,
+		Usage:    UsageAccountingRequest,
+	},
+	{ // RFC2869
+		ID:       87,
+		Name:     "nas-port-id",
+		DataType: DataTypeString,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2869
+		ID:       88,
+		Name:     "framed-pool",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageCoARequest,
+	},
+	{ // RFC4372
+		ID:       89,
+		Name:     "chargeable-user-identity",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC2868
+		ID:       90,
+		Name:     "tunnel-client-auth-id",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC2868
+		ID:       91,
+		Name:     "tunnel-server-auth-id",
+		DataType: DataTypeString,
+		HasTag:   true,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC4849
+		ID:       92,
+		Name:     "nas-filter-rule",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC7155
+		ID:       94,
+		Name:     "originating-line-info",
+		DataType: DataTypeOctets,
+		Usage:    UsageAccessRequest,
+	},
+	{ // RFC3162
+		ID:       95,
+		Name:     "nas-ipv6-address",
+		DataType: DataTypeIPv6Addr,
+		Usage:    UsageAccessRequest | UsageAccountingRequest | UsageCoARequest | UsageDisconnectRequest,
+	},
+	{ // RFC3162
+		ID:       96,
+		Name:     "framed-interface-id",
+		DataType: DataTypeIfID,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC3162
+		ID:       97,
+		Name:     "framed-ipv6-prefix",
+		DataType: DataTypeIPv6Prefix,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC3162
+		ID:       98,
+		Name:     "login-ipv6-host",
+		DataType: DataTypeIPv6Addr,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC3162
+		ID:       99,
+		Name:     "framed-ipv6-route",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
+	{ // RFC3162
+		ID:       100,
+		Name:     "framed-ipv6-pool",
+		DataType: DataTypeString,
+		Usage:    UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ // RFC3576
 		ID:       101,
 		Name:     "error-cause",
 		DataType: DataTypeInteger,
+		Usage:    UsageCoANAK | UsageDisconnectNAK,
 		Values: map[string]uint32{
 			"residual-context-removed":               201, // RFC3576
 			"invalid-eap-packet":                     202, // RFC3576
@@ -364,28 +791,33 @@ var StandardRFCAttributes = []*AttributeDefinition{
 			"response-too-big":                       601, // RFC7930
 		},
 	},
-	{ID: 102, Name: "eap-key-name", DataType: DataTypeOctets},                   // RFC4072
-	{ID: 103, Name: "digest-response", DataType: DataTypeString},                // RFC5090
-	{ID: 104, Name: "digest-realm", DataType: DataTypeString},                   // RFC5090
-	{ID: 105, Name: "digest-nonce", DataType: DataTypeString},                   // RFC5090
-	{ID: 106, Name: "digest-response-auth", DataType: DataTypeString},           // RFC5090
-	{ID: 107, Name: "digest-nextnonce", DataType: DataTypeString},               // RFC5090
-	{ID: 108, Name: "digest-method", DataType: DataTypeString},                  // RFC5090
-	{ID: 109, Name: "digest-uri", DataType: DataTypeString},                     // RFC5090
-	{ID: 110, Name: "digest-qop", DataType: DataTypeString},                     // RFC5090
-	{ID: 111, Name: "digest-algorithm", DataType: DataTypeString},               // RFC5090
-	{ID: 112, Name: "digest-entity-body-hash", DataType: DataTypeString},        // RFC5090
-	{ID: 113, Name: "digest-cnonce", DataType: DataTypeString},                  // RFC5090
-	{ID: 114, Name: "digest-nonce-count", DataType: DataTypeString},             // RFC5090
-	{ID: 115, Name: "digest-username", DataType: DataTypeString},                // RFC5090
-	{ID: 116, Name: "digest-opaque", DataType: DataTypeString},                  // RFC5090
-	{ID: 117, Name: "digest-auth-param", DataType: DataTypeString},              // RFC5090
-	{ID: 118, Name: "digest-aka-auts", DataType: DataTypeString},                // RFC5090
-	{ID: 119, Name: "digest-domain", DataType: DataTypeString},                  // RFC5090
-	{ID: 120, Name: "digest-stale", DataType: DataTypeString},                   // RFC5090
-	{ID: 121, Name: "digest-ha1", DataType: DataTypeString},                     // RFC5090
-	{ID: 122, Name: "sip-aor", DataType: DataTypeString},                        // RFC5090
-	{ID: 123, Name: "delegated-ipv6-prefix", DataType: DataTypeIPv6Prefix},      // RFC4818
+	{ID: 102, Name: "eap-key-name", DataType: DataTypeOctets},            // RFC4072
+	{ID: 103, Name: "digest-response", DataType: DataTypeString},         // RFC5090
+	{ID: 104, Name: "digest-realm", DataType: DataTypeString},            // RFC5090
+	{ID: 105, Name: "digest-nonce", DataType: DataTypeString},            // RFC5090
+	{ID: 106, Name: "digest-response-auth", DataType: DataTypeString},    // RFC5090
+	{ID: 107, Name: "digest-nextnonce", DataType: DataTypeString},        // RFC5090
+	{ID: 108, Name: "digest-method", DataType: DataTypeString},           // RFC5090
+	{ID: 109, Name: "digest-uri", DataType: DataTypeString},              // RFC5090
+	{ID: 110, Name: "digest-qop", DataType: DataTypeString},              // RFC5090
+	{ID: 111, Name: "digest-algorithm", DataType: DataTypeString},        // RFC5090
+	{ID: 112, Name: "digest-entity-body-hash", DataType: DataTypeString}, // RFC5090
+	{ID: 113, Name: "digest-cnonce", DataType: DataTypeString},           // RFC5090
+	{ID: 114, Name: "digest-nonce-count", DataType: DataTypeString},      // RFC5090
+	{ID: 115, Name: "digest-username", DataType: DataTypeString},         // RFC5090
+	{ID: 116, Name: "digest-opaque", DataType: DataTypeString},           // RFC5090
+	{ID: 117, Name: "digest-auth-param", DataType: DataTypeString},       // RFC5090
+	{ID: 118, Name: "digest-aka-auts", DataType: DataTypeString},         // RFC5090
+	{ID: 119, Name: "digest-domain", DataType: DataTypeString},           // RFC5090
+	{ID: 120, Name: "digest-stale", DataType: DataTypeString},            // RFC5090
+	{ID: 121, Name: "digest-ha1", DataType: DataTypeString},              // RFC5090
+	{ID: 122, Name: "sip-aor", DataType: DataTypeString},                 // RFC5090
+	{ // RFC4818
+		ID:       123,
+		Name:     "delegated-ipv6-prefix",
+		DataType: DataTypeIPv6Prefix,
+		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
+	},
 	{ID: 124, Name: "mip6-feature-vector", DataType: DataTypeOctets},            // RFC5447
 	{ID: 125, Name: "mip6-home-link-prefix", DataType: DataTypeOctets},          // RFC5447
 	{ID: 126, Name: "operator-name", DataType: DataTypeString},                  // RFC5580

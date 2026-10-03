@@ -1,6 +1,10 @@
 package goradius
 
-// AscendVendorDefinition contains the Ascend vendor definition with all its attributes
+// AscendVendorDefinition contains the Ascend vendor definition with all its attributes.
+// Usage masks are set only where the Lucent TAOS RADIUS Guide (7820-0729-007) or the
+// Ascend MAX 6000 RADIUS reference documents a packet direction; the remaining
+// attributes have no surviving per-attribute placement documentation and stay
+// unrestricted.
 var AscendVendorDefinition = &VendorDefinition{
 	ID:   529,
 	Name: "ascend",
@@ -815,7 +819,7 @@ var AscendVendorDefinition = &VendorDefinition{
 		{ID: 191, Name: "ascend-pre-output-octets", DataType: DataTypeInteger},
 		{ID: 192, Name: "ascend-pre-input-packets", DataType: DataTypeInteger},
 		{ID: 193, Name: "ascend-pre-output-packets", DataType: DataTypeInteger},
-		{ID: 194, Name: "ascend-maximum-time", DataType: DataTypeInteger},
+		{ID: 194, Name: "ascend-maximum-time", DataType: DataTypeInteger, Usage: UsageAccessAccept},
 		{
 			ID:       195,
 			Name:     "ascend-disconnect-cause",
@@ -930,7 +934,7 @@ var AscendVendorDefinition = &VendorDefinition{
 				"v110-state-closed":         94,
 			},
 		},
-		{ID: 197, Name: "ascend-data-rate", DataType: DataTypeInteger},
+		{ID: 197, Name: "ascend-data-rate", DataType: DataTypeInteger, Usage: UsageAccessRequest | UsageAccountingRequest},
 		{ID: 198, Name: "ascend-presession-time", DataType: DataTypeInteger},
 		{ID: 199, Name: "ascend-token-idle", DataType: DataTypeInteger},
 		{
@@ -991,8 +995,20 @@ var AscendVendorDefinition = &VendorDefinition{
 		},
 		{ID: 212, Name: "ascend-ppp-async-map", DataType: DataTypeInteger},
 		{ID: 213, Name: "ascend-third-prompt", DataType: DataTypeString},
-		{ID: 214, Name: "ascend-send-secret", DataType: DataTypeString, Encryption: EncryptionAscendSecret},
-		{ID: 215, Name: "ascend-receive-secret", DataType: DataTypeString, Encryption: EncryptionAscendSecret},
+		{
+			ID:         214,
+			Name:       "ascend-send-secret",
+			DataType:   DataTypeString,
+			Usage:      UsageAccessRequest | UsageAccessAccept,
+			Encryption: EncryptionAscendSecret,
+		},
+		{
+			ID:         215,
+			Name:       "ascend-receive-secret",
+			DataType:   DataTypeString,
+			Usage:      UsageAccessAccept,
+			Encryption: EncryptionAscendSecret,
+		},
 		{
 			ID:       216,
 			Name:     "ascend-ipx-peer-mode",
@@ -1109,9 +1125,9 @@ var AscendVendorDefinition = &VendorDefinition{
 		},
 		{ID: 240, Name: "ascend-add-seconds", DataType: DataTypeInteger},
 		{ID: 241, Name: "ascend-remove-seconds", DataType: DataTypeInteger},
-		{ID: 242, Name: "ascend-data-filter", DataType: DataTypeABinary},
-		{ID: 243, Name: "ascend-call-filter", DataType: DataTypeABinary},
-		{ID: 244, Name: "ascend-idle-limit", DataType: DataTypeInteger},
+		{ID: 242, Name: "ascend-data-filter", DataType: DataTypeABinary, Usage: UsageAccessAccept | UsageCoARequest},
+		{ID: 243, Name: "ascend-call-filter", DataType: DataTypeABinary, Usage: UsageAccessAccept},
+		{ID: 244, Name: "ascend-idle-limit", DataType: DataTypeInteger, Usage: UsageAccessAccept},
 		{ID: 245, Name: "ascend-preempt-limit", DataType: DataTypeInteger},
 		{
 			ID:       246,
@@ -1211,6 +1227,6 @@ var AscendVendorDefinition = &VendorDefinition{
 		{ID: 252, Name: "ascend-host-info", DataType: DataTypeString},
 		{ID: 253, Name: "ascend-ppp-address", DataType: DataTypeIPAddr},
 		{ID: 254, Name: "ascend-mpp-idle-percent", DataType: DataTypeInteger},
-		{ID: 255, Name: "ascend-xmit-rate", DataType: DataTypeInteger},
+		{ID: 255, Name: "ascend-xmit-rate", DataType: DataTypeInteger, Usage: UsageAccessRequest | UsageAccountingRequest},
 	},
 }

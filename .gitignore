@@ -4,3 +4,6 @@
 
 # Temporary files
 /.tmp/
+
+# Fuzzing reproducers written by go test -fuzz
+/testdata/fuzz/

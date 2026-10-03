@@ -663,17 +663,9 @@ func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte,
 }
 
 // isAttributeAllowed checks if an attribute can be used in the current packet type
+// according to the per-packet-type Usage bitmask
 func (p *Packet) isAttributeAllowed(attrDef *AttributeDefinition) bool {
-	switch attrDef.Type {
-	case AttributeTypeRequest:
-		return p.Code.IsRequest()
-	case AttributeTypeReply:
-		return p.Code.IsReply()
-	case AttributeTypeRequestReply:
-		return true
-	default:
-		return true
-	}
+	return attrDef.AllowedIn(p.Code)
 }
 
 // processEnumeratedValue converts string enumerated values to integers

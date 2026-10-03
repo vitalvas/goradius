@@ -639,6 +639,8 @@ func FuzzDecodeIPv6Prefix(f *testing.F) {
 	f.Add([]byte{0})
 	f.Add([]byte{0, 129})
 	f.Add([]byte{0, 64, 0x20})
+	// Regression: prefix bits beyond the prefix length must be masked on decode
+	f.Add([]byte{0x30, 0x00, 0x30})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		decoded, err := DecodeIPv6Prefix(data)

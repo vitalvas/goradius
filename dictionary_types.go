@@ -28,21 +28,12 @@ const (
 	EncryptionAscendSecret   EncryptionType = "ascend-secret"   // Vendor-specific
 )
 
-// AttributeType represents whether an attribute can be used in requests, replies, or both
-type AttributeType uint8
-
-const (
-	AttributeTypeRequestReply AttributeType = 0 // Can be used in both requests and replies (default)
-	AttributeTypeRequest      AttributeType = 1 // Can only be used in requests
-	AttributeTypeReply        AttributeType = 2 // Can only be used in replies
-)
-
 // AttributeDefinition defines a RADIUS attribute per RFC 2865 Section 5
 type AttributeDefinition struct {
 	ID         uint32            `yaml:"id" json:"id"`
 	Name       string            `yaml:"name" json:"name"`
 	DataType   DataType          `yaml:"data_type" json:"data_type"`
-	Type       AttributeType     `yaml:"type,omitempty" json:"type,omitempty"`
+	Usage      AttributeUsage    `yaml:"usage,omitempty" json:"usage,omitempty"`
 	Encryption EncryptionType    `yaml:"encryption,omitempty" json:"encryption,omitempty"`
 	HasTag     bool              `yaml:"has_tag,omitempty" json:"has_tag,omitempty"`
 	Array      bool              `yaml:"array,omitempty" json:"array,omitempty"`

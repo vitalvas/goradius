@@ -63,7 +63,7 @@ func TestCodeIsReply(t *testing.T) {
 	}
 }
 
-func TestAttributeTypeValidation_RequestOnly(t *testing.T) {
+func TestAttributeUsageValidation_RequestOnly(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add a request-only attribute
@@ -72,7 +72,7 @@ func TestAttributeTypeValidation_RequestOnly(t *testing.T) {
 			ID:       2,
 			Name:     "user-password",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequest,
+			Usage:    UsageAllRequests,
 		},
 	})
 	assert.NoError(t, err)
@@ -90,7 +90,7 @@ func TestAttributeTypeValidation_RequestOnly(t *testing.T) {
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 }
 
-func TestAttributeTypeValidation_ReplyOnly(t *testing.T) {
+func TestAttributeUsageValidation_ReplyOnly(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add a reply-only attribute
@@ -99,7 +99,7 @@ func TestAttributeTypeValidation_ReplyOnly(t *testing.T) {
 			ID:       8,
 			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
-			Type:     AttributeTypeReply,
+			Usage:    UsageAllResponses,
 		},
 	})
 	assert.NoError(t, err)
@@ -117,7 +117,7 @@ func TestAttributeTypeValidation_ReplyOnly(t *testing.T) {
 	assert.Equal(t, 0, len(reqPacket.Attributes), "Attribute should be filtered out of request packet")
 }
 
-func TestAttributeTypeValidation_RequestReply(t *testing.T) {
+func TestAttributeUsageValidation_RequestReply(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add a request-reply attribute (default)
@@ -126,7 +126,6 @@ func TestAttributeTypeValidation_RequestReply(t *testing.T) {
 			ID:       1,
 			Name:     "user-name",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequestReply,
 		},
 	})
 	assert.NoError(t, err)
@@ -142,7 +141,7 @@ func TestAttributeTypeValidation_RequestReply(t *testing.T) {
 	assert.NoError(t, err, "Should allow request-reply attribute in reply packet")
 }
 
-func TestAttributeTypeValidation_VendorAttribute(t *testing.T) {
+func TestAttributeUsageValidation_VendorAttribute(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add vendor with request-only and reply-only attributes
@@ -154,13 +153,13 @@ func TestAttributeTypeValidation_VendorAttribute(t *testing.T) {
 				ID:       10,
 				Name:     "juniper-user-permissions",
 				DataType: DataTypeString,
-				Type:     AttributeTypeRequest,
+				Usage:    UsageAllRequests,
 			},
 			{
 				ID:       1,
 				Name:     "juniper-local-user-name",
 				DataType: DataTypeString,
-				Type:     AttributeTypeReply,
+				Usage:    UsageAllResponses,
 			},
 		},
 	})
@@ -189,7 +188,7 @@ func TestAttributeTypeValidation_VendorAttribute(t *testing.T) {
 	assert.Equal(t, 0, len(reqPacket2.Attributes), "Attribute should be filtered out of request packet")
 }
 
-func TestAttributeTypeValidation_WithSecret(t *testing.T) {
+func TestAttributeUsageValidation_WithSecret(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add a request-only encrypted attribute
@@ -198,7 +197,7 @@ func TestAttributeTypeValidation_WithSecret(t *testing.T) {
 			ID:         2,
 			Name:       "user-password",
 			DataType:   DataTypeString,
-			Type:       AttributeTypeRequest,
+			Usage:      UsageAllRequests,
 			Encryption: EncryptionUserPassword,
 		},
 	})
@@ -220,7 +219,7 @@ func TestAttributeTypeValidation_WithSecret(t *testing.T) {
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 }
 
-func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
+func TestAttributeUsageValidation_AllPacketTypes(t *testing.T) {
 	dict := NewDictionary()
 
 	// Add request-only, reply-only, and request-reply attributes
@@ -229,19 +228,18 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 			ID:       1,
 			Name:     "user-name",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequestReply,
 		},
 		{
 			ID:       2,
 			Name:     "user-password",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequest,
+			Usage:    UsageAllRequests,
 		},
 		{
 			ID:       8,
 			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
-			Type:     AttributeTypeReply,
+			Usage:    UsageAllResponses,
 		},
 	})
 	assert.NoError(t, err)
@@ -249,7 +247,6 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 	requestCodes := []Code{
 		CodeAccessRequest,
 		CodeAccountingRequest,
-		CodeStatusServer,
 		CodeDisconnectRequest,
 		CodeCoARequest,
 	}
@@ -259,7 +256,6 @@ func TestAttributeTypeValidation_AllPacketTypes(t *testing.T) {
 		CodeAccessReject,
 		CodeAccessChallenge,
 		CodeAccountingResponse,
-		CodeStatusClient,
 		CodeDisconnectACK,
 		CodeDisconnectNAK,
 		CodeCoAACK,

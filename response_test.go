@@ -121,6 +121,8 @@ func TestResponseSetAttributes(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
+	// Authorization attributes are only allowed in Access-Accept (RFC 2865 5.44)
+	resp.SetCode(CodeAccessAccept)
 
 	attrs := map[string][]interface{}{
 		"reply-message":     {"Access granted"},
@@ -190,6 +192,8 @@ func TestResponseSetAttributesWithMultipleValues(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
+	// Session-Timeout is only allowed in Access-Accept and Challenge (RFC 2865 5.44)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set multiple values for the same attribute using array syntax
 	err := resp.SetAttributes(map[string][]interface{}{
@@ -225,6 +229,8 @@ func TestResponseMultipleAttributes(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
+	// Session-Timeout is only allowed in Access-Accept and Challenge (RFC 2865 5.44)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set attributes - SetAttribute now overwrites, so only last value remains
 	require.NoError(t, resp.SetAttribute("reply-message", "First message"))
@@ -315,6 +321,8 @@ func TestResponseSetAttributeOverwritesFramedPool(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	// Framed-Pool is only allowed in Access-Accept (RFC 2869 5.19)
+	resp.SetCode(CodeAccessAccept)
 
 	// Exact scenario from user's question
 	require.NoError(t, resp.SetAttribute("framed-pool", "dhcp-pool-cgnat"))
@@ -343,6 +351,8 @@ func TestResponseSetAttributesOverwrites(t *testing.T) {
 
 	// Create response
 	resp := NewResponse(req)
+	// Session-Timeout is only allowed in Access-Accept and Challenge (RFC 2865 5.44)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set attributes first time
 	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
@@ -431,6 +441,8 @@ func TestResponseAddAttributesWithMultipleValues(t *testing.T) {
 	}
 
 	resp := NewResponse(req)
+	// Session-Timeout is only allowed in Access-Accept and Challenge (RFC 2865 5.44)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add multiple values for the same attribute using array syntax
 	err := resp.AddAttributes(map[string][]interface{}{
@@ -462,6 +474,7 @@ func TestResponseSetAttributesThenAddAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set attributes first (removes any existing and adds new)
 	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
@@ -506,6 +519,7 @@ func TestResponseAddAttributesThenSetAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add attributes first
 	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
@@ -685,6 +699,7 @@ func TestResponseDeleteAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add some attributes
 	require.NoError(t, resp.AddAttribute("reply-message", "First message"))
@@ -716,6 +731,7 @@ func TestResponseDeleteAttributeNonExistent(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add an attribute
 	require.NoError(t, resp.AddAttribute("session-timeout", 3600))
@@ -743,6 +759,7 @@ func TestResponseDeleteAttributeThenAdd(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add, Delete, then Add again
 	require.NoError(t, resp.AddAttribute("reply-message", "First message"))
@@ -766,6 +783,7 @@ func TestResponseDeleteAttributeVSA(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add vendor-specific attribute
 	require.NoError(t, resp.AddAttribute("erx-primary-dns", "8.8.8.8"))
@@ -796,6 +814,7 @@ func TestResponseSetAttributeThenDelete(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set → Delete
 	require.NoError(t, resp.SetAttribute("reply-message", "Test message"))
@@ -817,6 +836,7 @@ func TestResponseAddAttributeThenDelete(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add → Delete
 	require.NoError(t, resp.AddAttribute("reply-message", "First"))
@@ -839,6 +859,7 @@ func TestResponseDeleteThenSetAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Delete → Set
 	require.NoError(t, resp.AddAttribute("reply-message", "Old message"))
@@ -858,6 +879,7 @@ func TestResponseDeleteThenDelete(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Delete → Delete (verify idempotent)
 	require.NoError(t, resp.AddAttribute("reply-message", "Test"))
@@ -882,6 +904,7 @@ func TestResponseSetAttributeThenSetAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set → SetS
 	require.NoError(t, resp.SetAttribute("reply-message", "Single"))
@@ -906,6 +929,7 @@ func TestResponseSetAttributesThenSetAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Set
 	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
@@ -929,6 +953,7 @@ func TestResponseAddAttributeThenAddAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add → AddS
 	require.NoError(t, resp.AddAttribute("reply-message", "Single"))
@@ -953,6 +978,7 @@ func TestResponseAddAttributesThenAddAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Add
 	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
@@ -977,6 +1003,7 @@ func TestResponseSetAttributesThenDelete(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Del
 	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
@@ -1000,6 +1027,7 @@ func TestResponseAddAttributesThenDelete(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Del
 	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
@@ -1025,6 +1053,7 @@ func TestResponseSetAttributeThenAddAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Set → AddS
 	require.NoError(t, resp.SetAttribute("reply-message", "Single"))
@@ -1049,6 +1078,7 @@ func TestResponseSetAttributesThenAddAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Add
 	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
@@ -1073,6 +1103,7 @@ func TestResponseAddAttributeThenSetAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Add → SetS
 	require.NoError(t, resp.AddAttribute("reply-message", "Single"))
@@ -1096,6 +1127,7 @@ func TestResponseAddAttributesThenSetAttribute(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Set
 	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
@@ -1118,6 +1150,7 @@ func TestResponseDeleteThenSetAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Del → SetS
 	require.NoError(t, resp.AddAttribute("reply-message", "Old"))
@@ -1144,6 +1177,7 @@ func TestResponseDeleteThenAddAttributes(t *testing.T) {
 	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: pkt}
 	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
 
 	// Del → AddS
 	require.NoError(t, resp.AddAttribute("reply-message", "Old"))

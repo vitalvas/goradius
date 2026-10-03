@@ -581,7 +581,7 @@ func TestAttributeNameMustBeLowercase(t *testing.T) {
 	})
 }
 
-func TestAttributeType(t *testing.T) {
+func TestAttributeUsage(t *testing.T) {
 	dict := NewDictionary()
 
 	attrs := []*AttributeDefinition{
@@ -589,52 +589,52 @@ func TestAttributeType(t *testing.T) {
 			ID:       1,
 			Name:     "user-name",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequestReply, // Can be used in both requests and replies
+			Usage:    UsageAll, // Can be used in both requests and replies
 		},
 		{
 			ID:       2,
 			Name:     "user-password",
 			DataType: DataTypeString,
-			Type:     AttributeTypeRequest, // Only in requests
+			Usage:    UsageAllRequests, // Only in requests
 		},
 		{
 			ID:       8,
 			Name:     "framed-ip-address",
 			DataType: DataTypeIPAddr,
-			Type:     AttributeTypeReply, // Only in replies
+			Usage:    UsageAllResponses, // Only in replies
 		},
 		{
 			ID:       4,
 			Name:     "nas-ip-address",
 			DataType: DataTypeIPAddr,
-			// Type not specified - should default to AttributeTypeRequestReply (0)
+			// Usage not specified - defaults to unrestricted (0)
 		},
 	}
 
 	require.NoError(t, dict.AddStandardAttributes(attrs))
 
-	// Verify User-Name is RequestReply
+	// Verify User-Name allows everything
 	attr, exists := dict.LookupStandardByID(1)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeRequestReply, attr.Type)
+	assert.Equal(t, UsageAll, attr.Usage)
 
-	// Verify User-Password is Request only
+	// Verify User-Password is request only
 	attr, exists = dict.LookupStandardByID(2)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeRequest, attr.Type)
+	assert.Equal(t, UsageAllRequests, attr.Usage)
 
-	// Verify Framed-IP-Address is Reply only
+	// Verify Framed-IP-Address is response only
 	attr, exists = dict.LookupStandardByID(8)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeReply, attr.Type)
+	assert.Equal(t, UsageAllResponses, attr.Usage)
 
-	// Verify NAS-IP-Address defaults to RequestReply (0)
+	// Verify NAS-IP-Address defaults to unrestricted (0)
 	attr, exists = dict.LookupStandardByID(4)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeRequestReply, attr.Type)
+	assert.Equal(t, AttributeUsage(0), attr.Usage)
 }
 
-func TestVendorAttributeType(t *testing.T) {
+func TestVendorAttributeUsage(t *testing.T) {
 	dict := NewDictionary()
 
 	vendor := &VendorDefinition{
@@ -645,28 +645,28 @@ func TestVendorAttributeType(t *testing.T) {
 				ID:       1,
 				Name:     "juniper-local-user-name",
 				DataType: DataTypeString,
-				Type:     AttributeTypeReply, // Reply only
+				Usage:    UsageAllResponses, // Reply only
 			},
 			{
 				ID:       10,
 				Name:     "juniper-user-permissions",
 				DataType: DataTypeString,
-				Type:     AttributeTypeRequest, // Request only
+				Usage:    UsageAllRequests, // Request only
 			},
 		},
 	}
 
 	require.NoError(t, dict.AddVendor(vendor))
 
-	// Verify Juniper-Local-User-Name is Reply only
+	// Verify Juniper-Local-User-Name is reply only
 	attr, exists := dict.LookupVendorAttributeByID(2636, 1)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeReply, attr.Type)
+	assert.Equal(t, UsageAllResponses, attr.Usage)
 
-	// Verify Juniper-User-Permissions is Request only
+	// Verify Juniper-User-Permissions is request only
 	attr, exists = dict.LookupVendorAttributeByID(2636, 10)
 	assert.True(t, exists)
-	assert.Equal(t, AttributeTypeRequest, attr.Type)
+	assert.Equal(t, UsageAllRequests, attr.Usage)
 }
 
 func TestAttributeChildren(t *testing.T) {

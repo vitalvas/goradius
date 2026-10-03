@@ -68,7 +68,7 @@ type AttributeDefinition struct {
     ID         uint32            // Attribute ID
     Name       string            // Attribute name
     DataType   DataType          // Data type
-    Type       AttributeType     // Request/Reply scope
+    Usage      AttributeUsage    // Per-packet-type bitmask
     Encryption EncryptionType    // Encryption
     HasTag     bool              // Tagging
     Array      bool              // Multi-value
@@ -86,6 +86,41 @@ type AttributeDefinition struct {
 ```
 
 Attribute names (and child names) must be lowercase only.
+
+### Usage Bitmask
+
+`Usage` restricts an attribute to specific packet types with
+one bit per packet kind:
+
+```go
+UsageAccessRequest  UsageAccessAccept  UsageAccessReject
+UsageAccessChallenge
+UsageAccountingRequest  UsageAccountingResponse
+UsageCoARequest  UsageCoAACK  UsageCoANAK
+UsageDisconnectRequest  UsageDisconnectACK  UsageDisconnectNAK
+```
+
+Combined masks are available: `UsageAccessAll`,
+`UsageAccountingAll`, `UsageCoAAll`, `UsageDisconnectAll`,
+`UsageAllRequests`, `UsageAllResponses`, and `UsageAll`. The
+zero value means unrestricted.
+
+The standard RFC attributes ship with masks transcribed from
+the RFC "Table of Attributes" sections (RFC 2865, 2866, 2868,
+2869, 3162, 4372, 4675, 4818, 4849, and 5176). Both the client
+and the server enforce the mask when adding attributes by
+name: an attribute not allowed in the packet type is silently
+skipped. Set the response code before adding attributes so
+the right mask applies:
+
+```go
+resp := goradius.NewResponse(req)
+resp.SetCode(goradius.CodeAccessAccept)
+resp.SetAttribute("session-timeout", 3600)
+```
+
+`AttributeDefinition.AllowedIn(code)` exposes the same check
+for custom validation on received packets.
 
 ### Encryption Types
 

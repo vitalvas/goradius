@@ -3,12 +3,19 @@ package goradius
 // CiscoVendorDefinition defines the Cisco vendor (ID 9) and its attributes.
 // Ported from FreeRADIUS dictionary.cisco.
 // Reference: https://www.cisco.com/univercd/cc/td/doc/product/access/acs_serv/vapp_dev/vsaig3.htm
+// Usage masks are transcribed from the vsaig3 guide tables of gateway-sent VSAs
+// (Access-Request and Accounting-Request) and server-sent VSAs (Access-Accept),
+// the IOS "RADIUS Vendor-Proprietary Attributes" guide for the 187-255 range, and
+// the ISG RADIUS CoA interface guide for 250-253. Attributes without a documented
+// packet placement stay unrestricted.
 var CiscoVendorDefinition = &VendorDefinition{
 	ID:   9,
 	Name: "cisco",
 	Attributes: []*AttributeDefinition{
+		// cisco-avpair is a generic container documented in every packet type,
+		// including ISG CoA requests, so it stays unrestricted.
 		{ID: 1, Name: "cisco-avpair", DataType: DataTypeString},
-		{ID: 2, Name: "cisco-nas-port", DataType: DataTypeString},
+		{ID: 2, Name: "cisco-nas-port", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
 
 		// T.37 Store-and-Forward attributes
 		{ID: 3, Name: "cisco-fax-account-id-origin", DataType: DataTypeString},
@@ -31,18 +38,19 @@ var CiscoVendorDefinition = &VendorDefinition{
 		{ID: 20, Name: "cisco-port-used", DataType: DataTypeString},
 		{ID: 21, Name: "cisco-abort-cause", DataType: DataTypeString},
 
-		// Voice over IP attributes
-		{ID: 23, Name: "cisco-h323-remote-address", DataType: DataTypeString},
-		{ID: 24, Name: "cisco-h323-conf-id", DataType: DataTypeString},
-		{ID: 25, Name: "cisco-h323-setup-time", DataType: DataTypeString},
-		{ID: 26, Name: "cisco-h323-call-origin", DataType: DataTypeString},
-		{ID: 27, Name: "cisco-h323-call-type", DataType: DataTypeString},
-		{ID: 28, Name: "cisco-h323-connect-time", DataType: DataTypeString},
-		{ID: 29, Name: "cisco-h323-disconnect-time", DataType: DataTypeString},
-		{ID: 30, Name: "cisco-h323-disconnect-cause", DataType: DataTypeString},
-		{ID: 31, Name: "cisco-h323-voice-quality", DataType: DataTypeString},
-		{ID: 33, Name: "cisco-h323-gw-id", DataType: DataTypeString},
-		{ID: 35, Name: "cisco-h323-incoming-conf-id", DataType: DataTypeString},
+		// Voice over IP attributes; the vsaig3 guide lists these as gateway-sent
+		// (Access-Request, Accounting-Start, and Accounting-Stop records).
+		{ID: 23, Name: "cisco-h323-remote-address", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 24, Name: "cisco-h323-conf-id", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 25, Name: "cisco-h323-setup-time", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 26, Name: "cisco-h323-call-origin", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 27, Name: "cisco-h323-call-type", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 28, Name: "cisco-h323-connect-time", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 29, Name: "cisco-h323-disconnect-time", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 30, Name: "cisco-h323-disconnect-cause", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 31, Name: "cisco-h323-voice-quality", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 33, Name: "cisco-h323-gw-id", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		{ID: 35, Name: "cisco-h323-incoming-conf-id", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
 
 		{ID: 37, Name: "cisco-policy-up", DataType: DataTypeString},
 		{ID: 38, Name: "cisco-policy-down", DataType: DataTypeString},
@@ -71,47 +79,57 @@ var CiscoVendorDefinition = &VendorDefinition{
 		{ID: 90, Name: "cisco-dhcpv4-option-to-aaa", DataType: DataTypeString},
 
 		{ID: 100, Name: "cisco-sip-conf-id", DataType: DataTypeString},
-		{ID: 101, Name: "cisco-h323-credit-amount", DataType: DataTypeString},
-		{ID: 102, Name: "cisco-h323-credit-time", DataType: DataTypeString},
-		{ID: 103, Name: "cisco-h323-return-code", DataType: DataTypeString},
-		{ID: 104, Name: "cisco-h323-prompt-id", DataType: DataTypeString},
-		{ID: 105, Name: "cisco-h323-time-and-day", DataType: DataTypeString},
-		{ID: 106, Name: "cisco-h323-redirect-number", DataType: DataTypeString},
-		{ID: 107, Name: "cisco-h323-preferred-lang", DataType: DataTypeString},
-		{ID: 108, Name: "cisco-h323-redirect-ip-address", DataType: DataTypeString},
-		{ID: 109, Name: "cisco-h323-billing-model", DataType: DataTypeString},
-		{ID: 110, Name: "cisco-h323-currency", DataType: DataTypeString},
-		{ID: 111, Name: "cisco-subscriber", DataType: DataTypeString},
-		{ID: 112, Name: "cisco-gw-rxd-cdn", DataType: DataTypeString},
-		{ID: 113, Name: "cisco-gw-final-xlated-cdn", DataType: DataTypeString},
-		{ID: 114, Name: "cisco-remote-media-address", DataType: DataTypeString},
-		{ID: 115, Name: "cisco-release-source", DataType: DataTypeString},
-		{ID: 116, Name: "cisco-gw-rxd-cgn", DataType: DataTypeString},
-		{ID: 117, Name: "cisco-gw-final-xlated-cgn", DataType: DataTypeString},
+		// IDs 101-110 are server-sent per the vsaig3 guide, which also forbids
+		// voice VSAs in Accounting-Response packets; 105 is listed in both the
+		// gateway-sent and the server-sent tables.
+		{ID: 101, Name: "cisco-h323-credit-amount", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 102, Name: "cisco-h323-credit-time", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 103, Name: "cisco-h323-return-code", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 104, Name: "cisco-h323-prompt-id", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 105, Name: "cisco-h323-time-and-day", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest},
+		{ID: 106, Name: "cisco-h323-redirect-number", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 107, Name: "cisco-h323-preferred-lang", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 108, Name: "cisco-h323-redirect-ip-address", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 109, Name: "cisco-h323-billing-model", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 110, Name: "cisco-h323-currency", DataType: DataTypeString, Usage: UsageAccessAccept},
+		{ID: 111, Name: "cisco-subscriber", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
+		// IDs 112-117 and 141-150 are call detail record fields emitted in
+		// accounting start and stop records.
+		{ID: 112, Name: "cisco-gw-rxd-cdn", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 113, Name: "cisco-gw-final-xlated-cdn", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 114, Name: "cisco-remote-media-address", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 115, Name: "cisco-release-source", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 116, Name: "cisco-gw-rxd-cgn", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 117, Name: "cisco-gw-final-xlated-cgn", DataType: DataTypeString, Usage: UsageAccountingRequest},
 
-		{ID: 141, Name: "cisco-call-id", DataType: DataTypeString},
-		{ID: 142, Name: "cisco-session-protocol", DataType: DataTypeString},
-		{ID: 143, Name: "cisco-method", DataType: DataTypeString},
-		{ID: 144, Name: "cisco-prev-hop-via", DataType: DataTypeString},
-		{ID: 145, Name: "cisco-prev-hop-ip", DataType: DataTypeString},
-		{ID: 146, Name: "cisco-incoming-req-uri", DataType: DataTypeString},
-		{ID: 147, Name: "cisco-outgoing-req-uri", DataType: DataTypeString},
-		{ID: 148, Name: "cisco-next-hop-ip", DataType: DataTypeString},
-		{ID: 149, Name: "cisco-next-hop-dn", DataType: DataTypeString},
-		{ID: 150, Name: "cisco-sip-hdr", DataType: DataTypeString},
+		{ID: 141, Name: "cisco-call-id", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 142, Name: "cisco-session-protocol", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 143, Name: "cisco-method", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 144, Name: "cisco-prev-hop-via", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 145, Name: "cisco-prev-hop-ip", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 146, Name: "cisco-incoming-req-uri", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 147, Name: "cisco-outgoing-req-uri", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 148, Name: "cisco-next-hop-ip", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 149, Name: "cisco-next-hop-dn", DataType: DataTypeString, Usage: UsageAccountingRequest},
+		{ID: 150, Name: "cisco-sip-hdr", DataType: DataTypeString, Usage: UsageAccountingRequest},
 		{ID: 151, Name: "cisco-dsp-id", DataType: DataTypeString},
 
-		{ID: 187, Name: "cisco-multilink-id", DataType: DataTypeInteger},
-		{ID: 188, Name: "cisco-num-in-multilink", DataType: DataTypeInteger},
-		{ID: 190, Name: "cisco-pre-input-octets", DataType: DataTypeInteger},
-		{ID: 191, Name: "cisco-pre-output-octets", DataType: DataTypeInteger},
-		{ID: 192, Name: "cisco-pre-input-packets", DataType: DataTypeInteger},
-		{ID: 193, Name: "cisco-pre-output-packets", DataType: DataTypeInteger},
+		// Per the IOS vendor-proprietary attributes guide: multilink-id is sent
+		// in authentication-response packets, num-in-multilink additionally in
+		// accounting-request packets, and the pre-session counters in
+		// accounting-stop records.
+		{ID: 187, Name: "cisco-multilink-id", DataType: DataTypeInteger, Usage: UsageAccessAccept},
+		{ID: 188, Name: "cisco-num-in-multilink", DataType: DataTypeInteger, Usage: UsageAccessAccept | UsageAccountingRequest},
+		{ID: 190, Name: "cisco-pre-input-octets", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
+		{ID: 191, Name: "cisco-pre-output-octets", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
+		{ID: 192, Name: "cisco-pre-input-packets", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
+		{ID: 193, Name: "cisco-pre-output-packets", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
 		{ID: 194, Name: "cisco-maximum-time", DataType: DataTypeInteger},
 		{
 			ID:       195,
 			Name:     "cisco-disconnect-cause",
 			DataType: DataTypeInteger,
+			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"no-reason":                     0,
 				"no-disconnect":                 1,
@@ -183,8 +201,8 @@ var CiscoVendorDefinition = &VendorDefinition{
 				"vpn-call-redirect":             608,
 			},
 		},
-		{ID: 197, Name: "cisco-data-rate", DataType: DataTypeInteger},
-		{ID: 198, Name: "cisco-presession-time", DataType: DataTypeInteger},
+		{ID: 197, Name: "cisco-data-rate", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
+		{ID: 198, Name: "cisco-presession-time", DataType: DataTypeInteger, Usage: UsageAccountingRequest},
 		{ID: 208, Name: "cisco-pw-lifetime", DataType: DataTypeInteger},
 		{ID: 209, Name: "cisco-ip-direct", DataType: DataTypeInteger},
 		{ID: 210, Name: "cisco-ppp-vj-slot-comp", DataType: DataTypeInteger},
@@ -199,10 +217,12 @@ var CiscoVendorDefinition = &VendorDefinition{
 		{ID: 243, Name: "cisco-call-filter", DataType: DataTypeInteger},
 		{ID: 244, Name: "cisco-idle-limit", DataType: DataTypeInteger},
 		{ID: 249, Name: "cisco-subscriber-password", DataType: DataTypeString},
-		{ID: 250, Name: "cisco-account-info", DataType: DataTypeString},
-		{ID: 251, Name: "cisco-service-info", DataType: DataTypeString},
-		{ID: 252, Name: "cisco-command-code", DataType: DataTypeString},
-		{ID: 253, Name: "cisco-control-info", DataType: DataTypeString},
+		// IDs 250-253 are ISG subscriber service attributes; placements follow
+		// the ISG RADIUS CoA interface guide.
+		{ID: 250, Name: "cisco-account-info", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest},
+		{ID: 251, Name: "cisco-service-info", DataType: DataTypeString, Usage: UsageAccessAccept | UsageAccountingRequest},
+		{ID: 252, Name: "cisco-command-code", DataType: DataTypeString, Usage: UsageCoARequest},
+		{ID: 253, Name: "cisco-control-info", DataType: DataTypeString, Usage: UsageAccessRequest | UsageAccountingRequest},
 		{ID: 255, Name: "cisco-xmit-rate", DataType: DataTypeInteger},
 	},
 }
