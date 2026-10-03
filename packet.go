@@ -39,6 +39,32 @@ type AttributeValue struct {
 	VendorID   uint32   // Vendor ID (only for VSA)
 	VendorType uint8    // Vendor attribute type (only for VSA)
 	Multiline  bool     // True if attribute supports multiline continuation
+
+	def *AttributeDefinition // Attribute definition (for decoding container types)
+}
+
+// Children decodes a container attribute value (tlv or struct) into a map keyed by
+// child attribute name. Returns an error if the attribute is not a container type or
+// the raw bytes cannot be parsed.
+func (av AttributeValue) Children() (map[string]any, error) {
+	if av.def == nil {
+		return nil, fmt.Errorf("attribute %q has no definition to decode children", av.Name)
+	}
+	switch av.DataType {
+	case DataTypeTLV:
+		return DecodeTLV(av.def, av.Value)
+	case DataTypeStruct:
+		return DecodeStruct(av.def, av.Value)
+	case DataTypeEVS:
+		// For EVS, av.Value already has the vendor header stripped; its inner payload
+		// is a TLV stream when the definition declares children.
+		if len(av.def.Children) == 0 {
+			return nil, fmt.Errorf("EVS attribute %q has no children to decode", av.Name)
+		}
+		return DecodeTLV(av.def, av.Value)
+	default:
+		return nil, fmt.Errorf("attribute %q is not a container type (%s)", av.Name, av.DataType)
+	}
 }
 
 // String returns the attribute value as a string, decoded based on DataType
@@ -489,9 +515,82 @@ func (p *Packet) addStandardAttribute(name string, value any, attrDef *Attribute
 	// Handle enumerated values - convert string names to integers
 	processedValue := p.processEnumeratedValue(value, attrDef)
 
+	// Handle RFC 6929 extended attributes (types 241-246)
+	if attrDef.Extended {
+		return p.addExtendedAttribute(attrDef, processedValue)
+	}
+
 	// Handle array attributes - check if value is a slice
 	// This handles both attributes marked as Array=true and user-provided slices
 	return p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
+}
+
+// addExtendedAttribute encodes and adds an RFC 6929 extended attribute (short form for
+// base types 241-244, long form with fragmentation for 245-246, or Extended-Vendor-Specific).
+func (p *Packet) addExtendedAttribute(attrDef *AttributeDefinition, value any) error {
+	baseType := attrDef.ExtendedBaseType()
+	extType := attrDef.ExtendedType()
+
+	// Extended-Vendor-Specific (EVS): encode the inner value, then wrap with the
+	// vendor header under extended type 26.
+	if attrDef.DataType == DataTypeEVS {
+		return p.addEVSAttribute(attrDef, baseType, value)
+	}
+
+	encoded, err := p.encodeAttributeValue(value, attrDef)
+	if err != nil {
+		return fmt.Errorf("failed to encode extended attribute %q: %w", attrDef.Name, err)
+	}
+
+	if IsLongExtendedBaseType(baseType) {
+		attrs, err := NewLongExtendedAttributes(baseType, extType, encoded)
+		if err != nil {
+			return err
+		}
+		for _, attr := range attrs {
+			p.AddAttribute(attr)
+		}
+		return nil
+	}
+
+	attr, err := NewExtendedAttribute(baseType, extType, encoded)
+	if err != nil {
+		return err
+	}
+	p.AddAttribute(attr)
+	return nil
+}
+
+// addEVSAttribute encodes the inner value of an Extended-Vendor-Specific attribute and
+// wraps it with the vendor header. When the definition has children, the inner value is
+// a TLV map; otherwise it is treated as raw octets.
+func (p *Packet) addEVSAttribute(attrDef *AttributeDefinition, baseType uint8, value any) error {
+	var inner []byte
+
+	if len(attrDef.Children) > 0 {
+		children, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("EVS attribute %q with children requires a map[string]any value", attrDef.Name)
+		}
+		encoded, err := EncodeTLV(attrDef, children)
+		if err != nil {
+			return fmt.Errorf("failed to encode EVS TLV %q: %w", attrDef.Name, err)
+		}
+		inner = encoded
+	} else {
+		raw, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("EVS attribute %q requires a []byte value", attrDef.Name)
+		}
+		inner = raw
+	}
+
+	attr, err := NewEVSAttribute(baseType, attrDef.VendorID, attrDef.VendorType, inner)
+	if err != nil {
+		return err
+	}
+	p.AddAttribute(attr)
+	return nil
 }
 
 // addVendorAttributeByName handles vendor-specific attribute addition with full feature support
@@ -559,23 +658,31 @@ func (p *Packet) isAttributeAllowed(attrDef *AttributeDefinition) bool {
 
 // processEnumeratedValue converts string enumerated values to integers
 func (p *Packet) processEnumeratedValue(value any, attrDef *AttributeDefinition) any {
-	if len(attrDef.Values) == 0 {
-		return value
-	}
-
-	// If value is a string, try to find it in enumerated values
-	if strValue, ok := value.(string); ok {
-		if enumValue, exists := attrDef.Values[strValue]; exists {
-			return enumValue
-		}
-	}
-
-	return value
+	return processEnumeratedValueFor(value, attrDef)
 }
 
-// encodeAttributeValue encodes a value based on the attribute data type
+// encodeAttributeValue encodes a value based on the attribute data type.
+// Container types (tlv, struct) are encoded from a map[string]any of child values;
+// scalar types fall through to EncodeValue.
 func (p *Packet) encodeAttributeValue(value any, attrDef *AttributeDefinition) ([]byte, error) {
-	return EncodeValue(value, attrDef.DataType)
+	switch attrDef.DataType {
+	case DataTypeTLV:
+		children, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("attribute %q is a TLV and requires a map[string]any value", attrDef.Name)
+		}
+		return EncodeTLV(attrDef, children)
+
+	case DataTypeStruct:
+		children, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("attribute %q is a struct and requires a map[string]any value", attrDef.Name)
+		}
+		return EncodeStruct(attrDef, children)
+
+	default:
+		return EncodeValue(value, attrDef.DataType)
+	}
 }
 
 // EncryptAttributeValue applies encryption to attribute values using the shared secret
@@ -907,6 +1014,10 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 
 	// Try to find as standard attribute
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
+		// RFC 6929 extended attributes match on base type + extended type, not ID.
+		if attrDef.Extended {
+			return p.getExtendedAttribute(attrDef)
+		}
 		for _, attr := range p.Attributes {
 			if attr.Type == uint8(attrDef.ID) {
 				// For tagged attributes (HasTag=true), the first byte is always the tag
@@ -926,6 +1037,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 					Tag:       tag,
 					IsVSA:     false,
 					Multiline: attrDef.Multiline,
+					def:       attrDef,
 				})
 			}
 		}
@@ -968,6 +1080,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 						VendorID:   va.VendorID,
 						VendorType: va.VendorType,
 						Multiline:  attrDef.Multiline,
+						def:        attrDef,
 					})
 				}
 			}
@@ -976,6 +1089,88 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	}
 
 	return []AttributeValue{}
+}
+
+// getExtendedAttribute collects RFC 6929 extended attribute values for the given
+// definition. Short extended attributes (241-244) each yield one value; long extended
+// attributes (245-246) are reassembled across consecutive fragments using the More bit.
+func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeValue {
+	baseType := attrDef.ExtendedBaseType()
+	extType := attrDef.ExtendedType()
+
+	var result []AttributeValue
+
+	// Extended-Vendor-Specific: match on base type, EVS extended type, and the
+	// vendor ID/type, surfacing the inner value with the vendor header stripped.
+	if attrDef.DataType == DataTypeEVS {
+		for _, attr := range p.Attributes {
+			if attr.Type != baseType {
+				continue
+			}
+			vendorID, vendorType, value, err := ParseEVS(attr)
+			if err != nil || vendorID != attrDef.VendorID || vendorType != attrDef.VendorType {
+				continue
+			}
+			av := p.newExtendedValue(attrDef, baseType, value)
+			av.IsVSA = true
+			av.VendorID = vendorID
+			av.VendorType = vendorType
+			result = append(result, av)
+		}
+		return result
+	}
+
+	if !IsLongExtendedBaseType(baseType) {
+		for _, attr := range p.Attributes {
+			if attr.Type != baseType {
+				continue
+			}
+			et, value, err := ParseExtendedAttribute(attr)
+			if err != nil || et != extType {
+				continue
+			}
+			result = append(result, p.newExtendedValue(attrDef, baseType, value))
+		}
+		return result
+	}
+
+	// Long extended: reassemble fragments that share the same extended type.
+	var buf []byte
+	collecting := false
+	for _, attr := range p.Attributes {
+		if attr.Type != baseType {
+			continue
+		}
+		et, more, value, err := parseLongExtendedFragment(attr)
+		if err != nil || et != extType {
+			continue
+		}
+		buf = append(buf, value...)
+		collecting = true
+		if !more {
+			result = append(result, p.newExtendedValue(attrDef, baseType, buf))
+			buf = nil
+			collecting = false
+		}
+	}
+	// A dangling fragment chain (More never cleared) is still surfaced to the caller.
+	if collecting && len(buf) > 0 {
+		result = append(result, p.newExtendedValue(attrDef, baseType, buf))
+	}
+
+	return result
+}
+
+// newExtendedValue builds an AttributeValue for a reassembled extended attribute.
+func (p *Packet) newExtendedValue(attrDef *AttributeDefinition, baseType uint8, value []byte) AttributeValue {
+	return AttributeValue{
+		Name:      attrDef.Name,
+		Type:      baseType,
+		DataType:  attrDef.DataType,
+		Value:     value,
+		Multiline: attrDef.Multiline,
+		def:       attrDef,
+	}
 }
 
 // GetAttributeString returns the attribute value(s) as a string.

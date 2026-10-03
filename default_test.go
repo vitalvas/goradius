@@ -73,9 +73,21 @@ func TestNewDefault(t *testing.T) {
 		assert.Equal(t, "mikrotik", mikrotikVendor.Name)
 	}
 
+	// Verify Cisco vendor is loaded (ID 9)
+	ciscoVendor, ok := dict.LookupVendorByID(9)
+	assert.True(t, ok, "Cisco vendor (ID 9) should be loaded")
+	if ok {
+		assert.Equal(t, "cisco", ciscoVendor.Name)
+		ciscoAttr, ok := dict.LookupByAttributeName("cisco-avpair")
+		assert.True(t, ok, "cisco-avpair should be found by name")
+		if ok {
+			assert.Equal(t, uint32(1), ciscoAttr.ID)
+		}
+	}
+
 	// Verify GetAllVendors works
 	allVendors := dict.GetAllVendors()
-	assert.GreaterOrEqual(t, len(allVendors), 5, "Should have at least 5 vendors loaded")
+	assert.GreaterOrEqual(t, len(allVendors), 6, "Should have at least 6 vendors loaded")
 }
 
 func TestNewDefaultMultilineAttributes(t *testing.T) {

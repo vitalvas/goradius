@@ -8,9 +8,12 @@ Go library for RADIUS servers and clients
 - Server and client with UDP, TCP, TLS (RadSec)
 - Packet encoding/decoding with attribute type safety
 - Built-in dictionary with RFC and vendor attributes
-  (Juniper, ERX, Ascend, Mikrotik, WISPr)
+  (Juniper, ERX, Ascend, Mikrotik, WISPr, Cisco)
 - Vendor-Specific Attributes (VSA) and tagged
   attributes (RFC 2868)
+- Complex attribute types: TLV, struct, and RFC 6929
+  extended / long-extended / vendor-specific (EVS)
+  attributes
 - Password encryption (User-Password, Tunnel-Password,
   Ascend-Secret)
 - Message-Authenticator (HMAC-MD5, RFC 2869)

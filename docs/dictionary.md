@@ -50,25 +50,42 @@ const (
     DataTypeIPv6Prefix DataType = "ipv6prefix"
     DataTypeIfID       DataType = "ifid"
     DataTypeTLV        DataType = "tlv"
+    DataTypeStruct     DataType = "struct"
+    DataTypeEVS        DataType = "evs"
     DataTypeABinary    DataType = "abinary"
 )
 ```
+
+The container types `tlv`, `struct`, and `evs` describe
+attributes whose value is composed of sub-attributes
+(`Children`). See the "Complex Attribute Types" section
+below for details.
 
 ### Attribute Definition Structure
 
 ```go
 type AttributeDefinition struct {
-    ID          uint32            // Attribute ID
-    Name        string            // Attribute name
-    DataType    DataType          // Data type
-    Encryption  EncryptionType    // Encryption
-    HasTag      bool              // Tagging
-    Array       bool              // Multi-value
-    Values      map[string]uint32 // Enum values
+    ID         uint32            // Attribute ID
+    Name       string            // Attribute name
+    DataType   DataType          // Data type
+    Type       AttributeType     // Request/Reply scope
+    Encryption EncryptionType    // Encryption
+    HasTag     bool              // Tagging
+    Array      bool              // Multi-value
+    Multiline  bool              // Multiline continuation
+    Extended   bool              // RFC 6929 extended attribute
+    Size       int               // Fixed width for struct members
+    Values     map[string]uint32 // Enum values
+    VendorID   uint32            // EVS vendor ID
+    VendorType uint8             // EVS vendor type
+
+    // Children holds sub-attributes for tlv, struct, and
+    // evs container types.
+    Children []*AttributeDefinition
 }
 ```
 
-Attribute names must be lowercase only.
+Attribute names (and child names) must be lowercase only.
 
 ### Encryption Types
 
@@ -313,6 +330,141 @@ for _, svc := range services {
         )
     }
 }
+```
+
+## Complex Attribute Types
+
+Beyond scalar types, the dictionary supports the
+container and extended attribute formats defined by
+RFC 6929. These use the `Children` field to describe
+sub-attributes.
+
+### TLV Attributes
+
+A TLV (Type-Length-Value) attribute carries a sequence
+of sub-attributes, each encoded as
+`child_type(1) + child_length(1) + child_value`.
+Define the children on the parent attribute and pass a
+`map[string]any` keyed by child name:
+
+```go
+dict.AddVendor(&goradius.VendorDefinition{
+    ID:   9,
+    Name: "cisco",
+    Attributes: []*goradius.AttributeDefinition{
+        {
+            ID:       220,
+            Name:     "cisco-example-tlv",
+            DataType: goradius.DataTypeTLV,
+            Children: []*goradius.AttributeDefinition{
+                {ID: 1, Name: "tlv-name", DataType: goradius.DataTypeString},
+                {ID: 2, Name: "tlv-count", DataType: goradius.DataTypeInteger},
+            },
+        },
+    },
+})
+
+// Add a TLV value (encoded inside a VSA for Cisco)
+req.AddAttributeByName("cisco-example-tlv", map[string]any{
+    "tlv-name":  "svc",
+    "tlv-count": uint32(5),
+})
+
+// Read it back and decode the children
+for _, v := range req.GetAttribute("cisco-example-tlv") {
+    children, err := v.Children()
+    if err == nil {
+        fmt.Println(children["tlv-name"], children["tlv-count"])
+    }
+}
+```
+
+Child sub-attributes are emitted in ascending child-ID
+order. Unknown child IDs encountered during decoding are
+preserved as raw bytes keyed by their decimal child ID.
+
+### Struct Attributes
+
+A struct attribute is a fixed-layout binary record whose
+members are written sequentially with no per-member
+header. Fixed-width scalar types (integer, ipaddr, date,
+ipv6addr, ifid) determine their own width; variable-width
+members (string, octets) require an explicit `Size`:
+
+```go
+{
+    ID:       221,
+    Name:     "cisco-example-struct",
+    DataType: goradius.DataTypeStruct,
+    Children: []*goradius.AttributeDefinition{
+        {ID: 1, Name: "s-count", DataType: goradius.DataTypeInteger},
+        {ID: 2, Name: "s-addr", DataType: goradius.DataTypeIPAddr},
+        {ID: 3, Name: "s-label", DataType: goradius.DataTypeString, Size: 4},
+    },
+}
+
+req.AddAttributeByName("cisco-example-struct", map[string]any{
+    "s-count": uint32(1),
+    "s-addr":  "10.0.0.1",
+    "s-label": "ab",
+})
+```
+
+All members must be supplied. Decoding rejects a stream
+with trailing bytes or one too short for the layout.
+
+### Extended Attributes (RFC 6929)
+
+Extended attributes use standard types 241-246. Set
+`Extended: true` and encode the attribute ID as
+`baseType*256 + extendedType`:
+
+```go
+dict.AddStandardAttributes([]*goradius.AttributeDefinition{
+    {
+        // base type 241, extended type 1
+        ID:       241*256 + 1,
+        Name:     "ext-example",
+        DataType: goradius.DataTypeString,
+        Extended: true,
+    },
+})
+
+req.AddAttributeByName("ext-example", "hello")
+```
+
+Short extended types (241-244) carry a single value.
+Long extended types (245-246) carry a Flags byte with a
+More (M) bit and are automatically fragmented across
+multiple attribute instances when the value exceeds a
+single attribute, then reassembled on read.
+
+### Extended-Vendor-Specific (EVS) Attributes
+
+EVS attributes (RFC 6929 Section 2.5) let a vendor define
+attributes beyond the standard 255-type VSA limit. Set
+`DataType: evs`, `Extended: true`, and provide `VendorID`
+and `VendorType`. The inner value is raw octets, or a TLV
+when `Children` are defined:
+
+```go
+dict.AddStandardAttributes([]*goradius.AttributeDefinition{
+    {
+        ID:         241*256 + 26, // extended type 26 = EVS
+        Name:       "evs-example",
+        DataType:   goradius.DataTypeEVS,
+        Extended:   true,
+        VendorID:   9,
+        VendorType: 1,
+        Children: []*goradius.AttributeDefinition{
+            {ID: 1, Name: "evs-name", DataType: goradius.DataTypeString},
+        },
+    },
+})
+
+req.AddAttributeByName("evs-example", map[string]any{
+    "evs-name": "svc",
+})
 ```
 
 ## Built-in Dictionaries

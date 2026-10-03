@@ -9,6 +9,7 @@ package goradius
 //   - Ascend vendor attributes
 //   - WISPr vendor attributes
 //   - Mikrotik vendor attributes
+//   - Cisco vendor attributes
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -44,6 +45,10 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(MikrotikVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(CiscoVendorDefinition); err != nil {
 		return nil, err
 	}
 

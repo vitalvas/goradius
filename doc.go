@@ -3,9 +3,10 @@
 //
 // It provides packet encoding and decoding with attribute type safety,
 // a built-in dictionary covering standard RFC attributes and vendor-specific
-// attributes (Juniper, ERX, Ascend, Mikrotik, WISPr), password encryption
-// (User-Password, Tunnel-Password, Ascend-Secret), Message-Authenticator
-// (HMAC-MD5), middleware support, per-client secret management with rotation,
-// Dynamic Authorization (CoA/Disconnect, RFC 3576), and transport support for
-// UDP, TCP, and TLS (RadSec).
+// attributes (Juniper, ERX, Ascend, Mikrotik, WISPr, Cisco), complex attribute
+// types (TLV, struct, and RFC 6929 extended, long-extended, and vendor-specific
+// EVS attributes), password encryption (User-Password, Tunnel-Password,
+// Ascend-Secret), Message-Authenticator (HMAC-MD5), middleware support,
+// per-client secret management with rotation, Dynamic Authorization
+// (CoA/Disconnect, RFC 3576), and transport support for UDP, TCP, and TLS (RadSec).
 package goradius

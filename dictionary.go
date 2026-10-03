@@ -43,7 +43,8 @@ func NewDictionary() *Dictionary {
 	}
 }
 
-// validateAttributeDefinition validates that attribute names and value keys are lowercase
+// validateAttributeDefinition validates that attribute names and value keys are lowercase,
+// and recursively validates child attributes, rejecting duplicate child IDs within a parent.
 func validateAttributeDefinition(attr *AttributeDefinition) error {
 	if attr.Name != strings.ToLower(attr.Name) {
 		return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
@@ -52,6 +53,18 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 	for key := range attr.Values {
 		if key != strings.ToLower(key) {
 			return fmt.Errorf("attribute %q value key %q must be lowercase", attr.Name, key)
+		}
+	}
+
+	seenChildIDs := make(map[uint32]string, len(attr.Children))
+	for _, child := range attr.Children {
+		if existing, exists := seenChildIDs[child.ID]; exists {
+			return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
+		}
+		seenChildIDs[child.ID] = child.Name
+
+		if err := validateAttributeDefinition(child); err != nil {
+			return err
 		}
 	}
 

@@ -669,6 +669,115 @@ func TestVendorAttributeType(t *testing.T) {
 	assert.Equal(t, AttributeTypeRequest, attr.Type)
 }
 
+func TestAttributeChildren(t *testing.T) {
+	parent := &AttributeDefinition{
+		ID:       1,
+		Name:     "cisco-tlv",
+		DataType: DataTypeTLV,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "cisco-tlv-sub-string", DataType: DataTypeString},
+			{ID: 2, Name: "cisco-tlv-sub-integer", DataType: DataTypeInteger},
+		},
+	}
+
+	t.Run("lookup child by ID", func(t *testing.T) {
+		child, ok := parent.LookupChildByID(2)
+		require.True(t, ok)
+		assert.Equal(t, "cisco-tlv-sub-integer", child.Name)
+		assert.Equal(t, DataTypeInteger, child.DataType)
+	})
+
+	t.Run("lookup child by name", func(t *testing.T) {
+		child, ok := parent.LookupChildByName("cisco-tlv-sub-string")
+		require.True(t, ok)
+		assert.Equal(t, uint32(1), child.ID)
+	})
+
+	t.Run("lookup missing child by ID", func(t *testing.T) {
+		_, ok := parent.LookupChildByID(99)
+		assert.False(t, ok)
+	})
+
+	t.Run("lookup missing child by name", func(t *testing.T) {
+		_, ok := parent.LookupChildByName("nope")
+		assert.False(t, ok)
+	})
+}
+
+func TestAddVendorWithChildren(t *testing.T) {
+	vendor := &VendorDefinition{
+		ID:   9,
+		Name: "cisco-test",
+		Attributes: []*AttributeDefinition{
+			{
+				ID:       10,
+				Name:     "cisco-test-tlv",
+				DataType: DataTypeTLV,
+				Children: []*AttributeDefinition{
+					{ID: 1, Name: "cisco-test-child-a", DataType: DataTypeString},
+					{ID: 2, Name: "cisco-test-child-b", DataType: DataTypeInteger},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, validateAttributeDefinition(vendor.Attributes[0]))
+
+	dict := NewDictionary()
+	require.NoError(t, dict.AddVendor(vendor))
+
+	attr, ok := dict.LookupVendorAttributeByID(9, 10)
+	require.True(t, ok)
+	assert.Len(t, attr.Children, 2)
+
+	child, ok := attr.LookupChildByID(2)
+	require.True(t, ok)
+	assert.Equal(t, "cisco-test-child-b", child.Name)
+}
+
+func TestAddVendorDuplicateChildID(t *testing.T) {
+	vendor := &VendorDefinition{
+		ID:   9,
+		Name: "cisco-dup",
+		Attributes: []*AttributeDefinition{
+			{
+				ID:       10,
+				Name:     "cisco-dup-tlv",
+				DataType: DataTypeTLV,
+				Children: []*AttributeDefinition{
+					{ID: 1, Name: "cisco-dup-child-a", DataType: DataTypeString},
+					{ID: 1, Name: "cisco-dup-child-b", DataType: DataTypeInteger},
+				},
+			},
+		},
+	}
+
+	err := NewDictionary().AddVendor(vendor)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate child ID")
+}
+
+func TestAddVendorChildNameMustBeLowercase(t *testing.T) {
+	vendor := &VendorDefinition{
+		ID:   9,
+		Name: "cisco-case",
+		Attributes: []*AttributeDefinition{
+			{
+				ID:       10,
+				Name:     "cisco-case-tlv",
+				DataType: DataTypeTLV,
+				Children: []*AttributeDefinition{
+					{ID: 1, Name: "Cisco-Case-Child", DataType: DataTypeString},
+				},
+			},
+		},
+	}
+
+	err := NewDictionary().AddVendor(vendor)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be lowercase")
+}
+
 func BenchmarkLookupStandardByID(b *testing.B) {
 	dict := NewDictionary()
 	attrs := make([]*AttributeDefinition, 100)
