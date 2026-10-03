@@ -12,6 +12,12 @@ package goradius
 //   - Cisco vendor attributes
 //   - DSL Forum access-line attributes
 //   - Microsoft vendor attributes
+//   - F5 Networks vendor attributes
+//   - A10 Networks vendor attributes
+//   - Arista Networks vendor attributes
+//   - Arista WiFi vendor attributes
+//   - Ciena vendor attributes
+//   - Benu Networks (Ciena vBNG) vendor attributes
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -59,6 +65,30 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(MicrosoftVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(F5VendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(A10VendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(AristaVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(AristaWiFiVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(CienaVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(BenuVendorDefinition); err != nil {
 		return nil, err
 	}
 

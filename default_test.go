@@ -85,9 +85,81 @@ func TestNewDefault(t *testing.T) {
 		}
 	}
 
+	// Verify F5 vendor is loaded (ID 3375)
+	f5Vendor, ok := dict.LookupVendorByID(3375)
+	assert.True(t, ok, "F5 vendor (ID 3375) should be loaded")
+	if ok {
+		assert.Equal(t, "f5", f5Vendor.Name)
+		f5Attr, ok := dict.LookupByAttributeName("f5-ltm-user-role")
+		assert.True(t, ok, "f5-ltm-user-role should be found by name")
+		if ok {
+			assert.Equal(t, uint32(1), f5Attr.ID)
+		}
+	}
+
+	// Verify A10 vendor is loaded (ID 22610)
+	a10Vendor, ok := dict.LookupVendorByID(22610)
+	assert.True(t, ok, "A10 vendor (ID 22610) should be loaded")
+	if ok {
+		assert.Equal(t, "a10", a10Vendor.Name)
+		a10Attr, ok := dict.LookupByAttributeName("a10-admin-privilege")
+		assert.True(t, ok, "a10-admin-privilege should be found by name")
+		if ok {
+			assert.Equal(t, uint32(2), a10Attr.ID)
+		}
+	}
+
+	// Verify Arista vendor is loaded (ID 30065)
+	aristaVendor, ok := dict.LookupVendorByID(30065)
+	assert.True(t, ok, "Arista vendor (ID 30065) should be loaded")
+	if ok {
+		assert.Equal(t, "arista", aristaVendor.Name)
+		aristaAttr, ok := dict.LookupByAttributeName("arista-avpair")
+		assert.True(t, ok, "arista-avpair should be found by name")
+		if ok {
+			assert.Equal(t, uint32(1), aristaAttr.ID)
+		}
+	}
+
+	// Verify Arista WiFi vendor is loaded (ID 16901)
+	aristaWiFiVendor, ok := dict.LookupVendorByID(16901)
+	assert.True(t, ok, "Arista WiFi vendor (ID 16901) should be loaded")
+	if ok {
+		assert.Equal(t, "arista-wifi", aristaWiFiVendor.Name)
+		wifiAttr, ok := dict.LookupByAttributeName("arista-wifi-client-role")
+		assert.True(t, ok, "arista-wifi-client-role should be found by name")
+		if ok {
+			assert.Equal(t, uint32(7), wifiAttr.ID)
+		}
+	}
+
+	// Verify Ciena vendor is loaded (ID 1271)
+	cienaVendor, ok := dict.LookupVendorByID(1271)
+	assert.True(t, ok, "Ciena vendor (ID 1271) should be loaded")
+	if ok {
+		assert.Equal(t, "ciena", cienaVendor.Name)
+		cienaAttr, ok := dict.LookupByAttributeName("ciena-ces-priv-level")
+		assert.True(t, ok, "ciena-ces-priv-level should be found by name")
+		if ok {
+			assert.Equal(t, uint32(10), cienaAttr.ID)
+		}
+	}
+
+	// Verify Benu vendor is loaded (ID 39406)
+	benuVendor, ok := dict.LookupVendorByID(39406)
+	assert.True(t, ok, "Benu vendor (ID 39406) should be loaded")
+	if ok {
+		assert.Equal(t, "benu", benuVendor.Name)
+		benuAttr, ok := dict.LookupByAttributeName("benu-subscriber-id")
+		assert.True(t, ok, "benu-subscriber-id should be found by name")
+		if ok {
+			assert.Equal(t, uint32(43), benuAttr.ID)
+		}
+	}
+
 	// Verify GetAllVendors works
 	allVendors := dict.GetAllVendors()
-	assert.GreaterOrEqual(t, len(allVendors), 6, "Should have at least 6 vendors loaded")
+	assert.GreaterOrEqual(t, len(allVendors), 14, "Should have at least 14 vendors loaded")
 }
 
 func TestNewDefaultMultilineAttributes(t *testing.T) {
