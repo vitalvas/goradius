@@ -825,12 +825,21 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 	return result
 }
 
-// encryptAscendSecret implements Ascend-Secret encryption
+// encryptAscendSecret implements the Ascend-Send-Secret/Ascend-Receive-Secret cipher
+// as implemented by FreeRADIUS make_secret: digest = MD5(authenticator + secret), the
+// first min(len(value), 16) octets of the digest are XORed with the value, and the
+// result is always sixteen octets (a single block, no chaining).
 func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []byte {
-	// Ascend-Secret uses a vendor-specific encryption similar to User-Password
-	// For simplicity, we'll use the same algorithm as User-Password
-	// In a real implementation, this might differ based on Ascend's specification
-	return encryptUserPassword(value, secret, authenticator)
+	hashInput := make([]byte, AuthenticatorLength+len(secret))
+	copy(hashInput, authenticator[:])
+	copy(hashInput[AuthenticatorLength:], secret)
+	digest := md5.Sum(hashInput)
+
+	n := min(len(value), AuthenticatorLength)
+	for i := range n {
+		digest[i] ^= value[i]
+	}
+	return digest[:]
 }
 
 // squeezeTaggedInteger converts a 4-octet encoded integer into the 3-octet form used
@@ -855,6 +864,17 @@ func padTaggedInteger(attrDef *AttributeDefinition, value []byte) []byte {
 	padded := make([]byte, 4)
 	copy(padded[1:], value)
 	return padded
+}
+
+// multilineSplittable reports whether an encoded value must be fragmented across
+// multiple attribute instances with the continuation marker. Only plain string
+// attributes participate: tags and encryption do not compose with fragmentation.
+func multilineSplittable(attrDef *AttributeDefinition, attrValue []byte, maxLen int) bool {
+	return attrDef.Multiline &&
+		attrDef.DataType == DataTypeString &&
+		!attrDef.HasTag &&
+		attrDef.Encryption == EncryptionNone &&
+		len(attrValue) > maxLen
 }
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
@@ -897,6 +917,15 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 		attrValue, err := p.encodeAttributeValue(val, attrDef)
 		if err != nil {
 			return fmt.Errorf("failed to encode attribute %q: %w", attrDef.Name, err)
+		}
+
+		// Multiline attributes carry long values as multiple instances, each but
+		// the last ending with the continuation marker (observed Junos behavior)
+		if multilineSplittable(attrDef, attrValue, MaxAttributeValueLength) {
+			for _, chunk := range SplitMultilineAttribute(string(attrValue), MaxAttributeValueLength) {
+				p.AddAttribute(NewAttribute(uint8(attrDef.ID), []byte(chunk)))
+			}
+			continue
 		}
 
 		// RFC 2865 Section 5.2: passwords are limited to 128 octets
@@ -985,6 +1014,15 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 		attrValue, err := p.encodeAttributeValue(val, attrDef)
 		if err != nil {
 			return fmt.Errorf("failed to encode vendor attribute %q: %w", attrDef.Name, err)
+		}
+
+		// Multiline attributes carry long values as multiple instances, each but
+		// the last ending with the continuation marker (observed Junos behavior)
+		if multilineSplittable(attrDef, attrValue, MaxVSAValueLength) {
+			for _, chunk := range SplitMultilineAttribute(string(attrValue), MaxVSAValueLength) {
+				p.AddVendorAttribute(NewVendorAttribute(vendor.ID, uint8(attrDef.ID), []byte(chunk)))
+			}
+			continue
 		}
 
 		// RFC 2865 Section 5.2: passwords are limited to 128 octets

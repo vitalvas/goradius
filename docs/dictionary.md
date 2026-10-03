@@ -332,6 +332,28 @@ for _, svc := range services {
 }
 ```
 
+## Multiline Attributes
+
+Attributes marked `Multiline: true` (for example the Juniper
+authorization attributes) carry values longer than one
+attribute allows by splitting them across multiple instances
+of the same attribute. Every instance except the last ends
+with the literal continuation marker `<contd>`, matching the
+on-wire behavior of Junos devices. Vendor attributes split at
+247 octets, standard attributes at 253.
+
+`AddAttributeByName` splits long string values automatically,
+and `GetAttributeString` joins the instances back together in
+packet order, stripping the markers:
+
+```go
+req.AddAttributeByName("juniper-user-permissions", longPermissions)
+// produces as many instances as needed
+
+permissions := resp.GetAttributeString("juniper-user-permissions")
+// returns the joined value
+```
+
 ## Complex Attribute Types
 
 Beyond scalar types, the dictionary supports the

@@ -3,6 +3,7 @@ package goradius
 import (
 	"crypto/hmac"
 	"crypto/md5"
+	"encoding/hex"
 	"net"
 	"strings"
 	"testing"
@@ -11,6 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func mustHex(t *testing.T, s string) []byte {
+	t.Helper()
+	data, err := hex.DecodeString(strings.ReplaceAll(s, " ", ""))
+	require.NoError(t, err)
+	return data
+}
 
 func TestNewPacket(t *testing.T) {
 	tests := []struct {
@@ -1712,6 +1720,282 @@ func FuzzEncryptTunnelPassword(f *testing.F) {
 			t.Fatal("salt high bit not set")
 		}
 	})
+}
+
+// TestJunosMultilineCapture verifies Multiline handling against a live capture from a
+// vJunos router: Juniper-User-Permissions split across three VSA instances, the first
+// two carrying 240 payload characters plus the literal "<contd>" continuation marker
+// (247 octets total each) and the last carrying the remainder without a marker.
+func TestJunosMultilineCapture(t *testing.T) {
+	const fragment1 = "access access-control admin admin-control clear configure control edit field firewall firewall-control floppy interface interface-control maintenance network reset rollback routing routing-control secret secret-control security security-con"
+	const fragment2 = "trol shell snmp snmp-control storage storage-control system system-control trace trace-control view view-configuration all-control flow-tap flow-tap-control flow-tap-operation idp-profiler-operation pgcp-session-mirroring pgcp-session-mirro"
+	const fragment3 = "ring-control unified-edge unified-edge-control "
+	full := fragment1 + fragment2 + fragment3
+
+	require.Len(t, fragment1, 240)
+	require.Len(t, fragment2, 240)
+	require.Len(t, fragment1+ContinuationMarker, MaxVSAValueLength)
+
+	dict := NewDictionary()
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   2636,
+		Name: "juniper",
+		Attributes: []*AttributeDefinition{
+			{ID: 10, Name: "juniper-user-permissions", DataType: DataTypeString, Multiline: true},
+		},
+	}))
+
+	t.Run("read joins captured fragments", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 0x5c, dict)
+		pkt.AddVendorAttribute(NewVendorAttribute(2636, 10, []byte(fragment1+ContinuationMarker)))
+		pkt.AddVendorAttribute(NewVendorAttribute(2636, 10, []byte(fragment2+ContinuationMarker)))
+		pkt.AddVendorAttribute(NewVendorAttribute(2636, 10, []byte(fragment3)))
+
+		assert.Equal(t, full, pkt.GetAttributeString("juniper-user-permissions"))
+	})
+
+	t.Run("add auto-splits like the router", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 0x5c, dict)
+		require.NoError(t, pkt.AddAttributeByName("juniper-user-permissions", full))
+
+		// Must produce exactly the on-wire fragmentation observed in the capture.
+		require.Len(t, pkt.Attributes, 3)
+		va1, _ := ParseVSA(pkt.Attributes[0])
+		va2, _ := ParseVSA(pkt.Attributes[1])
+		va3, _ := ParseVSA(pkt.Attributes[2])
+		assert.Equal(t, []byte(fragment1+ContinuationMarker), va1.Value)
+		assert.Equal(t, []byte(fragment2+ContinuationMarker), va2.Value)
+		assert.Equal(t, []byte(fragment3), va3.Value)
+	})
+
+	t.Run("round trip through wire encoding", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 0x5c, dict)
+		require.NoError(t, pkt.AddAttributeByName("juniper-user-permissions", full))
+
+		raw, err := pkt.Encode()
+		require.NoError(t, err)
+		decoded, err := Decode(raw)
+		require.NoError(t, err)
+		decoded.Dict = dict
+
+		assert.Equal(t, full, decoded.GetAttributeString("juniper-user-permissions"))
+	})
+
+	t.Run("short multiline value stays a single instance", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("juniper-user-permissions", "all"))
+		require.Len(t, pkt.Attributes, 1)
+		assert.Equal(t, "all", pkt.GetAttributeString("juniper-user-permissions"))
+	})
+}
+
+// TestRFC2865ExampleVectors verifies the crypto and codec against the published
+// example packets of RFC 2865 Section 7 (shared secret "xyzzy5461").
+func TestRFC2865ExampleVectors(t *testing.T) {
+	secret := []byte("xyzzy5461")
+
+	t.Run("7.1 user nemo with User-Password", func(t *testing.T) {
+		raw := mustHex(t, "01000038 0f403f94 73978057 bd83d5cb 98f4227a 01066e65 6d6f0212 0dbe708d 93d413ce 3196e43f 782a0aee 0406c0a8 01100506 00000003")
+
+		pkt, err := Decode(raw)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessRequest, pkt.Code)
+		assert.Equal(t, uint8(0), pkt.Identifier)
+		require.Len(t, pkt.Attributes, 4)
+
+		// User-Password encryption known-answer per the RFC example
+		expected := mustHex(t, "0dbe708d 93d413ce 3196e43f 782a0aee")
+		got := encryptUserPassword([]byte("arctangent"), secret, pkt.Authenticator)
+		assert.Equal(t, expected, got)
+		assert.Equal(t, expected, pkt.Attributes[1].Value)
+
+		// Re-encoding reproduces the published bytes
+		reencoded, err := pkt.Encode()
+		require.NoError(t, err)
+		assert.Equal(t, raw, reencoded)
+
+		// Access-Accept Response Authenticator known-answer
+		respRaw := mustHex(t, "02000026 86fe220e 7624ba2a 1005f6bf 9b55e0b2 06060000 00010f06 00000000 0e06c0a8 0103")
+		resp, err := Decode(respRaw)
+		require.NoError(t, err)
+		assert.Equal(t, resp.Authenticator, resp.CalculateResponseAuthenticator(secret, pkt.Authenticator))
+	})
+
+	t.Run("7.2 user flopsy with CHAP", func(t *testing.T) {
+		raw := mustHex(t, "01010047 2aee86f0 8d0d5596 9ca5978e 0d3367a2 0108666c 6f707379 031316e9 7557c316 185895f2 93ff6344 07727504 06c0a801 10050600 00001406 06000000 02070600 000001")
+
+		pkt, err := Decode(raw)
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessRequest, pkt.Code)
+		require.Len(t, pkt.Attributes, 6)
+
+		// CHAP-Password: 1 octet CHAP ident (22) + 16 octet response;
+		// the CHAP challenge is the Request Authenticator
+		chap := pkt.Attributes[1]
+		assert.Equal(t, uint8(3), chap.Type)
+		require.Len(t, chap.Value, 17)
+		assert.Equal(t, uint8(22), chap.Value[0])
+
+		respRaw := mustHex(t, "02010038 15efbc7d ab26cfa3 dc34d9c0 3c8601a4 06060000 00020706 00000001 0806ffff fffe0a06 00000002 0d060000 00010c06 000005dc")
+		resp, err := Decode(respRaw)
+		require.NoError(t, err)
+		assert.Equal(t, resp.Authenticator, resp.CalculateResponseAuthenticator(secret, pkt.Authenticator))
+	})
+
+	t.Run("7.3 user mopsy User-Password challenge", func(t *testing.T) {
+		raw := mustHex(t, "01020039 f3a47a1f 6a6d7671 0b947ab9 3041a039 01076d6f 70737902 12336575 73778289 b570885e 15084825 c50406c0 a8011005 06000000 07")
+
+		pkt, err := Decode(raw)
+		require.NoError(t, err)
+
+		expected := mustHex(t, "33657573 778289b5 70885e15 084825c5")
+		got := encryptUserPassword([]byte("challenge"), secret, pkt.Authenticator)
+		assert.Equal(t, expected, got)
+		assert.Equal(t, expected, pkt.Attributes[1].Value)
+	})
+}
+
+// decryptTunnelPasswordForTest is the RFC 2868 Section 3.5 inverse cipher, used to
+// verify our encryption against FreeRADIUS-produced ciphertexts.
+func decryptTunnelPasswordForTest(t *testing.T, data, secret []byte, auth [16]byte) []byte {
+	t.Helper()
+	require.GreaterOrEqual(t, len(data), 2+16)
+	salt := data[:2]
+	enc := data[2:]
+	require.Zero(t, len(enc)%16)
+
+	hashInput := make([]byte, 0, len(secret)+18)
+	hashInput = append(hashInput, secret...)
+	hashInput = append(hashInput, auth[:]...)
+	hashInput = append(hashInput, salt...)
+	block := md5.Sum(hashInput)
+
+	plain := make([]byte, len(enc))
+	for i := 0; i < len(enc); i += 16 {
+		if i > 0 {
+			prev := make([]byte, 0, len(secret)+16)
+			prev = append(prev, secret...)
+			prev = append(prev, enc[i-16:i]...)
+			block = md5.Sum(prev)
+		}
+		for j := range 16 {
+			plain[i+j] = enc[i+j] ^ block[j]
+		}
+	}
+
+	n := int(plain[0])
+	require.LessOrEqual(t, n, len(plain)-1)
+	return plain[1 : 1+n]
+}
+
+// TestFreeRADIUSEncryptVectors ports known-answer vectors from the FreeRADIUS unit
+// tests (src/tests/unit/protocols/radius: rfc2868.txt, ascend.txt), which use the
+// shared secret "testing123" and authenticator 0x000102...0f.
+func TestFreeRADIUSEncryptVectors(t *testing.T) {
+	secret := []byte("testing123")
+	auth := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+
+	t.Run("user-password bob", func(t *testing.T) {
+		expected := mustHex(t, "f4816bca 74fd7a1a 10460724 0014828b")
+		assert.Equal(t, expected, encryptUserPassword([]byte("bob"), secret, auth))
+	})
+
+	t.Run("ascend-send-secret foo", func(t *testing.T) {
+		expected := mustHex(t, "ce8dbb09 a0cdc29c caf1bdcb 2541f770")
+		assert.Equal(t, expected, encryptAscendSecret([]byte("foo"), secret, auth))
+	})
+
+	t.Run("ascend-send-secret truncated to sixteen", func(t *testing.T) {
+		expected := mustHex(t, "ce8dbb29 95fbf5a4 f390dfa8 41249140")
+		assert.Equal(t, expected, encryptAscendSecret([]byte("foo 56789abcdef012"), secret, auth))
+	})
+
+	t.Run("tunnel-password decode vectors", func(t *testing.T) {
+		// Attribute values with the leading zero tag octet stripped.
+		vectors := []struct {
+			cipher string
+			plain  string
+		}{
+			{"9973051d e6c55730 7dacd5da a599f4e2 6e7e", "foo"},
+			{"9dc5c469 233a1657 b35c9782 3c97ec6b 7ef1", "bar"},
+			{"c06f255f 09b7dc0e 4a1a4656 05f48f7c 0ba4", "barbar"},
+		}
+
+		for _, v := range vectors {
+			got := decryptTunnelPasswordForTest(t, mustHex(t, v.cipher), secret, auth)
+			assert.Equal(t, v.plain, string(got))
+		}
+	})
+
+	t.Run("tunnel-password round trip through reference decrypt", func(t *testing.T) {
+		for _, password := range []string{"", "foo", "exactly-15-char", "a-password-longer-than-one-block"} {
+			encrypted := encryptTunnelPassword([]byte(password), secret, auth)
+			got := decryptTunnelPasswordForTest(t, encrypted, secret, auth)
+			assert.Equal(t, password, string(got))
+		}
+	})
+}
+
+func TestEncryptAscendSecret(t *testing.T) {
+	secret := []byte("testing123")
+	auth := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	// FreeRADIUS make_secret reference: digest = MD5(authenticator + secret),
+	// first min(len(value),16) octets XORed with the value, output is 16 octets.
+	expected := func(value []byte) []byte {
+		digest := md5.Sum(append(append([]byte{}, auth[:]...), secret...))
+		for i := 0; i < len(value) && i < 16; i++ {
+			digest[i] ^= value[i]
+		}
+		return digest[:]
+	}
+
+	t.Run("short value", func(t *testing.T) {
+		value := []byte("secretval")
+		got := encryptAscendSecret(value, secret, auth)
+		require.Len(t, got, 16)
+		assert.Equal(t, expected(value), got)
+	})
+
+	t.Run("empty value", func(t *testing.T) {
+		got := encryptAscendSecret(nil, secret, auth)
+		require.Len(t, got, 16)
+		assert.Equal(t, expected(nil), got)
+	})
+
+	t.Run("value truncated to sixteen octets", func(t *testing.T) {
+		value := []byte("exactly-16-bytes-plus-overflow")
+		got := encryptAscendSecret(value, secret, auth)
+		require.Len(t, got, 16)
+		assert.Equal(t, expected(value), got)
+	})
+}
+
+// FuzzEncryptAscendSecret ensures the Ascend-Secret cipher never panics and always
+// produces exactly sixteen octets.
+func FuzzEncryptAscendSecret(f *testing.F) {
+	f.Add([]byte("value"), []byte("secret"), []byte("0123456789abcdef"))
+	f.Add([]byte{}, []byte{}, []byte{})
+
+	f.Fuzz(func(t *testing.T, value, secret, auth []byte) {
+		var authenticator [16]byte
+		copy(authenticator[:], auth)
+
+		got := encryptAscendSecret(value, secret, authenticator)
+		if len(got) != 16 {
+			t.Fatalf("output length %d, want 16", len(got))
+		}
+	})
+}
+
+func BenchmarkEncryptAscendSecret(b *testing.B) {
+	value := []byte("ascend-secret-value")
+	secret := []byte("testing123")
+	auth := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = encryptAscendSecret(value, secret, auth)
+	}
 }
 
 func BenchmarkEncryptUserPassword(b *testing.B) {
