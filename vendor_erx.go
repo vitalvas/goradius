@@ -66,11 +66,14 @@ var ERXVendorDefinition = &VendorDefinition{
 			DataType: DataTypeString,
 			Usage:    UsageAccessAccept | UsageAccountingRequest,
 		},
+		// JunosE defines IDs 12-21 as the provisioning attributes below, while
+		// Junos OS Evolved reuses the same IDs as Policer-L1..L4 input counters
+		// in accounting records. The usage masks are omitted on these IDs so
+		// both platform meanings stay usable.
 		{
 			ID:       12,
 			Name:     "erx-ingress-statistics",
 			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"disable": 0,
 				"enable":  1,
@@ -80,7 +83,6 @@ var ERXVendorDefinition = &VendorDefinition{
 			ID:       13,
 			Name:     "erx-egress-statistics",
 			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"disable": 0,
 				"enable":  1,
@@ -90,7 +92,6 @@ var ERXVendorDefinition = &VendorDefinition{
 			ID:       14,
 			Name:     "erx-atm-service-category",
 			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"ubr":    1,
 				"ubrpcr": 2,
@@ -98,52 +99,21 @@ var ERXVendorDefinition = &VendorDefinition{
 				"cbr":    4,
 			},
 		},
-		{
-			ID:       15,
-			Name:     "erx-atm-pcr",
-			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
-		},
-		{
-			ID:       16,
-			Name:     "erx-atm-scr",
-			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
-		},
-		{
-			ID:       17,
-			Name:     "erx-atm-mbs",
-			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
-		},
-		{
-			ID:       18,
-			Name:     "erx-cli-initial-access-level",
-			DataType: DataTypeString,
-			Usage:    UsageAccountingRequest,
-		},
+		{ID: 15, Name: "erx-atm-pcr", DataType: DataTypeInteger},
+		{ID: 16, Name: "erx-atm-scr", DataType: DataTypeInteger},
+		{ID: 17, Name: "erx-atm-mbs", DataType: DataTypeInteger},
+		{ID: 18, Name: "erx-cli-initial-access-level", DataType: DataTypeString},
 		{
 			ID:       19,
 			Name:     "erx-cli-allow-all-vr-access",
 			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"disable": 0,
 				"enable":  1,
 			},
 		},
-		{
-			ID:       20,
-			Name:     "erx-alternate-cli-access-level",
-			DataType: DataTypeString,
-			Usage:    UsageAccountingRequest,
-		},
-		{
-			ID:       21,
-			Name:     "erx-alternate-cli-vrouter-name",
-			DataType: DataTypeString,
-			Usage:    UsageAccountingRequest,
-		},
+		{ID: 20, Name: "erx-alternate-cli-access-level", DataType: DataTypeString},
+		{ID: 21, Name: "erx-alternate-cli-vrouter-name", DataType: DataTypeString},
 		{
 			ID:       22,
 			Name:     "erx-sa-validate",
@@ -178,11 +148,13 @@ var ERXVendorDefinition = &VendorDefinition{
 		{ID: 26, Name: "erx-qos-profile-name", DataType: DataTypeString},
 		{ID: 27, Name: "erx-pppoe-max-sessions", DataType: DataTypeInteger},
 		{ID: 28, Name: "erx-pppoe-url", DataType: DataTypeString},
+		// Junos OS Evolved reuses IDs 29 and 32 as Queue-0-Output-Gigapackets
+		// and Queue-0-Output-Packets in accounting; the JunosE meanings are
+		// kept here and the attributes stay unrestricted.
 		{
 			ID:       29,
 			Name:     "erx-qos-profile-interface-type",
 			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
 			Values: map[string]uint32{
 				"ip":          1,
 				"atm":         2,
@@ -198,6 +170,9 @@ var ERXVendorDefinition = &VendorDefinition{
 				"pppoe-sub":   12,
 			},
 		},
+		// The Junos VSA table notes the first octet of this VSA can carry a
+		// tunnel tag, but both the Junos 18.4 dictionary and FreeRADIUS define
+		// it as a plain integer, so it is kept untagged.
 		{
 			ID:       30,
 			Name:     "erx-tunnel-nas-port-method",
@@ -213,22 +188,23 @@ var ERXVendorDefinition = &VendorDefinition{
 			DataType: DataTypeString,
 			Usage:    UsageAccessAccept,
 		},
-		{
-			ID:       32,
-			Name:     "erx-tunnel-tos",
-			DataType: DataTypeInteger,
-			Usage:    UsageAccountingRequest,
-		},
+		{ID: 32, Name: "erx-tunnel-tos", DataType: DataTypeInteger},
+		// The Junos 18.4 dictionary defines Tunnel-Max-Sessions as a tagged
+		// VSA (tags 1-31, like tunnel-virtual-router and tunnel-password);
+		// FreeRADIUS lacks the has_tag flag.
 		{
 			ID:       33,
 			Name:     "erx-tunnel-maximum-sessions",
 			DataType: DataTypeInteger,
+			HasTag:   true,
 			Usage:    UsageAccessAccept,
 		},
+		// Both the Junos 18.4 dictionary and the Junos VSA table define this
+		// as a 4-octet integer; FreeRADIUS carries it as string.
 		{
 			ID:       34,
 			Name:     "erx-framed-ip-route-tag",
-			DataType: DataTypeString,
+			DataType: DataTypeInteger,
 			Usage:    UsageAccessAccept,
 		},
 		{ID: 35, Name: "erx-dial-out-number", DataType: DataTypeString},
@@ -285,18 +261,11 @@ var ERXVendorDefinition = &VendorDefinition{
 			DataType: DataTypeIPv6Addr,
 			Usage:    UsageAccessAccept | UsageAccountingRequest,
 		},
-		{
-			ID:       49,
-			Name:     "sdx-service-name",
-			DataType: DataTypeString,
-			Usage:    UsageAccountingRequest,
-		},
-		{
-			ID:       50,
-			Name:     "sdx-session-volume-quota",
-			DataType: DataTypeString,
-			Usage:    UsageAccountingRequest,
-		},
+		// Junos OS Evolved reuses IDs 49 and 50 as Queue-1-Output-Gigapackets
+		// and Queue-1-Output-Packets in accounting; the SDX meanings are kept
+		// here and the attributes stay unrestricted.
+		{ID: 49, Name: "sdx-service-name", DataType: DataTypeString},
+		{ID: 50, Name: "sdx-session-volume-quota", DataType: DataTypeString},
 		{
 			ID:       51,
 			Name:     "sdx-tunnel-disconnect-cause-info",

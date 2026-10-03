@@ -32,6 +32,34 @@ func TestERXVendorDefinition(t *testing.T) {
 	if exists {
 		assert.Equal(t, DataTypeIPAddr, primaryDNS.DataType)
 	}
+
+	// The Junos 18.4 dictionary defines Tunnel-Max-Sessions as tagged (1-31)
+	maxSessions, exists := attrMap["erx-tunnel-maximum-sessions"]
+	assert.True(t, exists)
+	if exists {
+		assert.True(t, maxSessions.HasTag, "tunnel-maximum-sessions should support tags")
+	}
+
+	// Both Juniper sources define Framed-Ip-Route-Tag as a 4-octet integer
+	routeTag, exists := attrMap["erx-framed-ip-route-tag"]
+	assert.True(t, exists)
+	if exists {
+		assert.Equal(t, DataTypeInteger, routeTag.DataType)
+	}
+
+	// IDs reused by Junos OS Evolved (policer and queue counters) must stay
+	// unrestricted so both platform meanings remain usable
+	for _, name := range []string{
+		"erx-ingress-statistics", "erx-atm-pcr", "erx-cli-initial-access-level",
+		"erx-qos-profile-interface-type", "erx-tunnel-tos",
+		"sdx-service-name", "sdx-session-volume-quota",
+	} {
+		attr, ok := attrMap[name]
+		assert.True(t, ok, name)
+		if ok {
+			assert.Equal(t, AttributeUsage(0), attr.Usage, "%s must stay unrestricted", name)
+		}
+	}
 }
 
 func TestNoDuplicateERXAttributeIDs(t *testing.T) {
