@@ -274,20 +274,15 @@ func (c *Client) CoA(attributes map[string]interface{}) (*Packet, error) {
 		}
 	}
 
-	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
-	// Add Message-Authenticator placeholder first if needed (affects packet length)
+	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
+	// Authenticator field zeroed and inserted first; the Request Authenticator is
+	// then computed over the packet carrying the real Message-Authenticator value.
 	if c.useMessageAuth {
 		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
 	}
 
-	// Calculate and set the computed Request Authenticator
+	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
 	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
-
-	// Recalculate Message-Authenticator with the computed Request Authenticator
-	if c.useMessageAuth {
-		pkt.RemoveAttributes(AttributeTypeMessageAuthenticator)
-		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
-	}
 
 	return c.sendRequest(pkt)
 }
@@ -310,20 +305,15 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*Packet, error) 
 		}
 	}
 
-	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
-	// Add Message-Authenticator placeholder first if needed (affects packet length)
+	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
+	// Authenticator field zeroed and inserted first; the Request Authenticator is
+	// then computed over the packet carrying the real Message-Authenticator value.
 	if c.useMessageAuth {
 		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
 	}
 
-	// Calculate and set the computed Request Authenticator
+	// RFC 5176: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
 	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
-
-	// Recalculate Message-Authenticator with the computed Request Authenticator
-	if c.useMessageAuth {
-		pkt.RemoveAttributes(AttributeTypeMessageAuthenticator)
-		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
-	}
 
 	return c.sendRequest(pkt)
 }
@@ -378,20 +368,15 @@ func (c *Client) AccountingRequest(attributes map[string]interface{}) (*Packet, 
 		}
 	}
 
-	// RFC 2866: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
-	// Add Message-Authenticator placeholder first if needed (affects packet length)
+	// Message-Authenticator is computed with the Request Authenticator field zeroed
+	// and inserted first, mirroring RFC 5176 Section 3.4; the Request Authenticator
+	// is then computed over the packet carrying the real Message-Authenticator value.
 	if c.useMessageAuth {
 		pkt.AddMessageAuthenticator(c.secret, [16]byte{})
 	}
 
-	// Calculate and set the computed Request Authenticator
+	// RFC 2866: Request Authenticator = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
 	pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(c.secret))
-
-	// Recalculate Message-Authenticator with the computed Request Authenticator
-	if c.useMessageAuth {
-		pkt.RemoveAttributes(AttributeTypeMessageAuthenticator)
-		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
-	}
 
 	return c.sendRequest(pkt)
 }

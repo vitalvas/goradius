@@ -1,6 +1,8 @@
 package goradius
 
 import (
+	"crypto/hmac"
+	"crypto/md5"
 	"net"
 	"testing"
 	"time"
@@ -1485,4 +1487,227 @@ func BenchmarkAttributeValueString(b *testing.B) {
 			_ = av.String()
 		}
 	})
+}
+
+func TestRemoveStandardAttributeInvalidatesVSACache(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+	}))
+
+	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("user-name", "alice"))
+	pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{8, 8, 8, 8}))
+	pkt.AddVendorAttribute(NewVendorAttribute(4874, 138, []byte("aa:bb")))
+
+	// Populate the index-keyed VSA cache.
+	_, ok := pkt.GetVendorAttribute(4874, 4)
+	require.True(t, ok)
+	_, ok = pkt.GetVendorAttribute(4874, 138)
+	require.True(t, ok)
+
+	// Removing a standard attribute shifts all following indices.
+	require.Equal(t, 1, pkt.RemoveAttributeByName("user-name"))
+
+	va, ok := pkt.GetVendorAttribute(4874, 138)
+	require.True(t, ok, "stale VSA cache must not hide the shifted attribute")
+	assert.Equal(t, []byte("aa:bb"), va.Value)
+}
+
+func TestTaggedAttributeZeroTagRoundTrip(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 64, Name: "tunnel-type", DataType: DataTypeInteger, HasTag: true},
+	}))
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "erx",
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "erx-service-activate", DataType: DataTypeString, HasTag: true},
+		},
+	}))
+
+	t.Run("standard untagged", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("tunnel-type", uint32(3)))
+
+		// RFC 2868: the tag octet is always present (0x00 means unused) and
+		// tagged integers carry a three-octet value.
+		require.Len(t, pkt.Attributes, 1)
+		assert.Equal(t, []byte{0, 0, 0, 3}, pkt.Attributes[0].Value)
+
+		vals := pkt.GetAttribute("tunnel-type")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(0), vals[0].Tag)
+		assert.Equal(t, "3", vals[0].String())
+	})
+
+	t.Run("tagged integer exceeding three octets", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.AddAttributeByName("tunnel-type:1", uint32(0x01000000))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "three-octet")
+	})
+
+	t.Run("vendor untagged", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate", "svc"))
+
+		vals := pkt.GetAttribute("erx-service-activate")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(0), vals[0].Tag)
+		assert.Equal(t, "svc", vals[0].String())
+	})
+}
+
+func TestAddTaggedStandardAttributeByName(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 64, Name: "tunnel-type", DataType: DataTypeInteger, HasTag: true},
+	}))
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("tunnel-type:3", uint32(1)))
+
+	// RFC 2868 Section 3.1 wire format: tag(1) + three-octet value.
+	require.Len(t, pkt.Attributes, 1)
+	assert.Equal(t, []byte{3, 0, 0, 1}, pkt.Attributes[0].Value)
+
+	vals := pkt.GetAttribute("tunnel-type")
+	require.Len(t, vals, 1)
+	assert.Equal(t, uint8(3), vals[0].Tag)
+	assert.Equal(t, "1", vals[0].String())
+}
+
+func TestEncodeRejectsInconsistentAttributeLength(t *testing.T) {
+	pkt := NewPacket(CodeAccessRequest, 1)
+	// 254-byte value overflows the uint8 Length field in NewAttribute.
+	pkt.AddAttribute(NewAttribute(1, make([]byte, 254)))
+
+	assert.NotPanics(t, func() {
+		_, err := pkt.Encode()
+		assert.Error(t, err)
+	})
+}
+
+// FuzzEncryptUserPassword ensures User-Password encryption never panics and always
+// produces output padded to a non-zero multiple of sixteen octets (RFC 2865 Section 5.2).
+func FuzzEncryptUserPassword(f *testing.F) {
+	f.Add([]byte("password"), []byte("secret"), []byte("0123456789abcdef"))
+	f.Add([]byte{}, []byte{}, []byte{})
+	f.Add([]byte("exactly-16-bytes"), []byte("s"), []byte("a"))
+
+	f.Fuzz(func(t *testing.T, password, secret, auth []byte) {
+		var authenticator [16]byte
+		copy(authenticator[:], auth)
+
+		encrypted := encryptUserPassword(password, secret, authenticator)
+		if len(encrypted) == 0 || len(encrypted)%16 != 0 {
+			t.Fatalf("encrypted length %d is not a non-zero multiple of 16", len(encrypted))
+		}
+		if len(encrypted) < len(password) {
+			t.Fatalf("encrypted length %d shorter than password %d", len(encrypted), len(password))
+		}
+	})
+}
+
+// FuzzEncryptTunnelPassword ensures Tunnel-Password encryption never panics, always
+// emits the two-octet salt with the high bit set, and pads to sixteen-octet blocks
+// (RFC 2868 Section 3.5).
+func FuzzEncryptTunnelPassword(f *testing.F) {
+	f.Add([]byte("tunnel-secret"), []byte("secret"), []byte("0123456789abcdef"))
+	f.Add([]byte{}, []byte{}, []byte{})
+
+	f.Fuzz(func(t *testing.T, password, secret, auth []byte) {
+		var authenticator [16]byte
+		copy(authenticator[:], auth)
+
+		encrypted := encryptTunnelPassword(password, secret, authenticator)
+		if len(encrypted) < 2+16 || (len(encrypted)-2)%16 != 0 {
+			t.Fatalf("encrypted length %d is not salt plus a multiple of 16", len(encrypted))
+		}
+		if encrypted[0]&0x80 == 0 {
+			t.Fatal("salt high bit not set")
+		}
+	})
+}
+
+func BenchmarkEncryptUserPassword(b *testing.B) {
+	password := []byte("user-password-value")
+	secret := []byte("testing123")
+	auth := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = encryptUserPassword(password, secret, auth)
+	}
+}
+
+func BenchmarkEncryptTunnelPassword(b *testing.B) {
+	password := []byte("tunnel-password-value")
+	secret := []byte("testing123")
+	auth := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = encryptTunnelPassword(password, secret, auth)
+	}
+}
+
+func BenchmarkAddAttributeByName(b *testing.B) {
+	dict, err := NewDefault()
+	require.NoError(b, err)
+
+	b.Run("standard", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+			_ = pkt.AddAttributeByName("user-name", "benchuser")
+		}
+	})
+
+	b.Run("vendor", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+			_ = pkt.AddAttributeByName("cisco-avpair", "shell:priv-lvl=15")
+		}
+	})
+
+	b.Run("tagged standard", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+			_ = pkt.AddAttributeByName("tunnel-type:1", uint32(13))
+		}
+	})
+}
+
+func TestMessageAuthenticatorRFC5176Ordering(t *testing.T) {
+	secret := []byte("testing123")
+
+	for _, code := range []Code{CodeCoARequest, CodeDisconnectRequest, CodeAccountingRequest} {
+		t.Run(code.String(), func(t *testing.T) {
+			pkt := NewPacket(code, 7)
+			pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+			// Nonzero authenticator field and nonzero parameter prove the
+			// implementation uses sixteen zero octets regardless of either.
+			pkt.SetAuthenticator([16]byte{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9})
+			pkt.AddMessageAuthenticator(secret, [16]byte{8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8})
+
+			// RFC 5176 Section 3.4: the Message-Authenticator is computed with the
+			// Request Authenticator field and the attribute itself both zeroed.
+			mac := hmac.New(md5.New, secret)
+			mac.Write(pkt.buildPacketBytes([16]byte{}, true))
+			expectedMA := mac.Sum(nil)
+
+			attrs := pkt.GetAttributes(AttributeTypeMessageAuthenticator)
+			require.Len(t, attrs, 1)
+			assert.Equal(t, expectedMA, attrs[0].Value)
+			assert.True(t, pkt.VerifyMessageAuthenticator(secret, [16]byte{1, 2, 3}))
+
+			// RFC 5176 Section 3.4: the Request Authenticator is then computed
+			// over the packet carrying the real Message-Authenticator value.
+			sum := md5.Sum(append(pkt.buildPacketBytes([16]byte{}, false), secret...))
+			assert.Equal(t, sum, pkt.CalculateRequestAuthenticator(secret))
+		})
+	}
 }

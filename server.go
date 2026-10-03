@@ -15,6 +15,7 @@ type Server struct {
 	middlewares        []Middleware
 	mu                 sync.RWMutex
 	ready              chan struct{}
+	readyClosed        bool
 	requireMessageAuth bool
 	useMessageAuth     bool
 	requireRequestAuth bool
@@ -49,7 +50,11 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 func (s *Server) Serve(transport Transport) error {
 	s.mu.Lock()
 	s.transport = transport
-	close(s.ready)
+	// Guard against closing twice when Serve is called for multiple transports
+	if !s.readyClosed {
+		close(s.ready)
+		s.readyClosed = true
+	}
 	s.mu.Unlock()
 
 	return transport.Serve(s.handlePacket)
@@ -107,16 +112,22 @@ func (s *Server) Close() error {
 // Use adds middleware to the server
 // Middlewares are applied in the order they are added
 func (s *Server) Use(middleware Middleware) {
+	s.mu.Lock()
 	s.middlewares = append(s.middlewares, middleware)
+	s.mu.Unlock()
 }
 
 // buildHandler wraps the handler with all middlewares
 func (s *Server) buildHandler() Handler {
+	s.mu.RLock()
+	middlewares := s.middlewares
+	s.mu.RUnlock()
+
 	handler := s.handler
 
 	// Apply middlewares in reverse order (last added is outermost)
-	for i := len(s.middlewares) - 1; i >= 0; i-- {
-		handler = s.middlewares[i](handler)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
 	}
 
 	return handler

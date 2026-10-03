@@ -757,6 +757,76 @@ func TestAddVendorDuplicateChildID(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate child ID")
 }
 
+func TestAddStandardAttributesDuplicateWithinBatch(t *testing.T) {
+	t.Run("duplicate name", func(t *testing.T) {
+		err := NewDictionary().AddStandardAttributes([]*AttributeDefinition{
+			{ID: 1, Name: "dup-name", DataType: DataTypeString},
+			{ID: 2, Name: "dup-name", DataType: DataTypeInteger},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute name")
+	})
+
+	t.Run("duplicate ID", func(t *testing.T) {
+		err := NewDictionary().AddStandardAttributes([]*AttributeDefinition{
+			{ID: 1, Name: "name-a", DataType: DataTypeString},
+			{ID: 1, Name: "name-b", DataType: DataTypeInteger},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute ID")
+	})
+}
+
+func TestAddVendorDuplicateWithinBatch(t *testing.T) {
+	t.Run("duplicate name", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "dup-vendor",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "dup-attr", DataType: DataTypeString},
+				{ID: 2, Name: "dup-attr", DataType: DataTypeInteger},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute name")
+	})
+
+	t.Run("duplicate ID", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "dup-vendor",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "attr-a", DataType: DataTypeString},
+				{ID: 1, Name: "attr-b", DataType: DataTypeInteger},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute ID")
+	})
+}
+
+func TestAddVendorDuplicateChildName(t *testing.T) {
+	vendor := &VendorDefinition{
+		ID:   9,
+		Name: "childdup",
+		Attributes: []*AttributeDefinition{
+			{
+				ID:       10,
+				Name:     "childdup-tlv",
+				DataType: DataTypeTLV,
+				Children: []*AttributeDefinition{
+					{ID: 1, Name: "dup-child", DataType: DataTypeString},
+					{ID: 2, Name: "dup-child", DataType: DataTypeInteger},
+				},
+			},
+		},
+	}
+
+	err := NewDictionary().AddVendor(vendor)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate child name")
+}
+
 func TestAddVendorChildNameMustBeLowercase(t *testing.T) {
 	vendor := &VendorDefinition{
 		ID:   9,

@@ -57,15 +57,51 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 	}
 
 	seenChildIDs := make(map[uint32]string, len(attr.Children))
+	seenChildNames := make(map[string]struct{}, len(attr.Children))
 	for _, child := range attr.Children {
 		if existing, exists := seenChildIDs[child.ID]; exists {
 			return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
 		}
 		seenChildIDs[child.ID] = child.Name
 
+		if _, exists := seenChildNames[child.Name]; exists {
+			return fmt.Errorf("attribute %q has duplicate child name %q", attr.Name, child.Name)
+		}
+		seenChildNames[child.Name] = struct{}{}
+
 		if err := validateAttributeDefinition(child); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validateBatch validates a batch of attribute definitions before insertion:
+// each definition must be valid, must not conflict with an already-registered
+// attribute name, and must not duplicate a name or ID within the batch itself.
+func validateBatch(attrs []*AttributeDefinition, existingByName map[string]*AttributeDefinition) error {
+	seenNames := make(map[string]struct{}, len(attrs))
+	seenIDs := make(map[uint32]struct{}, len(attrs))
+
+	for _, attr := range attrs {
+		if err := validateAttributeDefinition(attr); err != nil {
+			return err
+		}
+
+		if _, exists := existingByName[attr.Name]; exists {
+			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
+		}
+
+		if _, exists := seenNames[attr.Name]; exists {
+			return fmt.Errorf("duplicate attribute name %q within batch", attr.Name)
+		}
+		seenNames[attr.Name] = struct{}{}
+
+		if _, exists := seenIDs[attr.ID]; exists {
+			return fmt.Errorf("duplicate attribute ID %d within batch", attr.ID)
+		}
+		seenIDs[attr.ID] = struct{}{}
 	}
 
 	return nil
@@ -78,14 +114,8 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	for _, attr := range attrs {
-		if err := validateAttributeDefinition(attr); err != nil {
-			return err
-		}
-
-		if _, exists := d.allAttrByName[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
-		}
+	if err := validateBatch(attrs, d.allAttrByName); err != nil {
+		return err
 	}
 
 	// All checks passed, add the attributes
@@ -104,14 +134,8 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	for _, attr := range vendor.Attributes {
-		if err := validateAttributeDefinition(attr); err != nil {
-			return err
-		}
-
-		if _, exists := d.allAttrByName[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
-		}
+	if err := validateBatch(vendor.Attributes, d.allAttrByName); err != nil {
+		return err
 	}
 
 	d.vendorByID[vendor.ID] = vendor

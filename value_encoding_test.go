@@ -497,6 +497,31 @@ func TestSplitMultilineAttribute(t *testing.T) {
 	})
 }
 
+// FuzzDecodeValue ensures the scalar value decoder never panics for any data type
+// selector and arbitrary payload bytes.
+func FuzzDecodeValue(f *testing.F) {
+	dataTypes := []DataType{
+		DataTypeString,
+		DataTypeInteger,
+		DataTypeIPAddr,
+		DataTypeIPv6Addr,
+		DataTypeDate,
+		DataTypeOctets,
+		DataTypeABinary,
+		DataTypeTLV, // unsupported by DecodeValue; must error, not panic
+	}
+
+	f.Add(uint8(0), []byte("hello"))
+	f.Add(uint8(1), []byte{0, 0, 0, 42})
+	f.Add(uint8(2), []byte{10, 0, 0, 1})
+	f.Add(uint8(7), []byte{1, 2, 3})
+
+	f.Fuzz(func(_ *testing.T, typeIdx uint8, data []byte) {
+		dataType := dataTypes[int(typeIdx)%len(dataTypes)]
+		_, _ = DecodeValue(data, dataType) // must not panic
+	})
+}
+
 func BenchmarkEncodeString(b *testing.B) {
 	str := "testuser"
 	b.ReportAllocs()

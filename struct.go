@@ -36,14 +36,26 @@ func structMemberWidth(child *AttributeDefinition) (int, error) {
 // EncodeStruct encodes a map of child values into a fixed-layout struct byte stream.
 // Members are written sequentially in the order their definitions appear in parent.Children,
 // with no per-field type/length header. Every member must be supplied; fixed-width scalar
-// types determine their own width, while variable-width members (string, octets) are padded
-// or truncated to their declared Size.
+// types determine their own width, while variable-width members (string, octets) are
+// zero-padded to their declared Size. A value longer than its declared Size is an error.
 func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, error) {
 	if parent == nil {
 		return nil, fmt.Errorf("nil parent attribute")
 	}
 
-	var out []byte
+	total := 0
+	for _, child := range parent.Children {
+		width, err := structMemberWidth(child)
+		if err != nil {
+			return nil, err
+		}
+		total += width
+	}
+
+	// Single output buffer; members are written in place and the zeroed buffer
+	// provides the padding for short variable-width members
+	out := make([]byte, total)
+	offset := 0
 	for _, child := range parent.Children {
 		raw, ok := values[child.Name]
 		if !ok {
@@ -60,18 +72,16 @@ func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, e
 			return nil, fmt.Errorf("failed to encode struct member %q: %w", child.Name, err)
 		}
 
-		field := make([]byte, width)
 		if _, fixed := fixedWidthFor(child.DataType); fixed {
 			if len(encoded) != width {
 				return nil, fmt.Errorf("struct member %q encoded to %d bytes, expected %d", child.Name, len(encoded), width)
 			}
-			copy(field, encoded)
-		} else {
-			// Variable-width member: copy up to Size bytes, zero-padded.
-			copy(field, encoded)
+		} else if len(encoded) > width {
+			// Variable-width member: zero-padded, but silent truncation loses data
+			return nil, fmt.Errorf("struct member %q encoded to %d bytes, exceeds declared size %d", child.Name, len(encoded), width)
 		}
-
-		out = append(out, field...)
+		copy(out[offset:offset+width], encoded)
+		offset += width
 	}
 
 	return out, nil

@@ -1,6 +1,7 @@
 package goradius
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -428,4 +429,32 @@ func BenchmarkVSARoundTrip(b *testing.B) {
 		attr := va.ToVSA()
 		_, _ = ParseVSA(attr)
 	}
+}
+
+// FuzzParseVSA ensures VSA parsing never panics on arbitrary payloads and that a
+// successfully parsed VSA re-encodes to the identical attribute value.
+func FuzzParseVSA(f *testing.F) {
+	valid := NewVendorAttribute(4874, 13, []byte("8.8.8.8")).ToVSA()
+	f.Add(valid.Value)
+	f.Add([]byte{})
+	f.Add([]byte{0, 0, 19, 10, 13, 2})          // vendor length mismatch
+	f.Add([]byte{0, 0, 19, 10, 13, 9, 1, 2, 3}) // consistent vendor length
+
+	f.Fuzz(func(t *testing.T, payload []byte) {
+		attr := &Attribute{
+			Type:   AttributeTypeVendorSpecific,
+			Length: uint8(len(payload) + AttributeHeaderLength),
+			Value:  payload,
+		}
+
+		va, err := ParseVSA(attr)
+		if err != nil {
+			return
+		}
+
+		reencoded := va.ToVSA()
+		if !bytes.Equal(reencoded.Value, payload) {
+			t.Fatalf("VSA round trip mismatch: in=%x out=%x", payload, reencoded.Value)
+		}
+	})
 }

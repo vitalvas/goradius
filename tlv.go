@@ -1,8 +1,9 @@
 package goradius
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 // tlvChildHeaderLength is the length of a TLV sub-attribute header (child type + child length).
@@ -49,7 +50,7 @@ func EncodeTLV(parent *AttributeDefinition, values map[string]any) ([]byte, erro
 	}
 
 	// Stable, deterministic ordering by child ID.
-	sort.Slice(encoded, func(i, j int) bool { return encoded[i].id < encoded[j].id })
+	slices.SortFunc(encoded, func(a, b encodedChild) int { return cmp.Compare(a.id, b.id) })
 
 	total := 0
 	for _, e := range encoded {

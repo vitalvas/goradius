@@ -1,9 +1,12 @@
 package goradius
 
-import ()
-
-// NewResponse creates a new Response with the request identifier and appropriate default response code
+// NewResponse creates a new Response with the request identifier and appropriate default response code.
+// A nil request (or one without a packet) yields a Response whose methods are all no-ops.
 func NewResponse(req *Request) Response {
+	if req == nil || req.packet == nil {
+		return Response{}
+	}
+
 	// Set default response code based on request type
 	var responseCode Code
 	switch req.packet.Code {
@@ -22,7 +25,7 @@ func NewResponse(req *Request) Response {
 	pkt := NewPacket(responseCode, req.packet.Identifier)
 
 	// Set dictionary from request packet
-	if req.packet != nil && req.packet.Dict != nil {
+	if req.packet.Dict != nil {
 		pkt.Dict = req.packet.Dict
 	}
 

@@ -57,25 +57,14 @@ func Decode(data []byte) (*Packet, error) {
 	var authenticator [AuthenticatorLength]byte
 	copy(authenticator[:], data[4:20])
 
-	// Estimate attribute count: average attribute is ~10 bytes, so estimate capacity
-	estimatedAttrs := max(int(length-PacketHeaderLength)/10, 4)
-
-	packet := &Packet{
-		Code:          code,
-		Identifier:    identifier,
-		Length:        length,
-		Authenticator: authenticator,
-		Attributes:    make([]*Attribute, 0, estimatedAttrs),
-	}
-
-	// Parse attributes
+	// First pass: validate attribute framing and count attributes
+	attrCount := 0
 	offset := PacketHeaderLength
 	for offset < int(length) {
 		if offset+AttributeHeaderLength > int(length) {
 			return nil, fmt.Errorf("incomplete attribute header at offset %d", offset)
 		}
 
-		attrType := data[offset]
 		attrLength := data[offset+1]
 
 		if attrLength < AttributeHeaderLength {
@@ -87,25 +76,48 @@ func Decode(data []byte) (*Packet, error) {
 				offset, attrLength, length)
 		}
 
-		attrValue := make([]byte, int(attrLength)-AttributeHeaderLength)
-		copy(attrValue, data[offset+2:offset+int(attrLength)])
+		attrCount++
+		offset += int(attrLength)
+	}
 
-		attr := &Attribute{
+	packet := &Packet{
+		Code:          code,
+		Identifier:    identifier,
+		Length:        length,
+		Authenticator: authenticator,
+		Attributes:    make([]*Attribute, attrCount),
+	}
+
+	// Second pass: one backing buffer for all values and one slab for all
+	// attributes instead of two allocations per attribute
+	valueBuf := make([]byte, int(length)-PacketHeaderLength)
+	copy(valueBuf, data[PacketHeaderLength:length])
+	slab := make([]Attribute, attrCount)
+
+	offset = 0
+	for i := range slab {
+		attrType := valueBuf[offset]
+		attrLength := int(valueBuf[offset+1])
+		end := offset + attrLength
+
+		// The full slice expression caps capacity so a caller appending to one
+		// attribute's value cannot overwrite the neighboring attribute's bytes
+		attrValue := valueBuf[offset+AttributeHeaderLength : end : end]
+
+		slab[i] = Attribute{
 			Type:   attrType,
-			Length: attrLength,
+			Length: uint8(attrLength),
 			Value:  attrValue,
 		}
 
 		// Check if this is a tagged attribute (for known tagged attribute types)
-		if isTaggedAttributeType(attrType) && len(attrValue) > 0 {
-			// First byte might be a tag (1-31, 0 means no tag)
-			if attrValue[0] >= 1 && attrValue[0] <= 31 {
-				attr.Tag = attrValue[0]
-			}
+		// First byte might be a tag (1-31, 0 means no tag)
+		if isTaggedAttributeType(attrType) && len(attrValue) > 0 && attrValue[0] >= 1 && attrValue[0] <= 31 {
+			slab[i].Tag = attrValue[0]
 		}
 
-		packet.Attributes = append(packet.Attributes, attr)
-		offset += int(attrLength)
+		packet.Attributes[i] = &slab[i]
+		offset = end
 	}
 
 	return packet, nil

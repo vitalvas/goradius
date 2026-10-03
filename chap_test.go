@@ -219,3 +219,24 @@ func BenchmarkCheckCHAPPassword(b *testing.B) {
 		_ = CheckCHAPPassword(chapPassword, password, challenge)
 	}
 }
+
+// FuzzCheckCHAPPassword ensures CHAP verification never panics and that a response
+// generated for any identifier/password/challenge always verifies.
+func FuzzCheckCHAPPassword(f *testing.F) {
+	f.Add(uint8(1), []byte("password"), []byte("challenge-16-byt"))
+	f.Add(uint8(0), []byte{}, []byte{})
+	f.Add(uint8(255), []byte("p"), []byte("c"))
+
+	f.Fuzz(func(t *testing.T, identifier uint8, password, challenge []byte) {
+		response := GenerateCHAPResponse(identifier, password, challenge)
+		if len(response) != 1+CHAPResponseLength {
+			t.Fatalf("CHAP response length %d, want %d", len(response), 1+CHAPResponseLength)
+		}
+		if !CheckCHAPPassword(response, password, challenge) {
+			t.Fatal("generated CHAP response failed verification")
+		}
+
+		// Arbitrary (likely malformed) chap password must not panic.
+		_ = CheckCHAPPassword(password, challenge, response)
+	})
+}

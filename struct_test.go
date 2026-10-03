@@ -58,6 +58,16 @@ func TestEncodeStruct(t *testing.T) {
 		assert.Contains(t, err.Error(), "requires a Size hint")
 	})
 
+	t.Run("oversized variable member", func(t *testing.T) {
+		_, err := EncodeStruct(parent, map[string]any{
+			"s-count": uint32(1),
+			"s-addr":  "10.0.0.1",
+			"s-label": "hello", // declared Size is 4
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds declared size")
+	})
+
 	t.Run("nil parent", func(t *testing.T) {
 		_, err := EncodeStruct(nil, map[string]any{})
 		require.Error(t, err)

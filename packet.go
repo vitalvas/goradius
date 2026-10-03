@@ -264,6 +264,10 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 				removed++
 			}
 		}
+		// Invalidate VSA cache: removals shift the indices of subsequent VSAs
+		if removed > 0 {
+			p.vsaCache = nil
+		}
 		return removed
 	}
 
@@ -331,7 +335,7 @@ func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroM
 }
 
 // calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret) per RFC 2865 Section 3
-func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte, zeroMessageAuth bool) [AuthenticatorLength]byte {
+func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
 	// Pre-allocate with capacity for secret to avoid reallocation
 	capacity := int(p.Length) + len(secret)
 	packetBytes := make([]byte, int(p.Length), capacity)
@@ -346,14 +350,8 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 	for _, attr := range p.Attributes {
 		packetBytes[offset] = attr.Type
 		packetBytes[offset+1] = attr.Length
-		// Zero out Message-Authenticator when calculating Request Authenticator
-		if zeroMessageAuth && attr.Type == AttributeTypeMessageAuthenticator {
-			// Leave as zeros (already zeroed by make)
-			offset += int(attr.Length)
-		} else {
-			copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
-			offset += int(attr.Length)
-		}
+		copy(packetBytes[offset+2:offset+int(attr.Length)], attr.Value)
+		offset += int(attr.Length)
 	}
 
 	packetBytes = append(packetBytes, secret...)
@@ -363,25 +361,32 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 // CalculateResponseAuthenticator calculates the Response Authenticator per RFC 2865 Section 3
 // ResponseAuth = MD5(Code + ID + Length + RequestAuth + Attributes + Secret)
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
-	return p.calculateAuthenticator(secret, requestAuthenticator, false)
+	return p.calculateAuthenticator(secret, requestAuthenticator)
 }
 
 // CalculateRequestAuthenticator calculates the Request Authenticator for Accounting-Request (RFC 2866 Section 4.1),
-// CoA-Request and Disconnect-Request (RFC 5176 Section 2.3)
+// CoA-Request and Disconnect-Request (RFC 5176 Section 3.3)
 // RequestAuth = MD5(Code + ID + Length + 16 zero octets + Attributes + Secret)
-// Message-Authenticator is zeroed during calculation per RFC 2869 Section 5.14
+// Per RFC 5176 Section 3.4 the Message-Authenticator, when present, is calculated and
+// inserted before this call, so its real value is covered by the hash.
 func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLength]byte {
 	var nullAuth [AuthenticatorLength]byte
-	return p.calculateAuthenticator(secret, nullAuth, true)
+	return p.calculateAuthenticator(secret, nullAuth)
 }
 
 // calculateMessageAuthenticator calculates the Message-Authenticator attribute value per RFC 2869 Section 5.14
 // MessageAuth = HMAC-MD5(packet with Message-Authenticator zeroed, secret)
 func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
 	var auth [AuthenticatorLength]byte
-	if p.Code == CodeAccessRequest || p.Code == CodeAccountingRequest {
+	switch p.Code {
+	case CodeAccessRequest:
+		// RFC 2869 Section 5.14: computed with the random Request Authenticator in place
 		auth = p.Authenticator
-	} else {
+	case CodeAccountingRequest, CodeCoARequest, CodeDisconnectRequest:
+		// RFC 5176 Section 3.4: the Request Authenticator field is considered to be
+		// sixteen octets of zero while computing the Message-Authenticator
+	default:
+		// Responses use the Request Authenticator of the corresponding request
 		auth = requestAuthenticator
 	}
 
@@ -419,13 +424,13 @@ func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator 
 
 // AddMessageAuthenticator adds a Message-Authenticator attribute to the packet
 func (p *Packet) AddMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) {
-	placeholder := make([]byte, 16)
-	attr := NewAttribute(AttributeTypeMessageAuthenticator, placeholder)
+	// The zeroed placeholder must be present during the HMAC computation so the
+	// attribute's type and length bytes are covered; the result is copied into it.
+	attr := NewAttribute(AttributeTypeMessageAuthenticator, make([]byte, 16))
 	p.AddAttribute(attr)
 
 	mac := p.calculateMessageAuthenticator(secret, requestAuthenticator)
-
-	p.Attributes[len(p.Attributes)-1].Value = mac[:]
+	copy(attr.Value, mac[:])
 }
 
 // IsValid performs basic validation of the packet
@@ -445,6 +450,10 @@ func (p *Packet) IsValid() error {
 	// Calculate expected length from attributes
 	expectedLength := uint16(PacketHeaderLength)
 	for _, attr := range p.Attributes {
+		// Catches uint8 overflow from constructors given oversized values
+		if int(attr.Length) != len(attr.Value)+AttributeHeaderLength {
+			return fmt.Errorf("attribute type %d length %d does not match value length %d", attr.Type, attr.Length, len(attr.Value))
+		}
 		expectedLength += uint16(attr.Length)
 	}
 
@@ -457,21 +466,7 @@ func (p *Packet) IsValid() error {
 
 // AddAttributeByName adds an attribute to the packet using dictionary lookup with full feature support
 func (p *Packet) AddAttributeByName(name string, value any) error {
-	if p.Dict == nil {
-		return fmt.Errorf("no dictionary loaded")
-	}
-
-	// Try standard attribute first
-	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
-		// Filter out attributes that don't match the packet type
-		if !p.isAttributeAllowed(attrDef) {
-			return nil
-		}
-		return p.addStandardAttribute(name, value, attrDef, nil, [16]byte{})
-	}
-
-	// Handle vendor attributes
-	return p.addVendorAttributeByName(name, value, nil, [16]byte{})
+	return p.AddAttributeByNameWithSecret(name, value, nil, [16]byte{})
 }
 
 // AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
@@ -487,6 +482,16 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []b
 			return nil
 		}
 		return p.addStandardAttribute(name, value, attrDef, secret, authenticator)
+	}
+
+	// Tagged standard attribute using "name:tag" syntax (RFC 2868 tunnel attributes)
+	if base, _, found := strings.Cut(name, ":"); found {
+		if attrDef, exists := p.Dict.LookupStandardByName(base); exists {
+			if !p.isAttributeAllowed(attrDef) {
+				return nil
+			}
+			return p.addStandardAttribute(name, value, attrDef, secret, authenticator)
+		}
 	}
 
 	// Handle vendor attributes
@@ -783,9 +788,9 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 		encrypted[i] = plaintext[i] ^ hash[i]
 	}
 
-	// Subsequent blocks: XOR with MD5(secret + previous encrypted block)
-	hashInputSubseq := make([]byte, len(secret)+16)
-	copy(hashInputSubseq, secret)
+	// Subsequent blocks: XOR with MD5(secret + previous encrypted block),
+	// reusing the prefix of the first-block hash input buffer
+	hashInputSubseq := hashInput[:len(secret)+16]
 	for block := 1; block < paddedLen/16; block++ {
 		offset := block * 16
 		prevBlock := encrypted[offset-16 : offset]
@@ -811,6 +816,30 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 	// For simplicity, we'll use the same algorithm as User-Password
 	// In a real implementation, this might differ based on Ascend's specification
 	return encryptUserPassword(value, secret, authenticator)
+}
+
+// squeezeTaggedInteger converts a 4-octet encoded integer into the 3-octet form used
+// by tagged integer attributes (RFC 2868 Sections 3.1-3.3). Values that do not fit in
+// three octets are an error. Non-integer values pass through unchanged.
+func squeezeTaggedInteger(attrDef *AttributeDefinition, attrValue []byte) ([]byte, error) {
+	if attrDef.DataType != DataTypeInteger || len(attrValue) != 4 {
+		return attrValue, nil
+	}
+	if attrValue[0] != 0 {
+		return nil, fmt.Errorf("attribute %q value exceeds three-octet tagged integer range", attrDef.Name)
+	}
+	return attrValue[1:], nil
+}
+
+// padTaggedInteger restores the 4-octet integer form from the 3-octet value carried by
+// tagged integer attributes (RFC 2868 Sections 3.1-3.3) so DecodeInteger can parse it.
+func padTaggedInteger(attrDef *AttributeDefinition, value []byte) []byte {
+	if attrDef.DataType != DataTypeInteger || len(value) != 3 {
+		return value
+	}
+	padded := make([]byte, 4)
+	copy(padded[1:], value)
+	return padded
 }
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
@@ -859,7 +888,12 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
 		}
 
-		if attrDef.HasTag && tag > 0 {
+		if attrDef.HasTag {
+			attrValue, err = squeezeTaggedInteger(attrDef, attrValue)
+			if err != nil {
+				return err
+			}
+			// RFC 2868: tagged attributes always carry the tag octet; 0 means untagged
 			// Validate length for tagged attribute (value + 1 byte for tag)
 			if len(attrValue)+1 > MaxAttributeValueLength {
 				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxAttributeValueLength)
@@ -938,7 +972,12 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 		}
 
 		var vsa *VendorAttribute
-		if attrDef.HasTag && tag > 0 {
+		if attrDef.HasTag {
+			attrValue, err = squeezeTaggedInteger(attrDef, attrValue)
+			if err != nil {
+				return err
+			}
+			// RFC 2868: tagged attributes always carry the tag octet; 0 means untagged
 			// Validate length for tagged vendor attribute (value + 1 byte for tag)
 			if len(attrValue)+1 > MaxVSAValueLength {
 				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxVSAValueLength)
@@ -965,8 +1004,8 @@ func (p *Packet) ListAttributes() []string {
 		return []string{}
 	}
 
-	seen := make(map[string]struct{})
-	var result []string
+	seen := make(map[string]struct{}, len(p.Attributes))
+	result := make([]string, 0, len(p.Attributes))
 
 	for i, attr := range p.Attributes {
 		var name string
@@ -1026,7 +1065,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 				value := attr.Value
 				if attrDef.HasTag && len(attr.Value) > 0 {
 					tag = attr.Value[0]
-					value = attr.Value[1:] // Strip tag byte
+					value = padTaggedInteger(attrDef, attr.Value[1:]) // Strip tag byte
 				}
 
 				result = append(result, AttributeValue{
@@ -1067,7 +1106,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 					value := va.Value
 					if attrDef.HasTag && len(va.Value) > 0 {
 						tag = va.Value[0]
-						value = va.Value[1:] // Strip tag byte
+						value = padTaggedInteger(attrDef, va.Value[1:]) // Strip tag byte
 					}
 
 					result = append(result, AttributeValue{

@@ -912,15 +912,11 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 		pkt := NewPacket(CodeAccountingRequest, 1)
 		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
 
-		// Add Message-Authenticator placeholder (affects packet length for Request Authenticator calculation)
+		// RFC 5176 Section 3.4 ordering: Message-Authenticator first (computed with a
+		// zeroed Request Authenticator field), then the Request Authenticator over
+		// the packet carrying the real Message-Authenticator value.
 		pkt.AddMessageAuthenticator(secret, [16]byte{})
-
-		// Calculate Request Authenticator with Message-Authenticator placeholder included
 		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
-
-		// Recalculate Message-Authenticator with the computed Request Authenticator
-		pkt.RemoveAttributes(AttributeTypeMessageAuthenticator)
-		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
 
 		respPkt := NewPacket(CodeAccountingResponse, 1)
 		handler.SetRadiusResponse(Response{packet: respPkt})
@@ -2332,4 +2328,89 @@ func TestServerProcessRawPacket(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, reply)
 	})
+}
+
+func BenchmarkProcessRawPacket(b *testing.B) {
+	dict, err := NewDefault()
+	require.NoError(b, err)
+	secret := []byte("testing123")
+
+	handler := &combinedTestHandler{
+		secretResp: SecretResponse{Secret: secret},
+		radiusHandler: HandlerFunc(func(req *Request) (Response, error) {
+			resp := NewResponse(req)
+			resp.SetCode(CodeAccessAccept)
+			return resp, nil
+		}),
+	}
+
+	srv, err := NewServer(
+		WithHandler(handler),
+		WithDictionary(dict),
+		WithRequireMessageAuthenticator(false),
+	)
+	require.NoError(b, err)
+
+	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+	require.NoError(b, pkt.AddAttributeByName("user-name", "benchuser"))
+	data, err := pkt.Encode()
+	require.NoError(b, err)
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = srv.ProcessRawPacket(data, clientAddr)
+	}
+}
+
+func TestServerServeTwiceNoPanic(t *testing.T) {
+	srv, err := NewServer()
+	require.NoError(t, err)
+
+	conn1, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	transport1 := NewUDPTransport(conn1)
+	go srv.Serve(transport1)
+	require.NotNil(t, srv.Addr())
+
+	conn2, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+	require.NoError(t, err)
+	transport2 := NewUDPTransport(conn2)
+	require.NoError(t, transport2.Close())
+
+	// Serving a second transport (e.g. UDP and TCP on one server) must not
+	// panic on closing the already-closed ready channel.
+	assert.NotPanics(t, func() { _ = srv.Serve(transport2) })
+
+	require.NoError(t, transport1.Close())
+}
+
+func TestServerUseConcurrentWithRequests(t *testing.T) {
+	srv, err := NewServer(
+		WithHandler(HandlerFunc(func(*Request) (Response, error) { return Response{}, nil })),
+		WithRequireMessageAuthenticator(false),
+	)
+	require.NoError(t, err)
+
+	pkt := NewPacket(CodeAccessRequest, 1)
+	data, err := pkt.Encode()
+	require.NoError(t, err)
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812}
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				_, _ = srv.ProcessRawPacket(data, clientAddr)
+			}
+		}()
+	}
+
+	// Adding middleware while requests are in flight must be race-free.
+	for range 100 {
+		srv.Use(func(next Handler) Handler { return next })
+	}
+	wg.Wait()
 }

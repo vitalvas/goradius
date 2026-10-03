@@ -38,6 +38,20 @@ func TestNewResponse(t *testing.T) {
 			assert.Equal(t, uint8(42), resp.packet.Identifier)
 		})
 	}
+
+	t.Run("nil request", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			resp := NewResponse(nil)
+			assert.Nil(t, resp.packet)
+		})
+	})
+
+	t.Run("request without packet", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			resp := NewResponse(&Request{})
+			assert.Nil(t, resp.packet)
+		})
+	})
 }
 
 func TestNewResponseWithDictionary(t *testing.T) {

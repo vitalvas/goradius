@@ -68,7 +68,8 @@ func NewLongExtendedAttributes(baseType, extType uint8, value []byte) ([]*Attrib
 		return nil, fmt.Errorf("invalid long extended base type %d (must be 245-246)", baseType)
 	}
 
-	var attrs []*Attribute
+	fragments := max((len(value)+MaxLongExtendedValueLength-1)/MaxLongExtendedValueLength, 1)
+	attrs := make([]*Attribute, 0, fragments)
 	remaining := value
 	for {
 		chunk := remaining
