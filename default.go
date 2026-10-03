@@ -23,6 +23,7 @@ package goradius
 //   - Alcatel vendor attributes
 //   - Alcatel-Lucent AAA vendor attributes
 //   - Alcatel-ESAM vendor attributes (format=2,1)
+//   - Nokia SR (7750 SR / Timetra) vendor attributes
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -114,6 +115,10 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(AlcatelESAMVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(NokiaSRVendorDefinition); err != nil {
 		return nil, err
 	}
 

@@ -51,6 +51,7 @@ func TestNewDefault(t *testing.T) {
 		{3041, "alcatel", "aat-client-primary-dns", 5},
 		{831, "alu-aaa", "alu-aaa-service-profile", 9},
 		{637, "alcatel-esam", "alcatel-esam-vrf-name", 0x0700},
+		{6527, "nokia-sr", "nokia-sr-sla-prof-str", 13},
 	}
 
 	for _, v := range vendors {
