@@ -721,7 +721,7 @@ func TestAddVendorWithChildren(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, validateAttributeDefinition(vendor.Attributes[0]))
+	require.NoError(t, validateAttributeDefinition(vendor.Attributes[0], false))
 
 	dict := NewDictionary()
 	require.NoError(t, dict.AddVendor(vendor))

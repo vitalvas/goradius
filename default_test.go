@@ -56,6 +56,7 @@ func TestNewDefault(t *testing.T) {
 		{193, "ericsson", "ericsson-sitekeeper-name", 58},
 		{2352, "ericsson-ab", "ericsson-ab-service-name", 190},
 		{10923, "ericsson-pcn", "ericsson-pcn-suggested-rule-space", 30},
+		{10415, "3gpp", "3gpp-imsi", 1},
 	}
 
 	for _, v := range vendors {

@@ -73,16 +73,17 @@ func (d *Dictionary) indexChildren(top *AttributeDefinition) {
 
 // validateAttributeDefinition validates that attribute names and value keys are lowercase,
 // that every attribute carries a non-zero ID, and recursively validates child
-// attributes, rejecting duplicate child IDs within a parent.
-func validateAttributeDefinition(attr *AttributeDefinition) error {
+// attributes, rejecting duplicate child IDs within a parent. allowZeroID is true
+// only for children of a union member, whose ID is a key value (0 is valid).
+func validateAttributeDefinition(attr *AttributeDefinition, allowZeroID bool) error {
 	if attr.Name != strings.ToLower(attr.Name) {
 		return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
 	}
 
-	// ID is required and must be non-zero: RADIUS attribute types and vendor
-	// sub-types are 1-255, and struct/tlv/evs children use a 1-based index.
-	// A zero ID is the unset zero value and is never valid.
-	if attr.ID == 0 {
+	// ID is required: RADIUS attribute types and vendor sub-types are 1-255, and
+	// struct/tlv/evs children use a 1-based index. A zero ID is the unset zero
+	// value and is rejected, except for union variants keyed by value 0.
+	if attr.ID == 0 && !allowZeroID {
 		return fmt.Errorf("attribute %q has no ID (ID is required and must be non-zero)", attr.Name)
 	}
 
@@ -91,6 +92,10 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 			return fmt.Errorf("attribute %q value key %q must be lowercase", attr.Name, key)
 		}
 	}
+
+	// Children of a union member are keyed by their ID as a value (0 is valid);
+	// all other children use a non-zero 1-based or sub-type ID.
+	childAllowZero := attr.DataType == DataTypeUnion
 
 	// Every child must carry a unique ID within its parent. For tlv/evs
 	// children the ID is the on-wire sub-type; for struct members it is the
@@ -109,7 +114,7 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 		}
 		seenChildNames[child.Name] = struct{}{}
 
-		if err := validateAttributeDefinition(child); err != nil {
+		if err := validateAttributeDefinition(child, childAllowZero); err != nil {
 			return err
 		}
 	}
@@ -154,7 +159,7 @@ func validateBatch(attrs []*AttributeDefinition, existingByName map[string]*Attr
 	}
 
 	for _, attr := range attrs {
-		if err := validateAttributeDefinition(attr); err != nil {
+		if err := validateAttributeDefinition(attr, false); err != nil {
 			return err
 		}
 

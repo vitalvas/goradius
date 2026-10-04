@@ -24,6 +24,17 @@ const (
 	DataTypeSigned    DataType = "signed"     // 32-bit signed integer (4 octets)
 	DataTypeComboIP   DataType = "combo-ip"   // IPv4 (4 octets) or IPv6 (16 octets) address
 	DataTypeTimeDelta DataType = "time_delta" // Duration in seconds, 32-bit unsigned (4 octets)
+
+	// DataTypeBits is a sub-octet unsigned integer field, only valid as a
+	// struct member. Consecutive bit members are packed MSB-first across octets
+	// and must together fill a whole number of octets. The width is given by the
+	// member's Bits field (FreeRADIUS "bit[N]").
+	DataTypeBits DataType = "bits"
+	// DataTypeUnion is a struct member whose layout is selected at runtime by a
+	// prior "key" member's value (FreeRADIUS "union key=..."). The variant
+	// layouts are the member's Children, keyed by child ID. It is the final
+	// member of its struct and consumes the remaining bytes.
+	DataTypeUnion DataType = "union"
 )
 
 // EncryptionType represents the encryption type of an attribute
@@ -49,6 +60,13 @@ type AttributeDefinition struct {
 	Extended   bool              `yaml:"extended,omitempty" json:"extended,omitempty"`
 	Size       int               `yaml:"size,omitempty" json:"size,omitempty"`
 	Values     map[string]uint32 `yaml:"values,omitempty" json:"values,omitempty"`
+
+	// Bits is the width of a DataTypeBits struct member (FreeRADIUS "bit[N]").
+	Bits int `yaml:"bits,omitempty" json:"bits,omitempty"`
+
+	// UnionKey names the sibling struct member (by name) whose value selects
+	// this union member's layout. Each child's ID is the matching key value.
+	UnionKey string `yaml:"union_key,omitempty" json:"union_key,omitempty"`
 
 	// VendorID and VendorType identify the vendor for an Extended-Vendor-Specific (EVS)
 	// attribute (RFC 6929 Section 2.5). They are only meaningful when DataType is evs.

@@ -28,6 +28,7 @@ package goradius
 //   - Ericsson vendor attributes
 //   - Ericsson-AB (Redback / SmartEdge) vendor attributes
 //   - Ericsson Packet Core Networks vendor attributes
+//   - 3GPP vendor attributes
 //
 // Returns an error if there are duplicate attribute names, which would indicate a programming error
 // in the dictionary definitions.
@@ -139,6 +140,10 @@ func NewDefault() (*Dictionary, error) {
 	}
 
 	if err := dict.AddVendor(EricssonPCNVendorDefinition); err != nil {
+		return nil, err
+	}
+
+	if err := dict.AddVendor(ThreeGPPVendorDefinition); err != nil {
 		return nil, err
 	}
 

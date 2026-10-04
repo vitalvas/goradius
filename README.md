@@ -14,7 +14,7 @@ RFC 5176, RFC 6613, RFC 6614, RFC 6929).
   DSL Forum, Microsoft, F5, A10, Arista, Arista WiFi,
   Ciena, Benu, ZTE, Huawei, Alcatel, Alcatel-Lucent AAA,
   Alcatel-ESAM, Nokia SR, ADVA, Ericsson,
-  Ericsson-AB, Ericsson Packet Core Networks)
+  Ericsson-AB, Ericsson Packet Core Networks, 3GPP)
 - Vendor-Specific Attributes (VSA) and tagged
   attributes (RFC 2868)
 - IPv6 attributes: ipv6addr, ipv6prefix, and

@@ -221,6 +221,112 @@ func TestStructTrailingVariableMemberMustBeLast(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestStructBitMembers(t *testing.T) {
+	// 3 + 1 + 4 bits = one octet, packed MSB-first.
+	parent := &AttributeDefinition{
+		Name:     "bits-struct",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "bm-spare", DataType: DataTypeBits, Bits: 3},
+			{ID: 2, Name: "bm-flag", DataType: DataTypeBits, Bits: 1},
+			{ID: 3, Name: "bm-code", DataType: DataTypeBits, Bits: 4},
+		},
+	}
+
+	enc, err := EncodeStruct(parent, map[string]any{
+		"bm-spare": uint8(0b101),
+		"bm-flag":  uint8(1),
+		"bm-code":  uint8(0b0110),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []byte{0xB6}, enc) // 101 1 0110
+
+	dec, err := DecodeStruct(parent, enc)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0b101), dec["bm-spare"])
+	assert.Equal(t, uint64(1), dec["bm-flag"])
+	assert.Equal(t, uint64(0b0110), dec["bm-code"])
+
+	t.Run("bits must fill whole octets", func(t *testing.T) {
+		bad := &AttributeDefinition{
+			Name:     "odd-bits",
+			DataType: DataTypeStruct,
+			Children: []*AttributeDefinition{
+				{ID: 1, Name: "ob-a", DataType: DataTypeBits, Bits: 3},
+			},
+		}
+		_, err := EncodeStruct(bad, map[string]any{"ob-a": uint8(1)})
+		assert.Error(t, err)
+	})
+
+	t.Run("value overflow rejected", func(t *testing.T) {
+		_, err := EncodeStruct(parent, map[string]any{
+			"bm-spare": uint8(8), // needs 4 bits, field is 3
+			"bm-flag":  uint8(0),
+			"bm-code":  uint8(0),
+		})
+		assert.Error(t, err)
+	})
+}
+
+func TestStructUnionMember(t *testing.T) {
+	parent := &AttributeDefinition{
+		Name:     "u-struct",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "u-type", DataType: DataTypeByte},
+			{
+				ID:       2,
+				Name:     "u-data",
+				DataType: DataTypeUnion,
+				UnionKey: "u-type",
+				Children: []*AttributeDefinition{
+					{
+						ID:       0,
+						Name:     "u-v0",
+						DataType: DataTypeStruct,
+						Children: []*AttributeDefinition{
+							{ID: 1, Name: "u-v0-a", DataType: DataTypeShort},
+						},
+					},
+					{
+						ID:       1,
+						Name:     "u-v1",
+						DataType: DataTypeStruct,
+						Children: []*AttributeDefinition{
+							{ID: 1, Name: "u-v1-x", DataType: DataTypeShort},
+							{ID: 2, Name: "u-v1-y", DataType: DataTypeShort},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("variant 0 selected by key", func(t *testing.T) {
+		enc, err := EncodeStruct(parent, map[string]any{
+			"u-type": uint8(0),
+			"u-data": map[string]any{"u-v0-a": uint16(0xABCD)},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []byte{0x00, 0xAB, 0xCD}, enc)
+
+		dec, err := DecodeStruct(parent, enc)
+		require.NoError(t, err)
+		assert.Equal(t, uint8(0), dec["u-type"])
+		sub := dec["u-data"].(map[string]any)
+		assert.Equal(t, uint16(0xABCD), sub["u-v0-a"])
+	})
+
+	t.Run("unknown key errors", func(t *testing.T) {
+		_, err := EncodeStruct(parent, map[string]any{
+			"u-type": uint8(9),
+			"u-data": map[string]any{},
+		})
+		assert.Error(t, err)
+	})
+}
+
 func TestPacketStructRoundTrip(t *testing.T) {
 	dict := NewDictionary()
 	require.NoError(t, dict.AddVendor(&VendorDefinition{
