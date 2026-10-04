@@ -45,17 +45,20 @@ func TestEncodeStruct(t *testing.T) {
 		assert.Contains(t, err.Error(), "missing member")
 	})
 
-	t.Run("variable member without size", func(t *testing.T) {
+	t.Run("non-trailing variable member without size", func(t *testing.T) {
+		// A variable-width member with no Size is only valid as the final
+		// member; here it is followed by another member, so it must error.
 		bad := &AttributeDefinition{
 			Name:     "bad-struct",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{ID: 1, Name: "bad-str", DataType: DataTypeString}, // no Size
+				{ID: 1, Name: "bad-str", DataType: DataTypeString}, // no Size, not last
+				{ID: 2, Name: "bad-int", DataType: DataTypeInteger},
 			},
 		}
-		_, err := EncodeStruct(bad, map[string]any{"bad-str": "x"})
+		_, err := EncodeStruct(bad, map[string]any{"bad-str": "x", "bad-int": uint32(1)})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "requires a Size hint")
+		assert.Contains(t, err.Error(), "must be the final member")
 	})
 
 	t.Run("oversized variable member", func(t *testing.T) {
@@ -113,17 +116,33 @@ func TestDecodeStruct(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("variable member without size", func(t *testing.T) {
+	t.Run("non-trailing variable member without size", func(t *testing.T) {
 		bad := &AttributeDefinition{
 			Name:     "bad-struct",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{ID: 1, Name: "bad-str", DataType: DataTypeString},
+				{ID: 1, Name: "bad-str", DataType: DataTypeString}, // no Size, not last
+				{ID: 2, Name: "bad-int", DataType: DataTypeInteger},
 			},
 		}
-		_, err := DecodeStruct(bad, []byte{1, 2, 3})
+		_, err := DecodeStruct(bad, []byte{1, 2, 3, 4, 5, 6, 7, 8})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "requires a Size hint")
+		assert.Contains(t, err.Error(), "must be the final member")
+	})
+
+	t.Run("trailing variable member consumes remainder", func(t *testing.T) {
+		parent := &AttributeDefinition{
+			Name:     "tail-struct",
+			DataType: DataTypeStruct,
+			Children: []*AttributeDefinition{
+				{ID: 1, Name: "ts-int", DataType: DataTypeInteger},
+				{ID: 2, Name: "ts-str", DataType: DataTypeString}, // no Size, last
+			},
+		}
+		decoded, err := DecodeStruct(parent, []byte{0, 0, 0, 9, 'h', 'i'})
+		require.NoError(t, err)
+		assert.Equal(t, uint32(9), decoded["ts-int"])
+		assert.Equal(t, "hi", decoded["ts-str"])
 	})
 }
 
@@ -154,6 +173,52 @@ func TestStructRoundTrip(t *testing.T) {
 	assert.Equal(t, uint32(305419896), decoded["rt-int"])
 	assert.True(t, net.ParseIP("2001:db8::abcd").Equal(decoded["rt-v6"].(net.IP)))
 	assert.Equal(t, "payload\x00", decoded["rt-str"])
+}
+
+// TestStructTrailingVariableMember covers a struct whose final member is a
+// string with no Size: it is written at its natural length and consumes the
+// remaining bytes on decode (the RFC 5580 Location-Information layout).
+func TestStructTrailingVariableMember(t *testing.T) {
+	parent := &AttributeDefinition{
+		Name:     "loc",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{Name: "index", DataType: DataTypeShort},
+			{Name: "code", DataType: DataTypeByte},
+			{Name: "ttl", DataType: DataTypeInteger64},
+			{Name: "method", DataType: DataTypeString},
+		},
+	}
+
+	encoded, err := EncodeStruct(parent, map[string]any{
+		"index":  uint16(5),
+		"code":   uint8(1),
+		"ttl":    uint64(3600),
+		"method": "802.11",
+	})
+	require.NoError(t, err)
+	// 2 + 1 + 8 + len("802.11")
+	assert.Len(t, encoded, 2+1+8+6)
+
+	decoded, err := DecodeStruct(parent, encoded)
+	require.NoError(t, err)
+	assert.Equal(t, uint16(5), decoded["index"])
+	assert.Equal(t, uint8(1), decoded["code"])
+	assert.Equal(t, uint64(3600), decoded["ttl"])
+	assert.Equal(t, "802.11", decoded["method"])
+}
+
+func TestStructTrailingVariableMemberMustBeLast(t *testing.T) {
+	parent := &AttributeDefinition{
+		Name:     "bad",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{Name: "tail", DataType: DataTypeString},
+			{Name: "after", DataType: DataTypeByte},
+		},
+	}
+	_, err := EncodeStruct(parent, map[string]any{"tail": "x", "after": uint8(1)})
+	assert.Error(t, err)
 }
 
 func TestPacketStructRoundTrip(t *testing.T) {

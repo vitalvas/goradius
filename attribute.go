@@ -13,6 +13,21 @@ type Attribute struct {
 	Length uint8
 	Value  []byte
 	Tag    uint8 // For tagged attributes per RFC 2868 (0 = no tag)
+
+	// encryption and encryptOffset defer value encryption until the packet
+	// authenticator is final. When encryption is non-empty, the bytes of Value
+	// from encryptOffset onward are plaintext and are encrypted in place by
+	// Packet.finalizeEncryption just before the packet is serialized. The
+	// offset skips any leading tag octet and, for a VSA, the vendor header.
+	// A zero encryption means the value is already final.
+	//
+	// vsaLengthPos and vsaLengthWidth locate the VSA Vendor-Length field within
+	// Value (0 width means this is not a VSA), so the length can be rewritten
+	// after encryption changes the inner data size.
+	encryption     EncryptionType
+	encryptOffset  int
+	vsaLengthPos   int
+	vsaLengthWidth int
 }
 
 // VendorAttribute represents a vendor-specific attribute (VSA) per RFC 2865 Section 5.26

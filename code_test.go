@@ -204,17 +204,18 @@ func TestAttributeUsageValidation_WithSecret(t *testing.T) {
 	assert.NoError(t, err)
 
 	secret := []byte("secret")
-	var auth [16]byte
 
 	// Test with request packet - should succeed and add attribute
 	reqPacket := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-	err = reqPacket.AddAttributeByNameWithSecret("user-password", "password", secret, auth)
+	reqPacket.Secret = secret
+	err = reqPacket.AddAttributeByName("user-password", "password")
 	assert.NoError(t, err, "Should allow request-only attribute in request packet")
 	assert.Equal(t, 1, len(reqPacket.Attributes), "Attribute should be added to request packet")
 
 	// Test with reply packet - should succeed but silently filter
 	replyPacket := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
-	err = replyPacket.AddAttributeByNameWithSecret("user-password", "password", secret, auth)
+	replyPacket.Secret = secret
+	err = replyPacket.AddAttributeByName("user-password", "password")
 	assert.NoError(t, err, "Should not return error for filtered attribute")
 	assert.Equal(t, 0, len(replyPacket.Attributes), "Attribute should be filtered out of reply packet")
 }

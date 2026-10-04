@@ -267,12 +267,18 @@ func (c *Client) CoA(attributes map[string]interface{}) (*Packet, error) {
 	if c.dict != nil {
 		pkt.Dict = c.dict
 	}
+	pkt.Secret = c.secret
 
 	for name, value := range attributes {
 		if err := pkt.AddAttributeByName(name, value); err != nil {
 			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
 		}
 	}
+
+	// RFC 2868 Section 3.5 / RFC 5176: in a CoA-Request the Request
+	// Authenticator is computed over the attributes, so encrypted attributes
+	// use a zero authenticator. Encrypt before any authenticator computation.
+	pkt.EncryptAttributes([16]byte{})
 
 	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
 	// Authenticator field zeroed and inserted first; the Request Authenticator is
@@ -298,12 +304,18 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*Packet, error) 
 	if c.dict != nil {
 		pkt.Dict = c.dict
 	}
+	pkt.Secret = c.secret
 
 	for name, value := range attributes {
 		if err := pkt.AddAttributeByName(name, value); err != nil {
 			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
 		}
 	}
+
+	// RFC 2868 Section 3.5 / RFC 5176: in a Disconnect-Request the Request
+	// Authenticator is computed over the attributes, so encrypted attributes
+	// use a zero authenticator. Encrypt before any authenticator computation.
+	pkt.EncryptAttributes([16]byte{})
 
 	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
 	// Authenticator field zeroed and inserted first; the Request Authenticator is
@@ -329,6 +341,7 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*Packet, erro
 	if c.dict != nil {
 		pkt.Dict = c.dict
 	}
+	pkt.Secret = c.secret
 
 	for name, value := range attributes {
 		if err := pkt.AddAttributeByName(name, value); err != nil {
@@ -342,6 +355,11 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*Packet, erro
 		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
+
+	// RFC 2865 Section 5.2 / RFC 2868: Access-Request encrypted attributes
+	// (User-Password, Tunnel-Password) use the random Request Authenticator, so
+	// encrypt after it is set and before the Message-Authenticator HMAC.
+	pkt.EncryptAttributes(pkt.Authenticator)
 
 	if c.useMessageAuth {
 		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
@@ -361,12 +379,18 @@ func (c *Client) AccountingRequest(attributes map[string]interface{}) (*Packet, 
 	if c.dict != nil {
 		pkt.Dict = c.dict
 	}
+	pkt.Secret = c.secret
 
 	for name, value := range attributes {
 		if err := pkt.AddAttributeByName(name, value); err != nil {
 			return nil, fmt.Errorf("failed to add attribute %q: %w", name, err)
 		}
 	}
+
+	// RFC 2868 Section 3.5: in an Accounting-Request the Request Authenticator
+	// is computed over the attributes, so encrypted attributes use a zero
+	// authenticator. Encrypt before any authenticator computation.
+	pkt.EncryptAttributes([16]byte{})
 
 	// Message-Authenticator is computed with the Request Authenticator field zeroed
 	// and inserted first, mirroring RFC 5176 Section 3.4; the Request Authenticator

@@ -29,6 +29,19 @@ type Dictionary struct {
 	// Reverse lookup: attribute name -> vendor ID (for vendor attributes only)
 	// This enables O(1) vendor lookup instead of O(n*m) iteration
 	attrNameToVendorID map[string]uint32
+
+	// childParentByName maps a container child's globally-unique name to its
+	// parent (top-level) attribute. This lets the flat packet interface address
+	// struct/tlv/evs members by their own name without nesting.
+	childParentByName map[string]*AttributeDefinition
+}
+
+// childParent resolves a flat child name to its parent attribute definition.
+func (d *Dictionary) childParent(name string) (*AttributeDefinition, bool) {
+	d.mu.RLock()
+	parent, ok := d.childParentByName[name]
+	d.mu.RUnlock()
+	return parent, ok
 }
 
 // NewDictionary creates a new empty dictionary with fast lookup indices
@@ -40,14 +53,37 @@ func NewDictionary() *Dictionary {
 		vendorAttrByID:     make(map[uint32]map[uint32]*AttributeDefinition),
 		allAttrByName:      make(map[string]*AttributeDefinition),
 		attrNameToVendorID: make(map[string]uint32),
+		childParentByName:  make(map[string]*AttributeDefinition),
 	}
 }
 
+// indexChildren records every child (recursively) of a top-level attribute in
+// childParentByName, pointing at the top-level parent so flat child names
+// resolve to the attribute that owns them.
+func (d *Dictionary) indexChildren(top *AttributeDefinition) {
+	var walk func(attr *AttributeDefinition)
+	walk = func(attr *AttributeDefinition) {
+		for _, child := range attr.Children {
+			d.childParentByName[child.Name] = top
+			walk(child)
+		}
+	}
+	walk(top)
+}
+
 // validateAttributeDefinition validates that attribute names and value keys are lowercase,
-// and recursively validates child attributes, rejecting duplicate child IDs within a parent.
+// that every attribute carries a non-zero ID, and recursively validates child
+// attributes, rejecting duplicate child IDs within a parent.
 func validateAttributeDefinition(attr *AttributeDefinition) error {
 	if attr.Name != strings.ToLower(attr.Name) {
 		return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
+	}
+
+	// ID is required and must be non-zero: RADIUS attribute types and vendor
+	// sub-types are 1-255, and struct/tlv/evs children use a 1-based index.
+	// A zero ID is the unset zero value and is never valid.
+	if attr.ID == 0 {
+		return fmt.Errorf("attribute %q has no ID (ID is required and must be non-zero)", attr.Name)
 	}
 
 	for key := range attr.Values {
@@ -56,20 +92,17 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 		}
 	}
 
-	// struct members are a positional fixed layout with no per-member ID, so
-	// their IDs are not meaningful and are not checked for uniqueness. tlv/evs
-	// children are ID-keyed (type+length encoded) and must have unique IDs.
-	checkChildIDs := attr.DataType != DataTypeStruct
-
+	// Every child must carry a unique ID within its parent. For tlv/evs
+	// children the ID is the on-wire sub-type; for struct members it is the
+	// 1-based positional index. A missing ID (the zero value) collides and is
+	// rejected, which guards against definitions that forget to set it.
 	seenChildIDs := make(map[uint32]string, len(attr.Children))
 	seenChildNames := make(map[string]struct{}, len(attr.Children))
 	for _, child := range attr.Children {
-		if checkChildIDs {
-			if existing, exists := seenChildIDs[child.ID]; exists {
-				return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
-			}
-			seenChildIDs[child.ID] = child.Name
+		if existing, exists := seenChildIDs[child.ID]; exists {
+			return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
 		}
+		seenChildIDs[child.ID] = child.Name
 
 		if _, exists := seenChildNames[child.Name]; exists {
 			return fmt.Errorf("attribute %q has duplicate child name %q", attr.Name, child.Name)
@@ -87,23 +120,50 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 // validateBatch validates a batch of attribute definitions before insertion:
 // each definition must be valid, must not conflict with an already-registered
 // attribute name, and must not duplicate a name or ID within the batch itself.
+// Every attribute name must be globally flat-unique, including nested children
+// (struct members and tlv/evs sub-attributes), so a child name cannot shadow a
+// top-level attribute or another parent's child.
 func validateBatch(attrs []*AttributeDefinition, existingByName map[string]*AttributeDefinition) error {
 	seenNames := make(map[string]struct{}, len(attrs))
 	seenIDs := make(map[uint32]struct{}, len(attrs))
+
+	// checkName enforces flat name uniqueness for an attribute and, recursively,
+	// its children against both the already-registered names and this batch.
+	checkName := func(name string) error {
+		if _, exists := existingByName[name]; exists {
+			return fmt.Errorf("duplicate attribute name %q: already exists", name)
+		}
+		if _, exists := seenNames[name]; exists {
+			return fmt.Errorf("duplicate attribute name %q within batch", name)
+		}
+		seenNames[name] = struct{}{}
+		return nil
+	}
+
+	var checkChildrenNames func(attr *AttributeDefinition) error
+	checkChildrenNames = func(attr *AttributeDefinition) error {
+		for _, child := range attr.Children {
+			if err := checkName(child.Name); err != nil {
+				return err
+			}
+			if err := checkChildrenNames(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
 	for _, attr := range attrs {
 		if err := validateAttributeDefinition(attr); err != nil {
 			return err
 		}
 
-		if _, exists := existingByName[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q: already exists", attr.Name)
+		if err := checkName(attr.Name); err != nil {
+			return err
 		}
-
-		if _, exists := seenNames[attr.Name]; exists {
-			return fmt.Errorf("duplicate attribute name %q within batch", attr.Name)
+		if err := checkChildrenNames(attr); err != nil {
+			return err
 		}
-		seenNames[attr.Name] = struct{}{}
 
 		if _, exists := seenIDs[attr.ID]; exists {
 			return fmt.Errorf("duplicate attribute ID %d within batch", attr.ID)
@@ -125,24 +185,45 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 		return err
 	}
 
+	// Enforce global ID uniqueness across standard attributes so a second call
+	// cannot silently overwrite an already-registered attribute ID.
+	for _, attr := range attrs {
+		if prev, dup := d.standardByID[attr.ID]; dup {
+			return fmt.Errorf("duplicate standard attribute ID %d: %q and %q", attr.ID, prev.Name, attr.Name)
+		}
+	}
+
 	// All checks passed, add the attributes
 	for _, attr := range attrs {
 		d.standardByID[attr.ID] = attr
 		d.standardByName[attr.Name] = attr
 		d.allAttrByName[attr.Name] = attr
+		d.indexChildren(attr)
 	}
 
 	return nil
 }
 
 // AddVendor adds a vendor and its attributes to the
-// Returns an error if any vendor attribute name conflicts with existing standard or vendor attributes.
+// Returns an error if any vendor attribute name conflicts with existing standard or vendor attributes,
+// or if a (vendor-id, attr-id) pair is already registered.
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if err := validateBatch(vendor.Attributes, d.allAttrByName); err != nil {
 		return err
+	}
+
+	// Enforce global uniqueness of the (vendor-id, attr-id) pair across every
+	// vendor definition already registered, so a repeated vendor ID or a split
+	// definition cannot silently overwrite an existing attribute.
+	if existing := d.vendorAttrByID[vendor.ID]; existing != nil {
+		for _, attr := range vendor.Attributes {
+			if prev, dup := existing[attr.ID]; dup {
+				return fmt.Errorf("duplicate vendor attribute (vendor %d, id %d): %q and %q", vendor.ID, attr.ID, prev.Name, attr.Name)
+			}
+		}
 	}
 
 	d.vendorByID[vendor.ID] = vendor
@@ -155,6 +236,7 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 		d.vendorAttrByID[vendor.ID][attr.ID] = attr
 		d.allAttrByName[attr.Name] = attr
 		d.attrNameToVendorID[attr.Name] = vendor.ID
+		d.indexChildren(attr)
 	}
 
 	return nil

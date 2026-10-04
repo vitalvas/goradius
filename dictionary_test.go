@@ -757,6 +757,177 @@ func TestAddVendorDuplicateChildID(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate child ID")
 }
 
+func TestAddVendorRequiresAttributeID(t *testing.T) {
+	t.Run("top-level attribute without id", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-noid",
+			Attributes: []*AttributeDefinition{
+				{Name: "cisco-noid-attr", DataType: DataTypeString}, // ID defaults to 0
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ID is required")
+	})
+
+	t.Run("struct child without id", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-childnoid",
+			Attributes: []*AttributeDefinition{
+				{
+					ID:       10,
+					Name:     "cisco-childnoid-struct",
+					DataType: DataTypeStruct,
+					Children: []*AttributeDefinition{
+						{Name: "cisco-childnoid-member", DataType: DataTypeByte}, // ID defaults to 0
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ID is required")
+	})
+
+	t.Run("standard attribute without id", func(t *testing.T) {
+		err := NewDictionary().AddStandardAttributes([]*AttributeDefinition{
+			{Name: "noid-standard", DataType: DataTypeString}, // ID defaults to 0
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ID is required")
+	})
+}
+
+func TestAddVendorFlatChildNameUniqueness(t *testing.T) {
+	t.Run("child name collides with top-level attribute", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-flat-a",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "cisco-flat-shared", DataType: DataTypeString},
+				{
+					ID:       2,
+					Name:     "cisco-flat-struct",
+					DataType: DataTypeStruct,
+					Children: []*AttributeDefinition{
+						{ID: 1, Name: "cisco-flat-shared", DataType: DataTypeByte}, // collides with attr 1
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute name")
+	})
+
+	t.Run("child name collides across different parents", func(t *testing.T) {
+		err := NewDictionary().AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-flat-b",
+			Attributes: []*AttributeDefinition{
+				{
+					ID:       1,
+					Name:     "cisco-flat-s1",
+					DataType: DataTypeStruct,
+					Children: []*AttributeDefinition{
+						{ID: 1, Name: "cisco-flat-member", DataType: DataTypeByte},
+					},
+				},
+				{
+					ID:       2,
+					Name:     "cisco-flat-s2",
+					DataType: DataTypeStruct,
+					Children: []*AttributeDefinition{
+						{ID: 1, Name: "cisco-flat-member", DataType: DataTypeByte}, // same name, other parent
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate attribute name")
+	})
+
+	t.Run("child name collides with existing registered attribute", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-flat-c",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "cisco-flat-existing", DataType: DataTypeString},
+			},
+		}))
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   10,
+			Name: "cisco-flat-d",
+			Attributes: []*AttributeDefinition{
+				{
+					ID:       1,
+					Name:     "cisco-flat-parent",
+					DataType: DataTypeStruct,
+					Children: []*AttributeDefinition{
+						{ID: 1, Name: "cisco-flat-existing", DataType: DataTypeByte}, // already registered
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already exists")
+	})
+}
+
+func TestAddVendorDuplicateVendorAttrID(t *testing.T) {
+	t.Run("same vendor id across two calls", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-a",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "cisco-a-first", DataType: DataTypeString},
+			},
+		}))
+		// A second definition reusing vendor 9 and attr-id 1 must be rejected,
+		// not silently overwrite the first.
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-b",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "cisco-b-second", DataType: DataTypeString},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "duplicate vendor attribute")
+	})
+
+	t.Run("distinct attr ids under same vendor id are allowed", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-c",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "cisco-c-first", DataType: DataTypeString},
+			},
+		}))
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:   9,
+			Name: "cisco-d",
+			Attributes: []*AttributeDefinition{
+				{ID: 2, Name: "cisco-d-second", DataType: DataTypeString},
+			},
+		}))
+	})
+}
+
+func TestAddStandardAttributesDuplicateIDAcrossCalls(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 200, Name: "std-first", DataType: DataTypeString},
+	}))
+	err := dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 200, Name: "std-second", DataType: DataTypeInteger},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate standard attribute ID")
+}
+
 func TestAddStandardAttributesDuplicateWithinBatch(t *testing.T) {
 	t.Run("duplicate name", func(t *testing.T) {
 		err := NewDictionary().AddStandardAttributes([]*AttributeDefinition{

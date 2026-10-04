@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,6 +26,13 @@ type Packet struct {
 	Attributes    []*Attribute
 	Dict          *Dictionary // Optional dictionary for attribute lookups
 
+	// Secret is the shared secret used to encrypt attributes whose dictionary
+	// definition declares an Encryption type (User-Password, Tunnel-Password,
+	// Ascend-Secret). The server and client set it when they build the packet,
+	// so callers never pass a secret to SetAttributes. Encryption uses this
+	// secret together with the packet Authenticator.
+	Secret []byte
+
 	vsaCache map[int]*VendorAttribute
 }
 
@@ -41,6 +49,17 @@ type AttributeValue struct {
 	Multiline  bool     // True if attribute supports multiline continuation
 
 	def *AttributeDefinition // Attribute definition (for decoding container types)
+}
+
+// Decoded returns the attribute value decoded into its native Go type (string,
+// uint32, net.IP, uint64, time.Duration, ...) per the attribute's DataType.
+// Container types and values with no scalar decoder return the raw bytes.
+func (av AttributeValue) Decoded() any {
+	v, err := DecodeValue(av.Value, av.DataType)
+	if err != nil {
+		return av.Value
+	}
+	return v
 }
 
 // Children decodes a container attribute value (tlv or struct) into a map keyed by
@@ -164,11 +183,25 @@ func (p *Packet) AddAttribute(attr *Attribute) {
 }
 
 // AddVendorAttribute adds a vendor-specific attribute to the packet, encoding
-// it with the vendor's VSA header format when the dictionary defines one.
-func (p *Packet) AddVendorAttribute(va *VendorAttribute) {
+// it with the vendor's VSA header format when the dictionary defines one, and
+// returns the resulting wire attribute.
+func (p *Packet) AddVendorAttribute(va *VendorAttribute) *Attribute {
 	typeOctets, lengthOctets := p.vsaFormat(va.VendorID)
 	attr := va.ToVSAFormat(typeOctets, lengthOctets)
 	p.AddAttribute(attr)
+	return attr
+}
+
+// vsaDataOffset returns the offset within an encoded VSA Attribute.Value at
+// which the vendor data (the part subject to encryption) begins: the 4-octet
+// Vendor-Id plus the type and length fields, plus a tag octet when tagged.
+func (p *Packet) vsaDataOffset(vendorID uint32, tagged bool) int {
+	typeOctets, lengthOctets := p.vsaFormat(vendorID)
+	offset := 4 + typeOctets + lengthOctets
+	if tagged {
+		offset++
+	}
+	return offset
 }
 
 // vsaFormat returns the VSA header widths for a vendor, defaulting to the
@@ -182,10 +215,9 @@ func (p *Packet) vsaFormat(vendorID uint32) (typeOctets, lengthOctets int) {
 	return 1, 1
 }
 
-// GetAttributes returns all attributes with the specified type
-// INTERNAL: This method is for internal library use only and may be removed in future versions.
-// Users should use GetAttribute(name string) instead.
-func (p *Packet) GetAttributes(attrType uint8) []*Attribute {
+// getAttributesByType returns all raw attributes with the specified type.
+// Internal helper; external callers use GetAttribute(name) or GetAttributes().
+func (p *Packet) getAttributesByType(attrType uint8) []*Attribute {
 	var attrs []*Attribute
 	for _, attr := range p.Attributes {
 		if attr.Type == attrType {
@@ -339,9 +371,70 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 	return removed
 }
 
-// SetAuthenticator sets the packet authenticator
+// SetAuthenticator sets the packet authenticator.
 func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 	p.Authenticator = auth
+}
+
+// EncryptAttributes finalizes any deferred attribute encryption using the
+// supplied authenticator, which per RFC depends on the packet type:
+//
+//   - Access-Request: the random Request Authenticator (RFC 2865 Section 3).
+//   - Accounting-Request, CoA-Request, Disconnect-Request: 16 zero octets,
+//     because the Request Authenticator is computed over the attributes and is
+//     not yet known when they are encrypted (RFC 2868 Section 3.5, RFC 5176).
+//   - Access-Accept/Reject/Challenge and CoA/Disconnect responses: the
+//     Request Authenticator of the packet being answered (RFC 2865/2868).
+//
+// It is idempotent: once an attribute is encrypted its marker is cleared, so a
+// later Encode does not re-encrypt. Callers that build packets via the Client
+// or the server response path do not call this directly; it runs automatically
+// with the correct authenticator for the packet type.
+func (p *Packet) EncryptAttributes(auth [AuthenticatorLength]byte) {
+	p.finalizeEncryption(auth)
+}
+
+// finalizeEncryption encrypts any attribute whose value was deferred for
+// encryption, in place, using the packet Secret and the supplied authenticator.
+// It is idempotent: once an attribute is encrypted its marker is cleared.
+func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
+	for _, attr := range p.Attributes {
+		if attr.encryption == EncryptionNone {
+			continue
+		}
+		off := attr.encryptOffset
+		if off > len(attr.Value) {
+			continue
+		}
+		plaintext := attr.Value[off:]
+		ciphertext := EncryptAttributeValue(plaintext, attr.encryption, p.Secret, auth)
+
+		newValue := make([]byte, off+len(ciphertext))
+		copy(newValue, attr.Value[:off])
+		copy(newValue[off:], ciphertext)
+
+		// For a VSA the Vendor-Length field is inside the value and must be
+		// rewritten to cover the new (encrypted) data length: it counts every
+		// octet after the 4-octet Vendor-Id.
+		if attr.vsaLengthWidth > 0 {
+			vendorLen := len(newValue) - 4
+			for i := 0; i < attr.vsaLengthWidth; i++ {
+				shift := uint(8 * (attr.vsaLengthWidth - 1 - i))
+				newValue[attr.vsaLengthPos+i] = byte(vendorLen >> shift)
+			}
+		}
+
+		// Encryption can change the value length (User-Password pads to a
+		// 16-octet multiple; Tunnel-Password adds salt and a length octet), so
+		// adjust the attribute and packet lengths accordingly.
+		delta := len(newValue) - len(attr.Value)
+		attr.Value = newValue
+		attr.Length = uint8(len(newValue) + AttributeHeaderLength)
+		p.Length += uint16(delta)
+
+		attr.encryption = EncryptionNone
+		attr.encryptOffset = 0
+	}
 }
 
 // buildPacketBytes builds packet bytes for authentication/integrity calculations
@@ -500,16 +593,16 @@ func (p *Packet) IsValid() error {
 	return nil
 }
 
-// AddAttributeByName adds an attribute to the packet using dictionary lookup with full feature support
+// AddAttributeByName adds an attribute to the packet using dictionary lookup
+// with full feature support. Attributes whose dictionary definition declares an
+// Encryption type are encrypted automatically using the packet's Secret and
+// Authenticator; the caller never supplies a secret here.
 func (p *Packet) AddAttributeByName(name string, value any) error {
-	return p.AddAttributeByNameWithSecret(name, value, nil, [16]byte{})
-}
-
-// AddAttributeByNameWithSecret adds an attribute with encryption support using shared secret
-func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []byte, authenticator [16]byte) error {
 	if p.Dict == nil {
 		return fmt.Errorf("no dictionary loaded")
 	}
+
+	secret := p.Secret
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
@@ -517,7 +610,7 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []b
 		if !p.isAttributeAllowed(attrDef) {
 			return nil
 		}
-		return p.addStandardAttribute(name, value, attrDef, secret, authenticator)
+		return p.addStandardAttribute(name, value, attrDef, secret)
 	}
 
 	// Tagged standard attribute using "name:tag" syntax (RFC 2868 tunnel attributes)
@@ -526,16 +619,199 @@ func (p *Packet) AddAttributeByNameWithSecret(name string, value any, secret []b
 			if !p.isAttributeAllowed(attrDef) {
 				return nil
 			}
-			return p.addStandardAttribute(name, value, attrDef, secret, authenticator)
+			return p.addStandardAttribute(name, value, attrDef, secret)
 		}
 	}
 
 	// Handle vendor attributes
-	return p.addVendorAttributeByName(name, value, secret, authenticator)
+	return p.addVendorAttributeByName(name, value, secret)
+}
+
+// SetAttributesFromStrings populates the packet from a flat map of string
+// values, the form a policy server (for example a PCRF) typically returns.
+// Keys are the same as SetAttributes (attribute name, optionally "name:tag",
+// container children by their own name); each string is converted to the
+// attribute's native type per the dictionary before encoding:
+//
+//   - enumerated values accept the value name (for example "start") or its
+//     decimal number;
+//   - integer, byte, short, integer64, signed, and time_delta accept a decimal
+//     string;
+//   - octets accept a hex string (with or without a "0x" prefix);
+//   - string, ipaddr, ipv6addr, and ipv6prefix pass through unchanged (their
+//     encoders already parse text).
+//
+// It then delegates to SetAttributes, so encryption and container grouping work
+// exactly as for typed input.
+func (p *Packet) SetAttributesFromStrings(attrs map[string][]string) error {
+	if p.Dict == nil {
+		return fmt.Errorf("no dictionary loaded")
+	}
+
+	typed := make(map[string][]any, len(attrs))
+	for key, values := range attrs {
+		def, ok := p.resolveAttributeDef(key)
+		if !ok {
+			return fmt.Errorf("attribute %q not found in dictionary", key)
+		}
+		converted := make([]any, len(values))
+		for i, s := range values {
+			v, err := convertStringValue(s, def)
+			if err != nil {
+				return fmt.Errorf("attribute %q value %q: %w", key, s, err)
+			}
+			converted[i] = v
+		}
+		typed[key] = converted
+	}
+
+	return p.SetAttributes(typed)
+}
+
+// resolveAttributeDef resolves a flat key (name or "name:tag", top-level or a
+// container child) to its attribute definition.
+func (p *Packet) resolveAttributeDef(key string) (*AttributeDefinition, bool) {
+	base, _ := splitAttributeTag(key)
+	if def, ok := p.Dict.LookupByAttributeName(base); ok {
+		return def, true
+	}
+	if parent, ok := p.Dict.childParent(base); ok {
+		for _, child := range parent.Children {
+			if child.Name == base {
+				return child, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// convertStringValue converts a single PCRF-style string into the Go value
+// expected by the attribute's data type.
+func convertStringValue(s string, def *AttributeDefinition) (any, error) {
+	// Enumerated value name takes precedence (for example "start" -> 1).
+	if len(def.Values) > 0 {
+		if v, ok := def.Values[s]; ok {
+			return v, nil
+		}
+	}
+
+	switch def.DataType {
+	case DataTypeInteger, DataTypeByte, DataTypeShort, DataTypeTimeDelta:
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s: %w", def.DataType, err)
+		}
+		switch def.DataType {
+		case DataTypeByte:
+			return uint8(n), nil
+		case DataTypeShort:
+			return uint16(n), nil
+		default:
+			return uint32(n), nil
+		}
+	case DataTypeInteger64:
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid integer64: %w", err)
+		}
+		return n, nil
+	case DataTypeSigned:
+		n, err := strconv.ParseInt(s, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid signed: %w", err)
+		}
+		return int32(n), nil
+	case DataTypeOctets, DataTypeABinary:
+		raw, err := hex.DecodeString(strings.TrimPrefix(s, "0x"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid hex octets: %w", err)
+		}
+		return raw, nil
+	default:
+		// string, ipaddr, ipv6addr, ipv6prefix, ifid, combo-ip: the encoders
+		// already accept a text value.
+		return s, nil
+	}
+}
+
+// SetAttributes populates the packet from a flat attribute map, the canonical
+// request/response representation. Keys are attribute names, optionally with a
+// ":tag" suffix for RFC 2868 tagged attributes (for example
+// "erx-service-activate:1"). Values are always slices; each element becomes one
+// on-wire attribute instance, so repeated attributes are expressed naturally.
+//
+// There is no nesting. Container members (struct/tlv/evs children) are addressed
+// by their own flat child name as top-level keys; children that resolve to the
+// same parent are grouped and encoded into a single container attribute. A given
+// child name may therefore appear once per call (one container instance).
+func (p *Packet) SetAttributes(attrs map[string][]any) error {
+	if p.Dict == nil {
+		return fmt.Errorf("no dictionary loaded")
+	}
+
+	// Collect container children grouped by (parent name + tag), so a set of
+	// flat child keys becomes one encoded container instance.
+	type containerGroup struct {
+		parent *AttributeDefinition
+		tag    string
+		values map[string]any
+	}
+	groups := make(map[string]*containerGroup)
+	groupOrder := make([]string, 0)
+
+	for key, values := range attrs {
+		base, tag := splitAttributeTag(key)
+
+		// Is this key a flat container child?
+		if parent, ok := p.Dict.childParent(base); ok {
+			if len(values) != 1 {
+				return fmt.Errorf("container child %q requires exactly one value, got %d", key, len(values))
+			}
+			groupKey := fmt.Sprintf("%s\x00%s", parent.Name, tag)
+			g := groups[groupKey]
+			if g == nil {
+				g = &containerGroup{parent: parent, tag: tag, values: make(map[string]any)}
+				groups[groupKey] = g
+				groupOrder = append(groupOrder, groupKey)
+			}
+			g.values[base] = values[0]
+			continue
+		}
+
+		// Plain (possibly tagged, possibly repeated) attribute: one instance per element.
+		for _, v := range values {
+			if err := p.AddAttributeByName(key, v); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Encode each grouped container once, keyed by the parent name plus tag.
+	for _, gk := range groupOrder {
+		g := groups[gk]
+		name := g.parent.Name
+		if g.tag != "" {
+			name = fmt.Sprintf("%s:%s", g.parent.Name, g.tag)
+		}
+		if err := p.AddAttributeByName(name, g.values); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// splitAttributeTag separates a "name:tag" key into its base name and tag
+// string. If there is no ":", the tag is empty.
+func splitAttributeTag(key string) (base, tag string) {
+	if b, t, found := strings.Cut(key, ":"); found {
+		return b, t
+	}
+	return key, ""
 }
 
 // addStandardAttribute handles standard attribute addition with full feature support
-func (p *Packet) addStandardAttribute(name string, value any, attrDef *AttributeDefinition, secret []byte, authenticator [16]byte) error {
+func (p *Packet) addStandardAttribute(name string, value any, attrDef *AttributeDefinition, secret []byte) error {
 	if attrDef == nil {
 		return nil
 	}
@@ -563,7 +839,7 @@ func (p *Packet) addStandardAttribute(name string, value any, attrDef *Attribute
 
 	// Handle array attributes - check if value is a slice
 	// This handles both attributes marked as Array=true and user-provided slices
-	return p.addArrayAttribute(attrDef, processedValue, tag, secret, authenticator)
+	return p.addArrayAttribute(attrDef, processedValue, tag, secret)
 }
 
 // addExtendedAttribute encodes and adds an RFC 6929 extended attribute (short form for
@@ -638,7 +914,7 @@ func (p *Packet) addEVSAttribute(attrDef *AttributeDefinition, baseType uint8, v
 // Supports formats:
 //   - "AttributeName" - vendor attribute without tag
 //   - "AttributeName:tag" - vendor attribute with tag (tag is a number)
-func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte, authenticator [16]byte) error {
+func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte) error {
 	var attrName string
 	var tag uint8
 
@@ -674,12 +950,11 @@ func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte,
 
 	processedValue := p.processEnumeratedValue(value, attrDef)
 	return p.addVendorArrayAttribute(vendorAttrParams{
-		vendor:        vendor,
-		attrDef:       attrDef,
-		value:         processedValue,
-		tag:           tag,
-		secret:        secret,
-		authenticator: authenticator,
+		vendor:  vendor,
+		attrDef: attrDef,
+		value:   processedValue,
+		tag:     tag,
+		secret:  secret,
 	})
 }
 
@@ -892,7 +1167,7 @@ func multilineSplittable(attrDef *AttributeDefinition, attrValue []byte, maxLen 
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
 // If value is a slice, it adds each element as a separate attribute instance
-func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag uint8, secret []byte, authenticator [16]byte) error {
+func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag uint8, secret []byte) error {
 	if attrDef == nil {
 		return nil
 	}
@@ -946,10 +1221,8 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 			return fmt.Errorf("attribute %q password length %d exceeds maximum %d octets", attrDef.Name, len(attrValue), MaxUserPasswordLength)
 		}
 
-		if attrDef.Encryption != "" && secret != nil {
-			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-		}
-
+		// Encryption is deferred to encode time (when the authenticator is
+		// final); the plaintext is stored and the value region recorded.
 		if attrDef.HasTag {
 			attrValue, err = squeezeTaggedInteger(attrDef, attrValue)
 			if err != nil {
@@ -964,6 +1237,10 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 			taggedValue[0] = tag
 			copy(taggedValue[1:], attrValue)
 			attr := NewAttribute(uint8(attrDef.ID), taggedValue)
+			if attrDef.Encryption != "" && secret != nil {
+				attr.encryption = attrDef.Encryption
+				attr.encryptOffset = 1 // skip the leading tag octet
+			}
 			p.AddAttribute(attr)
 		} else {
 			// Validate length for standard attribute
@@ -971,6 +1248,9 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxAttributeValueLength)
 			}
 			attr := NewAttribute(uint8(attrDef.ID), attrValue)
+			if attrDef.Encryption != "" && secret != nil {
+				attr.encryption = attrDef.Encryption
+			}
 			p.AddAttribute(attr)
 		}
 	}
@@ -978,18 +1258,17 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 }
 
 type vendorAttrParams struct {
-	vendor        *VendorDefinition
-	attrDef       *AttributeDefinition
-	value         any
-	tag           uint8
-	secret        []byte
-	authenticator [16]byte
+	vendor  *VendorDefinition
+	attrDef *AttributeDefinition
+	value   any
+	tag     uint8
+	secret  []byte
 }
 
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
 func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
-	vendor, attrDef, value, tag, secret, authenticator := params.vendor, params.attrDef, params.value, params.tag, params.secret, params.authenticator
+	vendor, attrDef, value, tag, secret := params.vendor, params.attrDef, params.value, params.tag, params.secret
 	if vendor == nil || attrDef == nil {
 		return nil
 	}
@@ -1043,10 +1322,8 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 			return fmt.Errorf("attribute %q password length %d exceeds maximum %d octets", attrDef.Name, len(attrValue), MaxUserPasswordLength)
 		}
 
-		if attrDef.Encryption != "" && secret != nil {
-			attrValue = EncryptAttributeValue(attrValue, attrDef.Encryption, secret, authenticator)
-		}
-
+		// Encryption is deferred to encode time; the plaintext vendor data is
+		// stored and encrypted in place once the authenticator is final.
 		var vsa *VendorAttribute
 		if attrDef.HasTag {
 			attrValue, err = squeezeTaggedInteger(attrDef, attrValue)
@@ -1066,7 +1343,14 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 			}
 			vsa = NewVendorAttribute(vendor.ID, attrDef.ID, attrValue)
 		}
-		p.AddVendorAttribute(vsa)
+		attr := p.AddVendorAttribute(vsa)
+		if attrDef.Encryption != "" && secret != nil {
+			typeOctets, lengthOctets := p.vsaFormat(vendor.ID)
+			attr.encryption = attrDef.Encryption
+			attr.encryptOffset = p.vsaDataOffset(vendor.ID, attrDef.HasTag)
+			attr.vsaLengthPos = 4 + typeOctets
+			attr.vsaLengthWidth = lengthOctets
+		}
 	}
 	return nil
 }
@@ -1206,6 +1490,79 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	}
 
 	return []AttributeValue{}
+}
+
+// GetAttributes returns the packet as a flat attribute map: attribute name (with
+// a ":tag" suffix when tagged) to the slice of values present. Container
+// attributes are expanded so each child appears under its own flat child name.
+// Values use the native decoded Go type for scalars; unknown attributes are
+// skipped.
+func (p *Packet) GetAttributes() map[string][]AttributeValue {
+	out := make(map[string][]AttributeValue)
+	if p.Dict == nil {
+		return out
+	}
+
+	for _, name := range p.ListAttributes() {
+		for _, av := range p.GetAttribute(name) {
+			// Expand container attributes into their flat child keys. Each child
+			// is surfaced as its own AttributeValue so metadata is preserved.
+			if av.DataType == DataTypeTLV || av.DataType == DataTypeStruct || av.DataType == DataTypeEVS {
+				for _, child := range p.containerChildValues(av) {
+					key := child.Name
+					if av.Tag != 0 {
+						key = fmt.Sprintf("%s:%d", child.Name, av.Tag)
+					}
+					out[key] = append(out[key], child)
+				}
+				continue
+			}
+
+			key := av.Name
+			if av.Tag != 0 {
+				key = fmt.Sprintf("%s:%d", av.Name, av.Tag)
+			}
+			out[key] = append(out[key], av)
+		}
+	}
+
+	return out
+}
+
+// containerChildValues decodes a container attribute (struct/tlv/evs) into a
+// slice of child AttributeValues, each carrying its own name, data type, and
+// raw bytes so the flat map preserves per-child metadata.
+func (p *Packet) containerChildValues(av AttributeValue) []AttributeValue {
+	if av.def == nil {
+		return nil
+	}
+
+	raw, err := av.Children()
+	if err != nil {
+		return nil
+	}
+
+	result := make([]AttributeValue, 0, len(raw))
+	for _, childDef := range av.def.Children {
+		decoded, ok := raw[childDef.Name]
+		if !ok {
+			continue
+		}
+		encoded, err := EncodeValue(decoded, childDef.DataType)
+		if err != nil {
+			continue
+		}
+		result = append(result, AttributeValue{
+			Name:       childDef.Name,
+			DataType:   childDef.DataType,
+			Value:      encoded,
+			IsVSA:      av.IsVSA,
+			VendorID:   av.VendorID,
+			VendorType: av.VendorType,
+			def:        childDef,
+		})
+	}
+	return result
 }
 
 // getExtendedAttribute collects RFC 6929 extended attribute values for the given

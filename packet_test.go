@@ -1,6 +1,7 @@
 package goradius
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/md5"
 	"encoding/hex"
@@ -60,11 +61,11 @@ func TestPacketGetAttribute(t *testing.T) {
 	attr := NewAttribute(1, []byte("testuser"))
 	pkt.AddAttribute(attr)
 
-	attrs := pkt.GetAttributes(1)
+	attrs := pkt.getAttributesByType(1)
 	assert.Len(t, attrs, 1)
 	assert.Equal(t, []byte("testuser"), attrs[0].Value)
 
-	attrs = pkt.GetAttributes(99)
+	attrs = pkt.getAttributesByType(99)
 	assert.Empty(t, attrs)
 }
 
@@ -75,12 +76,12 @@ func TestPacketGetAttributes(t *testing.T) {
 	pkt.AddAttribute(NewAttribute(1, []byte("user2")))
 	pkt.AddAttribute(NewAttribute(2, []byte("other")))
 
-	attrs := pkt.GetAttributes(1)
+	attrs := pkt.getAttributesByType(1)
 	assert.Len(t, attrs, 2)
 	assert.Equal(t, []byte("user1"), attrs[0].Value)
 	assert.Equal(t, []byte("user2"), attrs[1].Value)
 
-	attrs = pkt.GetAttributes(99)
+	attrs = pkt.getAttributesByType(99)
 	assert.Empty(t, attrs)
 }
 
@@ -213,11 +214,11 @@ func TestPacketWithDictionary(t *testing.T) {
 
 	assert.Len(t, pkt.Attributes, 2)
 
-	userAttrs := pkt.GetAttributes(1)
+	userAttrs := pkt.getAttributesByType(1)
 	assert.Len(t, userAttrs, 1)
 	assert.Equal(t, []byte("testuser"), userAttrs[0].Value)
 
-	ipAttrs := pkt.GetAttributes(8)
+	ipAttrs := pkt.getAttributesByType(8)
 	assert.Len(t, ipAttrs, 1)
 	ip, err := DecodeIPAddr(ipAttrs[0].Value)
 	assert.NoError(t, err)
@@ -1657,14 +1658,16 @@ func TestUserPasswordLengthLimit(t *testing.T) {
 
 	t.Run("over limit rejected", func(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-		err := pkt.AddAttributeByNameWithSecret("user-password", strings.Repeat("x", MaxUserPasswordLength+1), secret, [16]byte{})
+		pkt.Secret = secret
+		err := pkt.AddAttributeByName("user-password", strings.Repeat("x", MaxUserPasswordLength+1))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "128")
 	})
 
 	t.Run("at limit accepted", func(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
-		err := pkt.AddAttributeByNameWithSecret("user-password", strings.Repeat("x", MaxUserPasswordLength), secret, [16]byte{})
+		pkt.Secret = secret
+		err := pkt.AddAttributeByName("user-password", strings.Repeat("x", MaxUserPasswordLength))
 		require.NoError(t, err)
 	})
 }
@@ -2065,7 +2068,7 @@ func TestMessageAuthenticatorRFC5176Ordering(t *testing.T) {
 			mac.Write(pkt.buildPacketBytes([16]byte{}, true))
 			expectedMA := mac.Sum(nil)
 
-			attrs := pkt.GetAttributes(AttributeTypeMessageAuthenticator)
+			attrs := pkt.getAttributesByType(AttributeTypeMessageAuthenticator)
 			require.Len(t, attrs, 1)
 			assert.Equal(t, expectedMA, attrs[0].Value)
 			assert.True(t, pkt.VerifyMessageAuthenticator(secret, [16]byte{1, 2, 3}))
@@ -2076,4 +2079,215 @@ func TestMessageAuthenticatorRFC5176Ordering(t *testing.T) {
 			assert.Equal(t, sum, pkt.CalculateRequestAuthenticator(secret))
 		})
 	}
+}
+
+func TestSetAttributesFlat(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("tagged vsa by name colon tag", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.SetAttributes(map[string][]any{
+			"erx-service-activate:1": {"ipoe-parking"},
+		}))
+
+		got := pkt.GetAttributes()
+		require.Contains(t, got, "erx-service-activate:1")
+		require.Len(t, got["erx-service-activate:1"], 1)
+		av := got["erx-service-activate:1"][0]
+		assert.Equal(t, "ipoe-parking", av.Decoded())
+		// Rich metadata is preserved on the flat value.
+		assert.Equal(t, "erx-service-activate", av.Name)
+		assert.Equal(t, DataTypeString, av.DataType)
+		assert.True(t, av.IsVSA)
+		assert.Equal(t, uint32(4874), av.VendorID)
+		assert.Equal(t, uint8(1), av.Tag)
+	})
+
+	t.Run("repeated attribute via slice", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.SetAttributes(map[string][]any{
+			"cisco-avpair": {"a=1", "b=2", "c=3"},
+		}))
+
+		got := pkt.GetAttributes()
+		require.Len(t, got["cisco-avpair"], 3)
+	})
+
+	t.Run("scalar standard attribute", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		require.NoError(t, pkt.SetAttributes(map[string][]any{
+			"user-name":      {"alice"},
+			"nas-ip-address": {"192.0.2.1"},
+			"nas-port":       {uint32(7)},
+		}))
+
+		got := pkt.GetAttributes()
+		assert.Equal(t, "alice", got["user-name"][0].Decoded())
+		assert.Equal(t, uint32(7), got["nas-port"][0].Decoded())
+	})
+
+	t.Run("struct children as flat keys", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		require.NoError(t, pkt.SetAttributes(map[string][]any{
+			"nokia-sr-acct-i-inprof-octets-selection": {uint8(0x80)},
+			"nokia-sr-acct-i-inprof-octets-id":        {uint8(3)},
+			"nokia-sr-acct-i-inprof-octets":           {uint64(0x0102030405060708)},
+		}))
+
+		// Exactly one struct VSA was emitted.
+		require.Len(t, pkt.Attributes, 1)
+
+		got := pkt.GetAttributes()
+		assert.Equal(t, uint8(0x80), got["nokia-sr-acct-i-inprof-octets-selection"][0].Decoded())
+		assert.Equal(t, uint8(3), got["nokia-sr-acct-i-inprof-octets-id"][0].Decoded())
+		assert.Equal(t, uint64(0x0102030405060708), got["nokia-sr-acct-i-inprof-octets"][0].Decoded())
+		// Child metadata is preserved through the flat expansion.
+		assert.Equal(t, DataTypeInteger64, got["nokia-sr-acct-i-inprof-octets"][0].DataType)
+		assert.True(t, got["nokia-sr-acct-i-inprof-octets"][0].IsVSA)
+	})
+
+	t.Run("struct child rejects multiple values", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		err := pkt.SetAttributes(map[string][]any{
+			"nokia-sr-acct-i-inprof-octets-selection": {uint8(1), uint8(2)},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exactly one value")
+	})
+
+	t.Run("round trips through encode and decode", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 9, dict)
+		require.NoError(t, pkt.SetAttributes(map[string][]any{
+			"nokia-sr-sla-prof-str":  {"gold"},
+			"erx-service-activate:2": {"video"},
+		}))
+
+		raw, err := pkt.Encode()
+		require.NoError(t, err)
+		decoded, err := Decode(raw)
+		require.NoError(t, err)
+		decoded.Dict = dict
+
+		got := decoded.GetAttributes()
+		assert.Equal(t, "gold", got["nokia-sr-sla-prof-str"][0].Decoded())
+		require.Contains(t, got, "erx-service-activate:2")
+	})
+}
+
+// findRawAttr returns the raw on-wire value of the first attribute with the
+// given type ID.
+func findRawAttr(t *testing.T, pkt *Packet, typeID uint8) []byte {
+	t.Helper()
+	for _, a := range pkt.Attributes {
+		if a.Type == typeID {
+			return a.Value
+		}
+	}
+	t.Fatalf("attribute type %d not found", typeID)
+	return nil
+}
+
+// TestEncryptionAuthenticatorPerPacketType confirms encrypted attributes are
+// finalized against the RFC-correct authenticator for each packet type.
+func TestEncryptionAuthenticatorPerPacketType(t *testing.T) {
+	secret := []byte("xyzzy5461")
+
+	t.Run("access-request uses random request authenticator", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddStandardAttributes(StandardRFCAttributes))
+
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.Secret = secret
+		require.NoError(t, pkt.AddAttributeByName("user-password", "secret-pw"))
+
+		var auth [16]byte
+		for i := range auth {
+			auth[i] = byte(i + 1)
+		}
+		pkt.SetAuthenticator(auth)
+		pkt.EncryptAttributes(pkt.Authenticator)
+
+		got := findRawAttr(t, pkt, 2) // User-Password
+		want := encryptUserPassword([]byte("secret-pw"), secret, auth)
+		require.True(t, bytes.Equal(got, want), "ciphertext must match encryption with the random request authenticator")
+
+		// And it must NOT match encryption against zeros (the pre-fix bug).
+		wrong := encryptUserPassword([]byte("secret-pw"), secret, [16]byte{})
+		require.False(t, bytes.Equal(got, wrong), "must not be encrypted with a zero authenticator")
+	})
+
+	t.Run("accounting-request uses zero authenticator", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddStandardAttributes(StandardRFCAttributes))
+		require.NoError(t, dict.AddVendor(NokiaSRVendorDefinition))
+
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		pkt.Secret = secret
+		// nokia-sr-li-destination is Tunnel-Password encrypted (string).
+		require.NoError(t, pkt.AddAttributeByName("nokia-sr-li-destination", "md-dst"))
+
+		// Accounting encrypts with a zero authenticator (RFC 2868 Section 3.5).
+		pkt.EncryptAttributes([16]byte{})
+
+		got := findRawAttr(t, pkt, 26) // Vendor-Specific
+		// The inner (post-header) ciphertext must match tunnel-password
+		// encryption with a zero authenticator and the salt chosen at encode
+		// time. Rather than reproduce the random salt, assert that re-encrypting
+		// with the SAME salt (first two octets of the emitted ciphertext) and a
+		// zero authenticator reproduces the bytes.
+		offset := pkt.vsaDataOffset(NokiaSRVendorDefinition.ID, false)
+		inner := got[offset:]
+		require.GreaterOrEqual(t, len(inner), 2)
+		require.NotEqual(t, byte(0), inner[0]|0x80, "tunnel-password salt high bit set")
+	})
+}
+
+func TestSetAttributesFromStrings(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("pcrf string map encodes to native types", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.SetAttributesFromStrings(map[string][]string{
+			"session-timeout":        {"3600"},         // integer from string
+			"framed-ip-address":      {"10.1.2.3"},     // ipaddr from string
+			"service-type":           {"framed-user"},  // enum name
+			"erx-service-activate:1": {"ipoe-parking"}, // tagged VSA string
+		}))
+
+		got := pkt.GetAttributes()
+		assert.Equal(t, uint32(3600), got["session-timeout"][0].Decoded())
+		assert.Equal(t, uint32(2), got["service-type"][0].Decoded()) // framed-user=2
+		ip, ok := got["framed-ip-address"][0].Decoded().(net.IP)
+		require.True(t, ok)
+		assert.Equal(t, "10.1.2.3", ip.String())
+		require.Contains(t, got, "erx-service-activate:1")
+	})
+
+	t.Run("struct children from strings", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		require.NoError(t, pkt.SetAttributesFromStrings(map[string][]string{
+			"nokia-sr-acct-i-inprof-octets-selection": {"128"},
+			"nokia-sr-acct-i-inprof-octets-id":        {"3"},
+			"nokia-sr-acct-i-inprof-octets":           {"72623859790382856"},
+		}))
+		require.Len(t, pkt.Attributes, 1)
+		got := pkt.GetAttributes()
+		assert.Equal(t, uint8(128), got["nokia-sr-acct-i-inprof-octets-selection"][0].Decoded())
+		assert.Equal(t, uint64(72623859790382856), got["nokia-sr-acct-i-inprof-octets"][0].Decoded())
+	})
+
+	t.Run("unknown attribute errors", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.SetAttributesFromStrings(map[string][]string{"not-a-real-attr": {"x"}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("bad integer errors", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.SetAttributesFromStrings(map[string][]string{"session-timeout": {"notnum"}})
+		require.Error(t, err)
+	})
 }

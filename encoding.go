@@ -4,7 +4,10 @@ import (
 	"fmt"
 )
 
-// Encode converts a Packet into its binary representation per RFC 2865 Section 3
+// Encode converts a Packet into its binary representation per RFC 2865 Section 3.
+// Any deferred attribute encryption must already have been finalized via
+// EncryptAttributes with the packet-type-appropriate authenticator; the Client
+// and server response path do this automatically.
 func (p *Packet) Encode() ([]byte, error) {
 	if err := p.IsValid(); err != nil {
 		return nil, fmt.Errorf("invalid packet: %w", err)

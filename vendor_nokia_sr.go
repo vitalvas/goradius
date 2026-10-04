@@ -10,8 +10,9 @@ package goradius
 // Tagged tunnel attributes keep their has_tag flag; the lawful-intercept and
 // APN-password attributes keep Tunnel-Password salted encryption. The 64-bit
 // accounting counters are modeled as fixed-layout structs (byte/short +
-// integer64 members). The dictionary carries no per-packet placement data, so
-// all attributes stay unrestricted (several are CoA-only in practice).
+// integer64 members) whose children carry positional 1-based IDs. The
+// dictionary carries no per-packet placement data, so all attributes stay
+// unrestricted (several are CoA-only in practice).
 var NokiaSRVendorDefinition = &VendorDefinition{
 	ID:   6527,
 	Name: "nokia-sr",
@@ -73,9 +74,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-inprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-inprof-octets-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-inprof-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-inprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-inprof-octets-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-inprof-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-inprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -83,9 +84,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-outprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-outprof-octets-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-outprof-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-outprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-outprof-octets-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-outprof-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-outprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -93,9 +94,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-inprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-inprof-octets-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-inprof-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-inprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-inprof-octets-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-inprof-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-inprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -103,9 +104,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-outprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-outprof-octets-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-outprof-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-outprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-outprof-octets-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-outprof-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-outprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -113,9 +114,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-inprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-inprof-pkts-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-inprof-pkts-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-inprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-inprof-pkts-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-inprof-pkts-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-inprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -123,9 +124,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-outprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-outprof-pkts-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-outprof-pkts-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-outprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-outprof-pkts-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-outprof-pkts-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-outprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -133,9 +134,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-inprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-inprof-pkts-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-inprof-pkts-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-inprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-inprof-pkts-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-inprof-pkts-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-inprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -143,9 +144,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-outprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-outprof-pkts-selection", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-outprof-pkts-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-outprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-outprof-pkts-selection", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-outprof-pkts-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-outprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{ID: 27, Name: "nokia-sr-client-hardware-addr", DataType: DataTypeString},
@@ -163,8 +164,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-i-inprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-i-inprof-octets-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-i-inprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-i-inprof-octets-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-i-inprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -172,8 +173,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-i-outprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-i-outprof-octets-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-i-outprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-i-outprof-octets-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-i-outprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -181,8 +182,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-o-inprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-o-inprof-octets-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-o-inprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-o-inprof-octets-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-o-inprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -190,8 +191,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-o-outprof-octets-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-o-outprof-octets-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-o-outprof-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-o-outprof-octets-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-o-outprof-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -199,8 +200,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-i-inprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-i-inprof-pkts-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-i-inprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-i-inprof-pkts-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-i-inprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -208,8 +209,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-i-outprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-i-outprof-pkts-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-i-outprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-i-outprof-pkts-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-i-outprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -217,8 +218,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-o-inprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-o-inprof-pkts-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-o-inprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-o-inprof-pkts-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-o-inprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -226,8 +227,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-oc-o-outprof-pkts-64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-oc-o-outprof-pkts-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-oc-o-outprof-pkts", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-oc-o-outprof-pkts-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-oc-o-outprof-pkts", DataType: DataTypeInteger64},
 			},
 		},
 		{ID: 45, Name: "nokia-sr-app-prof-str", DataType: DataTypeString},
@@ -337,8 +338,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-high-octets-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-high-octets-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-high-octets-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-high-octets-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-high-octets-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -346,8 +347,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-low-octets-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-low-octets-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-low-octets-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-low-octets-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-low-octets-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -355,8 +356,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-high-pack-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-high-pack-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-high-pack-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-high-pack-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-high-pack-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -364,8 +365,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-low-pack-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-low-pack-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-low-pack-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-low-pack-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-low-pack-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -373,8 +374,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-high-octets-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-high-octets-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-high-octets-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-high-octets-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-high-octets-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -382,8 +383,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-low-octets-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-low-octets-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-higlow-octets-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-low-octets-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-higlow-octets-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -391,8 +392,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-high-pack-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-high-packs-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-high-packs-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-high-packs-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-high-packs-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -400,8 +401,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-low-pack-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-low-pack-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-low-pack-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-low-pack-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-low-pack-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -409,8 +410,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-unc-octets-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-unc-octets-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-unc-octets-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-unc-octets-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-unc-octets-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -418,8 +419,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-unc-pack-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-unc-pack-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-unc-pack-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-unc-pack-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-unc-pack-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -427,8 +428,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-all-octets-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-all-octets-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-all-octets-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-all-octets-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-all-octets-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -436,8 +437,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-all-pack-offer_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-all-pack-offer-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-i-all-pack-offer", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-all-pack-offer-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-i-all-pack-offer", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -445,8 +446,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-inprof-pack-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-inprof-pack-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-o-inprof-pack-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-inprof-pack-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-o-inprof-pack-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -454,8 +455,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-outprof-pack-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-outprof-pack-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-o-outprof-pack-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-outprof-pack-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-o-outprof-pack-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -463,8 +464,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-inprof-octs-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-inprof-octs-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-o-inprof-octs-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-inprof-octs-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-o-inprof-octs-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -472,8 +473,8 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-outprof-octs-drop_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-outprof-octs-drop-id", DataType: DataTypeShort},
-				{Name: "nokia-sr-acct-o-outprof-octs-drop", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-outprof-octs-drop-id", DataType: DataTypeShort},
+				{ID: 2, Name: "nokia-sr-acct-o-outprof-octs-drop", DataType: DataTypeInteger64},
 			},
 		},
 		{ID: 85, Name: "nokia-sr-acct-oc-i-all-octs-offer_64", DataType: DataTypeOctets},
@@ -513,9 +514,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-hiprio-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-hiprio-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-hiprio-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-hiprio-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-hiprio-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-hiprio-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-hiprio-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -523,9 +524,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-lowprio-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-lowprio-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-lowprio-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-lowprio-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-lowprio-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-lowprio-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-lowprio-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -533,9 +534,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-hiprio-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-hiprio-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-hiprio-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-hiprio-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-hiprio-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-hiprio-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-hiprio-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -543,9 +544,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-lowprio-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-lowprio-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-lowprio-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-lowprio-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-lowprio-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-lowprio-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-lowprio-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -553,9 +554,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-hiprio-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-hiprio-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-hiprio-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-hiprio-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-hiprio-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-hiprio-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-hiprio-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -563,9 +564,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-lowprio-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-lowprio-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-lowprio-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-lowprio-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-lowprio-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-lowprio-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-lowprio-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -573,9 +574,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-hiprio-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-hiprio-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-hiprio-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-hiprio-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-hiprio-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-hiprio-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-hiprio-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -583,9 +584,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-lowprio-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-lowprio-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-lowprio-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-lowprio-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-lowprio-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-lowprio-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-lowprio-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -593,9 +594,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-all-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-all-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-all-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-all-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-all-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-all-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-all-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -603,9 +604,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-all-octets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-all-octets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-all-octets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-all-octets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-all-octets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-all-octets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-all-octets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -613,9 +614,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-i-all-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-i-all-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-all-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-i-all-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-i-all-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-i-all-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-i-all-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{
@@ -623,9 +624,9 @@ var NokiaSRVendorDefinition = &VendorDefinition{
 			Name:     "nokia-sr-acct-o-all-packets_64",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "nokia-sr-acct-o-all-packets-x80", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-all-packets-id", DataType: DataTypeByte},
-				{Name: "nokia-sr-acct-o-all-packets", DataType: DataTypeInteger64},
+				{ID: 1, Name: "nokia-sr-acct-o-all-packets-x80", DataType: DataTypeByte},
+				{ID: 2, Name: "nokia-sr-acct-o-all-packets-id", DataType: DataTypeByte},
+				{ID: 3, Name: "nokia-sr-acct-o-all-packets", DataType: DataTypeInteger64},
 			},
 		},
 		{

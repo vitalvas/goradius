@@ -818,12 +818,49 @@ var StandardRFCAttributes = []*AttributeDefinition{
 		DataType: DataTypeIPv6Prefix,
 		Usage:    UsageAccessRequest | UsageAccessAccept | UsageAccountingRequest | UsageCoARequest,
 	},
-	{ID: 124, Name: "mip6-feature-vector", DataType: DataTypeOctets},            // RFC5447
-	{ID: 125, Name: "mip6-home-link-prefix", DataType: DataTypeOctets},          // RFC5447
-	{ID: 126, Name: "operator-name", DataType: DataTypeString},                  // RFC5580
-	{ID: 127, Name: "location-information", DataType: DataTypeOctets},           // RFC5580
-	{ID: 128, Name: "location-data", DataType: DataTypeOctets},                  // RFC5580
-	{ID: 129, Name: "basic-location-policy-rules", DataType: DataTypeOctets},    // RFC5580
+	{ID: 124, Name: "mip6-feature-vector", DataType: DataTypeInteger64}, // RFC5447 (64-bit feature vector)
+	{ID: 125, Name: "mip6-home-link-prefix", DataType: DataTypeOctets},  // RFC5447
+	{ID: 126, Name: "operator-name", DataType: DataTypeString},          // RFC5580
+	{ // RFC5580 Section 4.1: index, code, entity, sighting-time, ttl, and a trailing method string
+		ID:       127,
+		Name:     "location-information",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "location-information-index", DataType: DataTypeShort},
+			{
+				ID:       2,
+				Name:     "location-information-code",
+				DataType: DataTypeByte,
+				Values: map[string]uint32{
+					"civic-location":      0,
+					"geospatial-location": 1,
+				},
+			},
+			{ID: 3, Name: "location-information-entity", DataType: DataTypeByte},
+			{ID: 4, Name: "location-information-sighting-time", DataType: DataTypeInteger64},
+			{ID: 5, Name: "location-information-ttl", DataType: DataTypeInteger64},
+			{ID: 6, Name: "location-information-method", DataType: DataTypeString},
+		},
+	},
+	{ // RFC5580 Section 4.2: index plus an opaque location blob keyed by the code above
+		ID:       128,
+		Name:     "location-data",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "location-data-index", DataType: DataTypeShort},
+			{ID: 2, Name: "location-data-location", DataType: DataTypeOctets},
+		},
+	},
+	{ // RFC5580 Section 4.4: flags, retention-expires, and a trailing note-well URI
+		ID:       129,
+		Name:     "basic-location-policy-rules",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "basic-location-policy-rules-flags", DataType: DataTypeShort},
+			{ID: 2, Name: "basic-location-policy-rules-retention-expires", DataType: DataTypeInteger64},
+			{ID: 3, Name: "basic-location-policy-rules-note-well", DataType: DataTypeString},
+		},
+	},
 	{ID: 130, Name: "extended-location-policy-rules", DataType: DataTypeString}, // RFC5580
 	{ // RFC5580
 		ID:       131,
@@ -880,7 +917,7 @@ var StandardRFCAttributes = []*AttributeDefinition{
 	{ID: 138, Name: "pkm-ca-cert", DataType: DataTypeOctets},                          // RFC5904
 	{ID: 139, Name: "pkm-config-settings", DataType: DataTypeOctets},                  // RFC5904
 	{ID: 140, Name: "pkm-cryptosuite-list", DataType: DataTypeOctets},                 // RFC5904
-	{ID: 141, Name: "pkm-said", DataType: DataTypeInteger},                            // RFC5904
+	{ID: 141, Name: "pkm-said", DataType: DataTypeShort},                              // RFC5904 (16-bit SAID)
 	{ID: 142, Name: "pkm-sa-descriptor", DataType: DataTypeOctets},                    // RFC5904
 	{ID: 143, Name: "pkm-auth-key", DataType: DataTypeOctets},                         // RFC5904
 	{ID: 144, Name: "ds-lite-tunnel-name", DataType: DataTypeOctets},                  // RFC6519
@@ -927,28 +964,89 @@ var StandardRFCAttributes = []*AttributeDefinition{
 	{ID: 170, Name: "route-ipv6-information", DataType: DataTypeIPv6Prefix},     // RFC6911
 	{ID: 171, Name: "delegated-ipv6-prefix-pool", DataType: DataTypeString},     // RFC6911
 	{ID: 172, Name: "stateful-ipv6-address-pool", DataType: DataTypeString},     // RFC6911
-	{ID: 173, Name: "ipv6-6rd-configuration", DataType: DataTypeTLV},            // RFC6930
-	{ID: 174, Name: "allowed-called-station-id", DataType: DataTypeString},      // RFC7268
-	{ID: 175, Name: "eap-peer-id", DataType: DataTypeOctets},                    // RFC7268
-	{ID: 176, Name: "eap-server-id", DataType: DataTypeOctets},                  // RFC7268
-	{ID: 177, Name: "mobility-domain-id", DataType: DataTypeInteger},            // RFC7268
-	{ID: 178, Name: "preauth-timeout", DataType: DataTypeInteger},               // RFC7268
-	{ID: 179, Name: "network-id-name", DataType: DataTypeOctets},                // RFC7268
-	{ID: 180, Name: "eapol-announcement", DataType: DataTypeOctets},             // RFC7268
-	{ID: 181, Name: "wlan-hessid", DataType: DataTypeString},                    // RFC7268
-	{ID: 182, Name: "wlan-venue-info", DataType: DataTypeInteger},               // RFC7268
-	{ID: 183, Name: "wlan-venue-language", DataType: DataTypeOctets},            // RFC7268
-	{ID: 184, Name: "wlan-venue-name", DataType: DataTypeString},                // RFC7268
-	{ID: 185, Name: "wlan-reason-code", DataType: DataTypeInteger},              // RFC7268
-	{ID: 186, Name: "wlan-pairwise-cipher", DataType: DataTypeInteger},          // RFC7268
-	{ID: 187, Name: "wlan-group-cipher", DataType: DataTypeInteger},             // RFC7268
-	{ID: 188, Name: "wlan-akm-suite", DataType: DataTypeInteger},                // RFC7268
-	{ID: 189, Name: "wlan-group-mgmt-cipher", DataType: DataTypeInteger},        // RFC7268
-	{ID: 190, Name: "wlan-rf-band", DataType: DataTypeInteger},                  // RFC7268
-	{ID: 241, Name: "extended-attribute-1", DataType: DataTypeOctets},           // RFC6929
-	{ID: 242, Name: "extended-attribute-2", DataType: DataTypeOctets},           // RFC6929
-	{ID: 243, Name: "extended-attribute-3", DataType: DataTypeOctets},           // RFC6929
-	{ID: 244, Name: "extended-attribute-4", DataType: DataTypeOctets},           // RFC6929
-	{ID: 245, Name: "extended-attribute-5", DataType: DataTypeOctets},           // RFC6929
-	{ID: 246, Name: "extended-attribute-6", DataType: DataTypeOctets},           // RFC6929
+	{ // RFC6930: 6rd configuration carried as nested TLVs
+		ID:       173,
+		Name:     "ipv6-6rd-configuration",
+		DataType: DataTypeTLV,
+		Children: []*AttributeDefinition{
+			{ID: 1, Name: "ipv6-6rd-ipv4masklen", DataType: DataTypeInteger},
+			{ID: 2, Name: "ipv6-6rd-prefix", DataType: DataTypeIPv6Prefix},
+			{ID: 3, Name: "ipv6-6rd-br-ipv4-address", DataType: DataTypeIPAddr},
+		},
+	},
+	{ID: 174, Name: "allowed-called-station-id", DataType: DataTypeString}, // RFC7268
+	{ID: 175, Name: "eap-peer-id", DataType: DataTypeOctets},               // RFC7268
+	{ID: 176, Name: "eap-server-id", DataType: DataTypeOctets},             // RFC7268
+	{ID: 177, Name: "mobility-domain-id", DataType: DataTypeInteger},       // RFC7268
+	{ID: 178, Name: "preauth-timeout", DataType: DataTypeInteger},          // RFC7268
+	{ID: 179, Name: "network-id-name", DataType: DataTypeOctets},           // RFC7268
+	{ID: 180, Name: "eapol-announcement", DataType: DataTypeOctets},        // RFC7268
+	{ID: 181, Name: "wlan-hessid", DataType: DataTypeString},               // RFC7268
+	{ID: 182, Name: "wlan-venue-info", DataType: DataTypeInteger},          // RFC7268
+	{ID: 183, Name: "wlan-venue-language", DataType: DataTypeOctets},       // RFC7268
+	{ID: 184, Name: "wlan-venue-name", DataType: DataTypeString},           // RFC7268
+	{ID: 185, Name: "wlan-reason-code", DataType: DataTypeInteger},         // RFC7268
+	{ID: 186, Name: "wlan-pairwise-cipher", DataType: DataTypeInteger},     // RFC7268
+	{ID: 187, Name: "wlan-group-cipher", DataType: DataTypeInteger},        // RFC7268
+	{ID: 188, Name: "wlan-akm-suite", DataType: DataTypeInteger},           // RFC7268
+	{ID: 189, Name: "wlan-group-mgmt-cipher", DataType: DataTypeInteger},   // RFC7268
+	{ID: 190, Name: "wlan-rf-band", DataType: DataTypeInteger},             // RFC7268
+	{ID: 241, Name: "extended-attribute-1", DataType: DataTypeOctets},      // RFC6929
+	{ID: 242, Name: "extended-attribute-2", DataType: DataTypeOctets},      // RFC6929
+	{ID: 243, Name: "extended-attribute-3", DataType: DataTypeOctets},      // RFC6929
+	{ID: 244, Name: "extended-attribute-4", DataType: DataTypeOctets},      // RFC6929
+	{ID: 245, Name: "extended-attribute-5", DataType: DataTypeOctets},      // RFC6929
+	{ID: 246, Name: "extended-attribute-6", DataType: DataTypeOctets},      // RFC6929
+
+	// RFC 7930 extended attributes in the 241.x space. The registered ID packs
+	// the base type (241) and the extended type: (241<<8)|ext.
+	{ // RFC7930
+		ID:       (241 << 8) | 3,
+		Name:     "response-length",
+		DataType: DataTypeInteger,
+		Extended: true,
+	},
+	{ // RFC7930
+		ID:       (241 << 8) | 4,
+		Name:     "original-packet-code",
+		DataType: DataTypeInteger,
+		Extended: true,
+		Values: map[string]uint32{
+			"access-request":                     1,
+			"access-accept":                      2,
+			"access-reject":                      3,
+			"accounting-request":                 4,
+			"accounting-response":                5,
+			"accounting-status":                  6,
+			"password-request":                   7,
+			"password-accept":                    8,
+			"password-reject":                    9,
+			"accounting-message":                 10,
+			"access-challenge":                   11,
+			"status-server":                      12,
+			"status-client":                      13,
+			"resource-free-request":              21,
+			"resource-free-response":             22,
+			"resource-query-request":             23,
+			"resource-query-response":            24,
+			"alternate-resource-reclaim-request": 25,
+			"nas-reboot-request":                 26,
+			"nas-reboot-response":                27,
+			"next-passcode":                      29,
+			"new-pin":                            30,
+			"terminate-session":                  31,
+			"password-expired":                   32,
+			"event-request":                      33,
+			"event-response":                     34,
+			"disconnect-request":                 40,
+			"disconnect-ack":                     41,
+			"disconnect-nak":                     42,
+			"coa-request":                        43,
+			"coa-ack":                            44,
+			"coa-nak":                            45,
+			"ip-address-allocate":                50,
+			"ip-address-release":                 51,
+			"protocol-error":                     52,
+		},
+	},
 }

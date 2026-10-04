@@ -29,6 +29,11 @@ func NewResponse(req *Request) Response {
 		pkt.Dict = req.packet.Dict
 	}
 
+	// Carry the shared secret so encrypted reply attributes (for example MPPE
+	// keys) are marked for encryption as they are added; the server finalizes
+	// them with the request authenticator before sending.
+	pkt.Secret = req.Secret.Secret
+
 	return Response{
 		packet: pkt,
 	}
@@ -54,23 +59,21 @@ func (r *Response) SetAttribute(name string, value interface{}) error {
 	return r.packet.AddAttributeByName(name, value)
 }
 
-// SetAttributes sets multiple attributes in the response packet.
-// For each attribute, if it already exists, it is removed first and then the new values are added.
-// Each attribute can have multiple values (array).
-// Returns an error if any attribute is not found in the dictionary.
-func (r *Response) SetAttributes(attrs map[string][]interface{}) error {
+// SetAttributes replaces the response packet's attributes with the given flat
+// attribute map. Keys are attribute names (optionally "name:tag"); values are
+// slices, with each element becoming one attribute instance. Container members
+// are addressed by their own flat child name. Existing instances of each key
+// are removed first so the result reflects exactly the supplied map.
+func (r *Response) SetAttributes(attrs map[string][]any) error {
 	if r.packet == nil {
 		return nil
 	}
 
-	for name, values := range attrs {
-		r.packet.RemoveAttributeByName(name)
-		if err := r.packet.AddAttributeByName(name, values); err != nil {
-			return err
-		}
+	for name := range attrs {
+		base, _ := splitAttributeTag(name)
+		r.packet.RemoveAttributeByName(base)
 	}
-
-	return nil
+	return r.packet.SetAttributes(attrs)
 }
 
 // AddAttribute adds a single attribute to the response packet.
@@ -84,22 +87,17 @@ func (r *Response) AddAttribute(name string, value interface{}) error {
 	return r.packet.AddAttributeByName(name, value)
 }
 
-// AddAttributes adds multiple attributes to the response packet.
-// For each attribute, if it already exists, the new values are appended (multiple values).
-// Each attribute can have multiple values (array).
-// Returns an error if any attribute is not found in the dictionary.
-func (r *Response) AddAttributes(attrs map[string][]interface{}) error {
+// AddAttributes adds multiple attributes to the response packet from a flat
+// attribute map, appending to any existing instances. Keys are attribute names
+// (optionally "name:tag"); values are slices, with each element becoming one
+// attribute instance. Container members are addressed by their own flat child
+// name.
+func (r *Response) AddAttributes(attrs map[string][]any) error {
 	if r.packet == nil {
 		return nil
 	}
 
-	for name, values := range attrs {
-		if err := r.packet.AddAttributeByName(name, values); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return r.packet.SetAttributes(attrs)
 }
 
 // DeleteAttribute removes all instances of the specified attribute from the response packet.

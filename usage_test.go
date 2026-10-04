@@ -343,7 +343,8 @@ func TestPacketUsageFiltering(t *testing.T) {
 
 	t.Run("user-password skipped in coa-request", func(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeCoARequest, 1, dict)
-		require.NoError(t, pkt.AddAttributeByNameWithSecret("user-password", "secret", []byte("s"), [16]byte{}))
+		pkt.Secret = []byte("s")
+		require.NoError(t, pkt.AddAttributeByName("user-password", "secret"))
 		assert.Empty(t, pkt.Attributes)
 	})
 }

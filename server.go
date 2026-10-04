@@ -223,6 +223,14 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		return
 	}
 
+	// RFC 2865 Section 5 / RFC 2868: reply attributes that are encrypted
+	// (for example MPPE keys and Tunnel-Password) use the Request
+	// Authenticator of the packet being answered. Encrypt before computing the
+	// response Message-Authenticator and Response Authenticator, which cover
+	// the encrypted bytes.
+	resp.packet.Secret = secretResp.Secret
+	resp.packet.EncryptAttributes(pkt.Authenticator)
+
 	if s.useMessageAuth {
 		resp.packet.AddMessageAuthenticator(secretResp.Secret, pkt.Authenticator)
 	}

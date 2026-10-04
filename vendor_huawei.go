@@ -226,10 +226,10 @@ var HuaweiVendorDefinition = &VendorDefinition{
 			Name:     "huawei-ipv6-prefix-lease",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "huawei-ipv6-prefix-lease-t1", DataType: DataTypeByte},
-				{Name: "huawei-ipv6-prefix-lease-t2", DataType: DataTypeByte},
-				{Name: "huawei-ipv6-prefix-lease-preferred-lifetime", DataType: DataTypeInteger},
-				{Name: "huawei-ipv6-prefix-lease-valid-lifetime", DataType: DataTypeInteger},
+				{ID: 1, Name: "huawei-ipv6-prefix-lease-t1", DataType: DataTypeByte},
+				{ID: 2, Name: "huawei-ipv6-prefix-lease-t2", DataType: DataTypeByte},
+				{ID: 3, Name: "huawei-ipv6-prefix-lease-preferred-lifetime", DataType: DataTypeInteger},
+				{ID: 4, Name: "huawei-ipv6-prefix-lease-valid-lifetime", DataType: DataTypeInteger},
 			},
 		},
 		{
@@ -237,10 +237,10 @@ var HuaweiVendorDefinition = &VendorDefinition{
 			Name:     "huawei-ipv6-address-lease",
 			DataType: DataTypeStruct,
 			Children: []*AttributeDefinition{
-				{Name: "huawei-ipv6-address-lease-t1", DataType: DataTypeByte},
-				{Name: "huawei-ipv6-address-lease-t2", DataType: DataTypeByte},
-				{Name: "huawei-ipv6-address-lease-preferred-lifetime", DataType: DataTypeInteger},
-				{Name: "huawei-ipv6-address-lease-valid-lifetime", DataType: DataTypeInteger},
+				{ID: 1, Name: "huawei-ipv6-address-lease-t1", DataType: DataTypeByte},
+				{ID: 2, Name: "huawei-ipv6-address-lease-t2", DataType: DataTypeByte},
+				{ID: 3, Name: "huawei-ipv6-address-lease-preferred-lifetime", DataType: DataTypeInteger},
+				{ID: 4, Name: "huawei-ipv6-address-lease-valid-lifetime", DataType: DataTypeInteger},
 			},
 		},
 		// FreeRADIUS 3.2.x and master disagree (ipv6prefix vs ipv6addr); master's

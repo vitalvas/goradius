@@ -104,7 +104,7 @@ func TestResponseSetAttribute(t *testing.T) {
 
 	assert.Len(t, resp.packet.Attributes, 1)
 
-	attrs := resp.packet.GetAttributes(18) // Reply-Message
+	attrs := resp.packet.getAttributesByType(18) // Reply-Message
 	assert.Len(t, attrs, 1)
 	assert.Equal(t, []byte("Welcome!"), attrs[0].Value)
 }

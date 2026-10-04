@@ -39,38 +39,38 @@ func structMemberWidth(child *AttributeDefinition) (int, error) {
 	return 0, fmt.Errorf("struct member %q of type %q requires a Size hint", child.Name, child.DataType)
 }
 
+// isTrailingVariableMember reports whether a struct member is a variable-width
+// type (string or octets) with no fixed Size. Such a member is only valid as
+// the final member of a struct, where it consumes the remaining bytes. This
+// matches layouts such as RFC 5580 Location-Information, whose trailing Method
+// field is an open-ended string.
+func isTrailingVariableMember(child *AttributeDefinition) bool {
+	if _, fixed := fixedWidthFor(child.DataType); fixed {
+		return false
+	}
+	if child.Size > 0 {
+		return false
+	}
+	return child.DataType == DataTypeString || child.DataType == DataTypeOctets
+}
+
 // EncodeStruct encodes a map of child values into a fixed-layout struct byte stream.
 // Members are written sequentially in the order their definitions appear in parent.Children,
 // with no per-field type/length header. Every member must be supplied; fixed-width scalar
-// types determine their own width, while variable-width members (string, octets) are
+// types determine their own width, while sized variable-width members (string, octets) are
 // zero-padded to their declared Size. A value longer than its declared Size is an error.
+// A final string/octets member with no Size is a trailing member: it is written at its
+// natural length and consumes the remainder of the struct.
 func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, error) {
 	if parent == nil {
 		return nil, fmt.Errorf("nil parent attribute")
 	}
 
-	total := 0
-	for _, child := range parent.Children {
-		width, err := structMemberWidth(child)
-		if err != nil {
-			return nil, err
-		}
-		total += width
-	}
-
-	// Single output buffer; members are written in place and the zeroed buffer
-	// provides the padding for short variable-width members
-	out := make([]byte, total)
-	offset := 0
-	for _, child := range parent.Children {
+	out := make([]byte, 0, 16)
+	for i, child := range parent.Children {
 		raw, ok := values[child.Name]
 		if !ok {
 			return nil, fmt.Errorf("struct %q missing member %q", parent.Name, child.Name)
-		}
-
-		width, err := structMemberWidth(child)
-		if err != nil {
-			return nil, err
 		}
 
 		encoded, err := EncodeValue(processEnumeratedValueFor(raw, child), child.DataType)
@@ -78,6 +78,18 @@ func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, e
 			return nil, fmt.Errorf("failed to encode struct member %q: %w", child.Name, err)
 		}
 
+		if isTrailingVariableMember(child) {
+			if i != len(parent.Children)-1 {
+				return nil, fmt.Errorf("struct member %q of type %q without a Size must be the final member", child.Name, child.DataType)
+			}
+			out = append(out, encoded...)
+			break
+		}
+
+		width, err := structMemberWidth(child)
+		if err != nil {
+			return nil, err
+		}
 		if _, fixed := fixedWidthFor(child.DataType); fixed {
 			if len(encoded) != width {
 				return nil, fmt.Errorf("struct member %q encoded to %d bytes, expected %d", child.Name, len(encoded), width)
@@ -86,8 +98,9 @@ func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, e
 			// Variable-width member: zero-padded, but silent truncation loses data
 			return nil, fmt.Errorf("struct member %q encoded to %d bytes, exceeds declared size %d", child.Name, len(encoded), width)
 		}
-		copy(out[offset:offset+width], encoded)
-		offset += width
+		field := make([]byte, width)
+		copy(field, encoded)
+		out = append(out, field...)
 	}
 
 	return out, nil
@@ -103,7 +116,21 @@ func DecodeStruct(parent *AttributeDefinition, data []byte) (map[string]any, err
 
 	result := make(map[string]any)
 	offset := 0
-	for _, child := range parent.Children {
+	for i, child := range parent.Children {
+		// A final string/octets member with no Size consumes the remaining bytes.
+		if isTrailingVariableMember(child) {
+			if i != len(parent.Children)-1 {
+				return nil, fmt.Errorf("struct member %q of type %q without a Size must be the final member", child.Name, child.DataType)
+			}
+			decoded, err := DecodeValue(data[offset:], child.DataType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode struct member %q: %w", child.Name, err)
+			}
+			result[child.Name] = decoded
+			offset = len(data)
+			break
+		}
+
 		width, err := structMemberWidth(child)
 		if err != nil {
 			return nil, err
