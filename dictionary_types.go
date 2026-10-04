@@ -16,6 +16,14 @@ const (
 	DataTypeStruct     DataType = "struct" // Fixed-layout sequence of sub-attributes (RFC 6929 struct)
 	DataTypeEVS        DataType = "evs"    // Extended-Vendor-Specific container (RFC 6929 Section 2.5)
 	DataTypeABinary    DataType = "abinary"
+
+	// Additional FreeRADIUS scalar types, used mostly by vendor dictionaries.
+	DataTypeByte      DataType = "byte"       // 8-bit unsigned integer (1 octet)
+	DataTypeShort     DataType = "short"      // 16-bit unsigned integer (2 octets)
+	DataTypeInteger64 DataType = "integer64"  // 64-bit unsigned integer (8 octets)
+	DataTypeSigned    DataType = "signed"     // 32-bit signed integer (4 octets)
+	DataTypeComboIP   DataType = "combo-ip"   // IPv4 (4 octets) or IPv6 (16 octets) address
+	DataTypeTimeDelta DataType = "time_delta" // Duration in seconds, 32-bit unsigned (4 octets)
 )
 
 // EncryptionType represents the encryption type of an attribute

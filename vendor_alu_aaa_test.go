@@ -7,6 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestALUAAAComboIPRoundTrip confirms a real registered ALU-AAA combo-ip VSA
+// round-trips through the default dictionary for both IPv4 and IPv6, choosing
+// the 4- or 16-octet width by address family.
+func TestALUAAAComboIPRoundTrip(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	cases := map[string]string{
+		"192.0.2.10":  "192.0.2.10",
+		"2001:db8::5": "2001:db8::5",
+	}
+	for input, want := range cases {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 7, dict)
+		require.NoError(t, pkt.AddAttributeByName("alu-aaa-address-0", input))
+
+		raw, err := pkt.Encode()
+		require.NoError(t, err)
+		decoded, err := Decode(raw)
+		require.NoError(t, err)
+		decoded.Dict = dict
+
+		vals := decoded.GetAttribute("alu-aaa-address-0")
+		require.Len(t, vals, 1, input)
+		ip, err := DecodeComboIP(vals[0].Value)
+		require.NoError(t, err)
+		assert.Equal(t, want, ip.String())
+	}
+}
+
 func TestALUAAAVendorDefinition(t *testing.T) {
 	assert.NotNil(t, ALUAAAVendorDefinition)
 	assert.Equal(t, uint32(831), ALUAAAVendorDefinition.ID)

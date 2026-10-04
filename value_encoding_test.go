@@ -691,6 +691,12 @@ func FuzzDecodeValue(f *testing.F) {
 		DataTypeDate,
 		DataTypeOctets,
 		DataTypeABinary,
+		DataTypeByte,
+		DataTypeShort,
+		DataTypeInteger64,
+		DataTypeSigned,
+		DataTypeComboIP,
+		DataTypeTimeDelta,
 		DataTypeTLV, // unsupported by DecodeValue; must error, not panic
 	}
 
@@ -703,6 +709,115 @@ func FuzzDecodeValue(f *testing.F) {
 		dataType := dataTypes[int(typeIdx)%len(dataTypes)]
 		_, _ = DecodeValue(data, dataType) // must not panic
 	})
+}
+
+func TestByteShortInteger64Types(t *testing.T) {
+	t.Run("byte round trip", func(t *testing.T) {
+		enc, err := EncodeValue(uint8(200), DataTypeByte)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{200}, enc)
+		dec, err := DecodeValue(enc, DataTypeByte)
+		require.NoError(t, err)
+		assert.Equal(t, uint8(200), dec)
+	})
+
+	t.Run("byte overflow rejected", func(t *testing.T) {
+		_, err := EncodeValue(300, DataTypeByte)
+		assert.Error(t, err)
+	})
+
+	t.Run("short round trip", func(t *testing.T) {
+		enc, err := EncodeValue(uint16(0x1234), DataTypeShort)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{0x12, 0x34}, enc)
+		dec, err := DecodeValue(enc, DataTypeShort)
+		require.NoError(t, err)
+		assert.Equal(t, uint16(0x1234), dec)
+	})
+
+	t.Run("integer64 round trip", func(t *testing.T) {
+		enc, err := EncodeValue(uint64(0x0102030405060708), DataTypeInteger64)
+		require.NoError(t, err)
+		assert.Len(t, enc, 8)
+		dec, err := DecodeValue(enc, DataTypeInteger64)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0x0102030405060708), dec)
+	})
+
+	t.Run("signed round trip", func(t *testing.T) {
+		enc, err := EncodeValue(int32(-5), DataTypeSigned)
+		require.NoError(t, err)
+		dec, err := DecodeValue(enc, DataTypeSigned)
+		require.NoError(t, err)
+		assert.Equal(t, int32(-5), dec)
+	})
+
+	t.Run("time_delta round trip", func(t *testing.T) {
+		enc, err := EncodeValue(90*time.Second, DataTypeTimeDelta)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{0, 0, 0, 90}, enc)
+		dec, err := DecodeValue(enc, DataTypeTimeDelta)
+		require.NoError(t, err)
+		assert.Equal(t, 90*time.Second, dec)
+	})
+}
+
+func TestComboIPType(t *testing.T) {
+	t.Run("ipv4 is four octets", func(t *testing.T) {
+		enc, err := EncodeValue("192.0.2.1", DataTypeComboIP)
+		require.NoError(t, err)
+		assert.Len(t, enc, 4)
+		dec, err := DecodeValue(enc, DataTypeComboIP)
+		require.NoError(t, err)
+		ip, ok := dec.(net.IP)
+		require.True(t, ok)
+		assert.Equal(t, "192.0.2.1", ip.String())
+	})
+
+	t.Run("ipv6 is sixteen octets", func(t *testing.T) {
+		enc, err := EncodeValue("2001:db8::1", DataTypeComboIP)
+		require.NoError(t, err)
+		assert.Len(t, enc, 16)
+		dec, err := DecodeValue(enc, DataTypeComboIP)
+		require.NoError(t, err)
+		ip, ok := dec.(net.IP)
+		require.True(t, ok)
+		assert.Equal(t, "2001:db8::1", ip.String())
+	})
+
+	t.Run("bad length errors", func(t *testing.T) {
+		_, err := DecodeValue([]byte{1, 2, 3}, DataTypeComboIP)
+		assert.Error(t, err)
+	})
+}
+
+// TestStructWithWideMembers verifies a fixed-layout struct with byte, short,
+// and integer64 members round-trips, matching the Nokia/Ericsson 64-bit
+// accounting counter layout (selection byte, id byte, uint64 value).
+func TestStructWithWideMembers(t *testing.T) {
+	parent := &AttributeDefinition{
+		Name:     "acct-counter",
+		DataType: DataTypeStruct,
+		Children: []*AttributeDefinition{
+			{Name: "selection", DataType: DataTypeByte},
+			{Name: "id", DataType: DataTypeShort},
+			{Name: "value", DataType: DataTypeInteger64},
+		},
+	}
+
+	encoded, err := EncodeStruct(parent, map[string]any{
+		"selection": uint8(0x80),
+		"id":        uint16(7),
+		"value":     uint64(0x0102030405060708),
+	})
+	require.NoError(t, err)
+	assert.Len(t, encoded, 1+2+8)
+
+	decoded, err := DecodeStruct(parent, encoded)
+	require.NoError(t, err)
+	assert.Equal(t, uint8(0x80), decoded["selection"])
+	assert.Equal(t, uint16(7), decoded["id"])
+	assert.Equal(t, uint64(0x0102030405060708), decoded["value"])
 }
 
 func BenchmarkEncodeString(b *testing.B) {

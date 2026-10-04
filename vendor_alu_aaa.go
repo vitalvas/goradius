@@ -7,11 +7,8 @@ package goradius
 // (3041) and the Alcatel-ESAM ISAM vendor (637).
 //
 // The dictionary carries no per-packet placement information, so all
-// attributes stay unrestricted. The library models only the standard 1-octet
-// VSA header, so the byte (lawful-intercept-status), short (df-cc-port), and
-// combo-ip (address-0..3) attributes are carried as raw octets, preserving
-// their on-wire width. The key-0..3 attributes use Tunnel-Password salted
-// encryption.
+// attributes stay unrestricted. The key-0..3 attributes use Tunnel-Password
+// salted encryption.
 var ALUAAAVendorDefinition = &VendorDefinition{
 	ID:   831,
 	Name: "alu-aaa",
@@ -25,11 +22,9 @@ var ALUAAAVendorDefinition = &VendorDefinition{
 		{ID: 7, Name: "alu-aaa-aka-rand", DataType: DataTypeOctets},
 		{ID: 8, Name: "alu-aaa-aka-auts", DataType: DataTypeOctets},
 		{ID: 9, Name: "alu-aaa-service-profile", DataType: DataTypeString},
-		// byte in the dictionary; carried as a single octet.
-		{ID: 10, Name: "alu-aaa-lawful-intercept-status", DataType: DataTypeOctets},
+		{ID: 10, Name: "alu-aaa-lawful-intercept-status", DataType: DataTypeByte},
 		{ID: 11, Name: "alu-aaa-df-cc-address", DataType: DataTypeIPAddr},
-		// short in the dictionary; carried as two octets.
-		{ID: 12, Name: "alu-aaa-df-cc-port", DataType: DataTypeOctets},
+		{ID: 12, Name: "alu-aaa-df-cc-port", DataType: DataTypeShort},
 		{ID: 13, Name: "alu-aaa-client-program", DataType: DataTypeString},
 		{
 			ID:       14,
@@ -53,11 +48,10 @@ var ALUAAAVendorDefinition = &VendorDefinition{
 		{ID: 105, Name: "alu-aaa-integer-1", DataType: DataTypeInteger},
 		{ID: 106, Name: "alu-aaa-integer-2", DataType: DataTypeInteger},
 		{ID: 107, Name: "alu-aaa-integer-3", DataType: DataTypeInteger},
-		// combo-ip in the dictionary (IPv4 or IPv6); carried as raw octets.
-		{ID: 108, Name: "alu-aaa-address-0", DataType: DataTypeOctets},
-		{ID: 109, Name: "alu-aaa-address-1", DataType: DataTypeOctets},
-		{ID: 110, Name: "alu-aaa-address-2", DataType: DataTypeOctets},
-		{ID: 111, Name: "alu-aaa-address-3", DataType: DataTypeOctets},
+		{ID: 108, Name: "alu-aaa-address-0", DataType: DataTypeComboIP},
+		{ID: 109, Name: "alu-aaa-address-1", DataType: DataTypeComboIP},
+		{ID: 110, Name: "alu-aaa-address-2", DataType: DataTypeComboIP},
+		{ID: 111, Name: "alu-aaa-address-3", DataType: DataTypeComboIP},
 		{ID: 112, Name: "alu-aaa-value-0", DataType: DataTypeOctets},
 		{ID: 113, Name: "alu-aaa-value-1", DataType: DataTypeOctets},
 		{ID: 114, Name: "alu-aaa-value-2", DataType: DataTypeOctets},

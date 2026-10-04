@@ -292,12 +292,34 @@ var BenuVendorDefinition = &VendorDefinition{
 		{ID: 112, Name: "benu-mcast-policy-name", DataType: DataTypeString},
 		{ID: 113, Name: "benu-igmp-query-interval", DataType: DataTypeInteger},
 		{ID: 114, Name: "benu-igmp-query-max-resp-time", DataType: DataTypeInteger},
-		// IDs 115-117 are single-octet integers in the official dictionary
-		// (type byte); they are carried as raw octets here. 115/116: enable
-		// is 0x01, disable is 0x02. 117: non-mvlan is 0x00, mvlan is 0x01.
-		{ID: 115, Name: "benu-igmp-fast-leave", DataType: DataTypeOctets},
-		{ID: 116, Name: "benu-igmp-router-alert", DataType: DataTypeOctets},
-		{ID: 117, Name: "benu-mcast-replica-type", DataType: DataTypeOctets},
+		// IDs 115-117 are single-octet (byte) enums in the official dictionary.
+		{
+			ID:       115,
+			Name:     "benu-igmp-fast-leave",
+			DataType: DataTypeByte,
+			Values: map[string]uint32{
+				"enable":  1,
+				"disable": 2,
+			},
+		},
+		{
+			ID:       116,
+			Name:     "benu-igmp-router-alert",
+			DataType: DataTypeByte,
+			Values: map[string]uint32{
+				"enable":  1,
+				"disable": 2,
+			},
+		},
+		{
+			ID:       117,
+			Name:     "benu-mcast-replica-type",
+			DataType: DataTypeByte,
+			Values: map[string]uint32{
+				"non-mvlan": 0,
+				"mvlan":     1,
+			},
+		},
 		{ID: 118, Name: "benu-igmp-concur-channels-max", DataType: DataTypeInteger},
 		{ID: 119, Name: "benu-igmp-grp-query-interval", DataType: DataTypeInteger},
 		{ID: 120, Name: "benu-charging-policy", DataType: DataTypeString},

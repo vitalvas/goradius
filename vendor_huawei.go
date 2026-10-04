@@ -218,10 +218,31 @@ var HuaweiVendorDefinition = &VendorDefinition{
 		{ID: 187, Name: "huawei-dhcp-option", DataType: DataTypeOctets},
 		{ID: 188, Name: "huawei-avpair", DataType: DataTypeString},
 		{ID: 191, Name: "huawei-delegated-ipv6-prefix-pool", DataType: DataTypeString},
-		// 192/193 carry the DHCPv6 lease struct (T1 byte, T2 byte,
-		// preferred-lifetime uint32, valid-lifetime uint32) as raw octets.
-		{ID: 192, Name: "huawei-ipv6-prefix-lease", DataType: DataTypeOctets},
-		{ID: 193, Name: "huawei-ipv6-address-lease", DataType: DataTypeOctets},
+		// 192/193 carry the DHCPv6 lease as a fixed-layout struct (T1 byte,
+		// T2 byte, preferred-lifetime uint32, valid-lifetime uint32), per the
+		// FreeRADIUS master dictionary.
+		{
+			ID:       192,
+			Name:     "huawei-ipv6-prefix-lease",
+			DataType: DataTypeStruct,
+			Children: []*AttributeDefinition{
+				{Name: "huawei-ipv6-prefix-lease-t1", DataType: DataTypeByte},
+				{Name: "huawei-ipv6-prefix-lease-t2", DataType: DataTypeByte},
+				{Name: "huawei-ipv6-prefix-lease-preferred-lifetime", DataType: DataTypeInteger},
+				{Name: "huawei-ipv6-prefix-lease-valid-lifetime", DataType: DataTypeInteger},
+			},
+		},
+		{
+			ID:       193,
+			Name:     "huawei-ipv6-address-lease",
+			DataType: DataTypeStruct,
+			Children: []*AttributeDefinition{
+				{Name: "huawei-ipv6-address-lease-t1", DataType: DataTypeByte},
+				{Name: "huawei-ipv6-address-lease-t2", DataType: DataTypeByte},
+				{Name: "huawei-ipv6-address-lease-preferred-lifetime", DataType: DataTypeInteger},
+				{Name: "huawei-ipv6-address-lease-valid-lifetime", DataType: DataTypeInteger},
+			},
+		},
 		// FreeRADIUS 3.2.x and master disagree (ipv6prefix vs ipv6addr); master's
 		// ipv6addr is used.
 		{ID: 194, Name: "huawei-ipv6-policy-route", DataType: DataTypeIPv6Addr},

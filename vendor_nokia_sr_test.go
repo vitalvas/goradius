@@ -7,6 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestNokiaSRStructCounterRoundTrip confirms a real registered Nokia SR
+// accounting counter (a struct VSA with byte/byte/uint64 members) encodes into
+// a packet and decodes back through the default dictionary.
+func TestNokiaSRStructCounterRoundTrip(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewPacketWithDictionary(CodeAccountingRequest, 7, dict)
+	require.NoError(t, pkt.AddAttributeByName("nokia-sr-acct-i-inprof-octets-64", map[string]any{
+		"nokia-sr-acct-i-inprof-octets-selection": uint8(0x80),
+		"nokia-sr-acct-i-inprof-octets-id":        uint8(3),
+		"nokia-sr-acct-i-inprof-octets":           uint64(0x0102030405060708),
+	}))
+
+	raw, err := pkt.Encode()
+	require.NoError(t, err)
+	decoded, err := Decode(raw)
+	require.NoError(t, err)
+	decoded.Dict = dict
+
+	vals := decoded.GetAttribute("nokia-sr-acct-i-inprof-octets-64")
+	require.Len(t, vals, 1)
+	children, err := vals[0].Children()
+	require.NoError(t, err)
+	assert.Equal(t, uint8(0x80), children["nokia-sr-acct-i-inprof-octets-selection"])
+	assert.Equal(t, uint8(3), children["nokia-sr-acct-i-inprof-octets-id"])
+	assert.Equal(t, uint64(0x0102030405060708), children["nokia-sr-acct-i-inprof-octets"])
+}
+
 func TestNokiaSRVendorDefinition(t *testing.T) {
 	assert.NotNil(t, NokiaSRVendorDefinition)
 	assert.Equal(t, uint32(6527), NokiaSRVendorDefinition.ID)
@@ -56,10 +85,22 @@ func TestNokiaSRVendorDefinition(t *testing.T) {
 		assert.Equal(t, uint32(7), fc.Values["nc"])
 	})
 
-	t.Run("accounting counters carried as octets", func(t *testing.T) {
+	t.Run("accounting counters are structs with wide members", func(t *testing.T) {
 		counter, ok := attrMap["nokia-sr-acct-i-inprof-octets-64"]
 		require.True(t, ok)
-		assert.Equal(t, DataTypeOctets, counter.DataType)
+		assert.Equal(t, DataTypeStruct, counter.DataType)
+		require.Len(t, counter.Children, 3)
+		assert.Equal(t, DataTypeByte, counter.Children[0].DataType)
+		assert.Equal(t, DataTypeByte, counter.Children[1].DataType)
+		assert.Equal(t, DataTypeInteger64, counter.Children[2].DataType)
+
+		// HSMDA override counters use a short id + uint64 value.
+		oc, ok := attrMap["nokia-sr-acct-oc-i-inprof-octets-64"]
+		require.True(t, ok)
+		assert.Equal(t, DataTypeStruct, oc.DataType)
+		require.Len(t, oc.Children, 2)
+		assert.Equal(t, DataTypeShort, oc.Children[0].DataType)
+		assert.Equal(t, DataTypeInteger64, oc.Children[1].DataType)
 	})
 
 	t.Run("no duplicate ids", func(t *testing.T) {

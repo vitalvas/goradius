@@ -56,13 +56,20 @@ func validateAttributeDefinition(attr *AttributeDefinition) error {
 		}
 	}
 
+	// struct members are a positional fixed layout with no per-member ID, so
+	// their IDs are not meaningful and are not checked for uniqueness. tlv/evs
+	// children are ID-keyed (type+length encoded) and must have unique IDs.
+	checkChildIDs := attr.DataType != DataTypeStruct
+
 	seenChildIDs := make(map[uint32]string, len(attr.Children))
 	seenChildNames := make(map[string]struct{}, len(attr.Children))
 	for _, child := range attr.Children {
-		if existing, exists := seenChildIDs[child.ID]; exists {
-			return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
+		if checkChildIDs {
+			if existing, exists := seenChildIDs[child.ID]; exists {
+				return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
+			}
+			seenChildIDs[child.ID] = child.Name
 		}
-		seenChildIDs[child.ID] = child.Name
 
 		if _, exists := seenChildNames[child.Name]; exists {
 			return fmt.Errorf("attribute %q has duplicate child name %q", attr.Name, child.Name)

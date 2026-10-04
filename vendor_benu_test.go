@@ -80,14 +80,16 @@ func TestBenuVendorDefinition(t *testing.T) {
 		}
 	})
 
-	t.Run("byte attributes carried as octets", func(t *testing.T) {
+	t.Run("byte attributes use byte type with enums", func(t *testing.T) {
 		for _, name := range []string{
 			"benu-igmp-fast-leave", "benu-igmp-router-alert", "benu-mcast-replica-type",
 		} {
 			attr, ok := attrMap[name]
 			require.True(t, ok, name)
-			assert.Equal(t, DataTypeOctets, attr.DataType, name)
+			assert.Equal(t, DataTypeByte, attr.DataType, name)
 		}
+		assert.Equal(t, uint32(0), attrMap["benu-mcast-replica-type"].Values["non-mvlan"])
+		assert.Equal(t, uint32(2), attrMap["benu-igmp-fast-leave"].Values["disable"])
 	})
 
 	t.Run("no duplicate ids", func(t *testing.T) {

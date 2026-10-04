@@ -9,8 +9,14 @@ import (
 // lay out fields sequentially without per-field length headers.
 func fixedWidthFor(dataType DataType) (int, bool) {
 	switch dataType {
-	case DataTypeInteger, DataTypeIPAddr, DataTypeDate:
+	case DataTypeByte:
+		return 1, true
+	case DataTypeShort:
+		return 2, true
+	case DataTypeInteger, DataTypeIPAddr, DataTypeDate, DataTypeSigned, DataTypeTimeDelta:
 		return 4, true
+	case DataTypeInteger64:
+		return 8, true
 	case DataTypeIPv6Addr:
 		return 16, true
 	case DataTypeIfID:

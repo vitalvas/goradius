@@ -52,6 +52,10 @@ func TestNewDefault(t *testing.T) {
 		{831, "alu-aaa", "alu-aaa-service-profile", 9},
 		{637, "alcatel-esam", "alcatel-esam-vrf-name", 0x0700},
 		{6527, "nokia-sr", "nokia-sr-sla-prof-str", 13},
+		{2544, "adva", "adva-user-level", 100},
+		{193, "ericsson", "ericsson-sitekeeper-name", 58},
+		{2352, "ericsson-ab", "ericsson-ab-service-name", 190},
+		{10923, "ericsson-pcn", "ericsson-pcn-suggested-rule-space", 30},
 	}
 
 	for _, v := range vendors {

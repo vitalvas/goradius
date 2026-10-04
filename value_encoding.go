@@ -43,6 +43,85 @@ func DecodeInteger(data []byte) (uint32, error) {
 	return binary.BigEndian.Uint32(data), nil
 }
 
+// EncodeByte encodes an 8-bit unsigned integer (1 octet).
+func EncodeByte(value uint8) []byte {
+	return []byte{value}
+}
+
+// DecodeByte decodes an 8-bit unsigned integer (1 octet).
+func DecodeByte(data []byte) (uint8, error) {
+	if len(data) != 1 {
+		return 0, fmt.Errorf("invalid byte length: %d", len(data))
+	}
+	return data[0], nil
+}
+
+// EncodeShort encodes a 16-bit unsigned integer (2 octets, big-endian).
+func EncodeShort(value uint16) []byte {
+	data := make([]byte, 2)
+	binary.BigEndian.PutUint16(data, value)
+	return data
+}
+
+// DecodeShort decodes a 16-bit unsigned integer (2 octets, big-endian).
+func DecodeShort(data []byte) (uint16, error) {
+	if len(data) != 2 {
+		return 0, fmt.Errorf("invalid short length: %d", len(data))
+	}
+	return binary.BigEndian.Uint16(data), nil
+}
+
+// EncodeInteger64 encodes a 64-bit unsigned integer (8 octets, big-endian).
+func EncodeInteger64(value uint64) []byte {
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint64(data, value)
+	return data
+}
+
+// DecodeInteger64 decodes a 64-bit unsigned integer (8 octets, big-endian).
+func DecodeInteger64(data []byte) (uint64, error) {
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid integer64 length: %d", len(data))
+	}
+	return binary.BigEndian.Uint64(data), nil
+}
+
+// EncodeSigned encodes a 32-bit signed integer (4 octets, big-endian two's complement).
+func EncodeSigned(value int32) []byte {
+	return EncodeInteger(uint32(value))
+}
+
+// DecodeSigned decodes a 32-bit signed integer (4 octets, big-endian two's complement).
+func DecodeSigned(data []byte) (int32, error) {
+	v, err := DecodeInteger(data)
+	if err != nil {
+		return 0, err
+	}
+	return int32(v), nil
+}
+
+// EncodeComboIP encodes an IPv4 (4 octets) or IPv6 (16 octets) address. The width
+// is chosen from the address family, matching the FreeRADIUS combo-ip type.
+func EncodeComboIP(ip net.IP) ([]byte, error) {
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return []byte(ipv4), nil
+	}
+	if ipv6 := ip.To16(); ipv6 != nil {
+		return []byte(ipv6), nil
+	}
+	return nil, fmt.Errorf("not an IP address")
+}
+
+// DecodeComboIP decodes a combo-ip value: 4 octets as IPv4, 16 octets as IPv6.
+func DecodeComboIP(data []byte) (net.IP, error) {
+	switch len(data) {
+	case 4, 16:
+		return net.IP(data), nil
+	default:
+		return nil, fmt.Errorf("invalid combo-ip length: %d", len(data))
+	}
+}
+
 // EncodeIPAddr encodes an IPv4 address for RADIUS attributes per RFC 2865 Section 5
 func EncodeIPAddr(ip net.IP) ([]byte, error) {
 	ipv4 := ip.To4()
@@ -170,6 +249,20 @@ func DecodeDate(data []byte) (time.Time, error) {
 	return time.Unix(int64(timestamp), 0), nil
 }
 
+// EncodeTimeDelta encodes a duration as a 32-bit count of whole seconds.
+func EncodeTimeDelta(d time.Duration) []byte {
+	return EncodeInteger(uint32(d / time.Second))
+}
+
+// DecodeTimeDelta decodes a 32-bit count of whole seconds into a duration.
+func DecodeTimeDelta(data []byte) (time.Duration, error) {
+	secs, err := DecodeInteger(data)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(secs) * time.Second, nil
+}
+
 // EncodeOctets encodes raw octets for RADIUS attributes
 func EncodeOctets(data []byte) []byte {
 	return data
@@ -258,9 +351,117 @@ func EncodeValue(value any, dataType DataType) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("expected []byte for octets/abinary data type")
 
+	case DataTypeByte, DataTypeShort, DataTypeInteger64, DataTypeSigned, DataTypeComboIP, DataTypeTimeDelta:
+		return encodeExtendedValue(value, dataType)
+
 	default:
 		return nil, fmt.Errorf("unsupported data type: %s", dataType)
 	}
+}
+
+// encodeExtendedValue encodes the additional scalar types (byte, short,
+// integer64, signed, combo-ip, time_delta) kept separate from EncodeValue to
+// bound that function's complexity.
+func encodeExtendedValue(value any, dataType DataType) ([]byte, error) {
+	switch dataType {
+	case DataTypeByte:
+		v, err := boundedUint(value, 0xff)
+		if err != nil {
+			return nil, fmt.Errorf("byte data type: %w", err)
+		}
+		return EncodeByte(uint8(v)), nil
+
+	case DataTypeShort:
+		v, err := boundedUint(value, 0xffff)
+		if err != nil {
+			return nil, fmt.Errorf("short data type: %w", err)
+		}
+		return EncodeShort(uint16(v)), nil
+
+	case DataTypeInteger64:
+		switch v := value.(type) {
+		case uint64:
+			return EncodeInteger64(v), nil
+		case uint32:
+			return EncodeInteger64(uint64(v)), nil
+		case int:
+			if v < 0 {
+				return nil, fmt.Errorf("integer64 data type: negative value %d", v)
+			}
+			return EncodeInteger64(uint64(v)), nil
+		default:
+			return nil, fmt.Errorf("expected uint64 for integer64 data type")
+		}
+
+	case DataTypeSigned:
+		switch v := value.(type) {
+		case int32:
+			return EncodeSigned(v), nil
+		case int:
+			return EncodeSigned(int32(v)), nil
+		default:
+			return nil, fmt.Errorf("expected int32 for signed data type")
+		}
+
+	case DataTypeComboIP:
+		if ip, ok := value.(net.IP); ok {
+			return EncodeComboIP(ip)
+		}
+		if s, ok := value.(string); ok {
+			ip := net.ParseIP(s)
+			if ip == nil {
+				return nil, fmt.Errorf("invalid combo-ip address: %s", s)
+			}
+			return EncodeComboIP(ip)
+		}
+		return nil, fmt.Errorf("expected net.IP or string for combo-ip data type")
+
+	case DataTypeTimeDelta:
+		switch v := value.(type) {
+		case time.Duration:
+			return EncodeTimeDelta(v), nil
+		case uint32:
+			return EncodeInteger(v), nil
+		case int:
+			if v < 0 {
+				return nil, fmt.Errorf("time_delta data type: negative value %d", v)
+			}
+			return EncodeInteger(uint32(v)), nil
+		default:
+			return nil, fmt.Errorf("expected time.Duration or integer seconds for time_delta data type")
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported data type: %s", dataType)
+	}
+}
+
+// boundedUint converts a small-integer value to uint64, enforcing an upper
+// bound so byte/short values that overflow their field are rejected rather
+// than silently wrapped.
+func boundedUint(value any, limit uint64) (uint64, error) {
+	var v uint64
+	switch n := value.(type) {
+	case uint8:
+		v = uint64(n)
+	case uint16:
+		v = uint64(n)
+	case uint32:
+		v = uint64(n)
+	case uint64:
+		v = n
+	case int:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %d", n)
+		}
+		v = uint64(n)
+	default:
+		return 0, fmt.Errorf("expected integer value")
+	}
+	if v > limit {
+		return 0, fmt.Errorf("value %d exceeds maximum %d", v, limit)
+	}
+	return v, nil
 }
 
 // DecodeValue decodes a value based on the attribute data type
@@ -289,6 +490,24 @@ func DecodeValue(data []byte, dataType DataType) (any, error) {
 
 	case DataTypeOctets, DataTypeABinary:
 		return DecodeOctets(data), nil
+
+	case DataTypeByte:
+		return DecodeByte(data)
+
+	case DataTypeShort:
+		return DecodeShort(data)
+
+	case DataTypeInteger64:
+		return DecodeInteger64(data)
+
+	case DataTypeSigned:
+		return DecodeSigned(data)
+
+	case DataTypeComboIP:
+		return DecodeComboIP(data)
+
+	case DataTypeTimeDelta:
+		return DecodeTimeDelta(data)
 
 	default:
 		return nil, fmt.Errorf("unsupported data type: %s", dataType)
