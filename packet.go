@@ -1,6 +1,7 @@
 package goradius
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
@@ -26,14 +27,65 @@ type Packet struct {
 	Attributes    []*Attribute
 	Dict          *Dictionary // Optional dictionary for attribute lookups
 
-	// Secret is the shared secret used to encrypt attributes whose dictionary
-	// definition declares an Encryption type (User-Password, Tunnel-Password,
-	// Ascend-Secret). The server and client set it when they build the packet,
-	// so callers never pass a secret to SetAttributes. Encryption uses this
-	// secret together with the packet Authenticator.
+	// Secret is the shared secret used to encrypt and decrypt attributes
+	// whose dictionary definition declares an Encryption type (User-Password,
+	// Tunnel-Password, Ascend-Secret). The server and client set it when they
+	// build the packet, so callers never pass a secret to SetAttributes.
+	// Encryption and decryption are transparent: attributes are encrypted
+	// automatically when the packet is serialized and decrypted automatically
+	// when read through GetAttribute, using the packet-type-appropriate
+	// authenticator.
 	Secret []byte
 
-	vsaCache map[int]*VendorAttribute
+	// requestAuth carries the Request Authenticator of the packet being
+	// answered, which keys attribute encryption in responses (RFC 2865
+	// Section 5.2, RFC 2868 Section 3.5). It is bound automatically by
+	// NewResponse, the server pipeline, the Client when it receives a
+	// response, and whenever a response/message authenticator is computed.
+	requestAuth    [AuthenticatorLength]byte
+	hasRequestAuth bool
+
+	// usedTunnelSalts records every Tunnel-Password salt emitted by this
+	// packet, so repeated salt-encrypted attributes never share a salt
+	// (RFC 2868 Section 3.5).
+	usedTunnelSalts map[uint16]struct{}
+
+	vsaCache map[int][]*VendorAttribute
+}
+
+// bindRequestAuthenticator records the Request Authenticator of the packet
+// this one answers, enabling transparent encryption and decryption of
+// response attributes.
+func (p *Packet) bindRequestAuthenticator(auth [AuthenticatorLength]byte) {
+	p.requestAuth = auth
+	p.hasRequestAuth = true
+}
+
+// encryptionAuthenticator returns the authenticator that keys attribute
+// encryption for this packet: the packet's own (random) authenticator for
+// Access-Request and Status-Server, sixteen zero octets for requests whose
+// authenticator is computed over the attributes (Accounting/CoA/Disconnect,
+// RFC 2868 Section 3.5 / RFC 5176), and the bound Request Authenticator for
+// responses. ok is false when a response has no request authenticator bound.
+func (p *Packet) encryptionAuthenticator() (auth [AuthenticatorLength]byte, ok bool) {
+	switch p.Code {
+	case CodeAccessRequest, CodeStatusServer:
+		return p.Authenticator, true
+	case CodeAccountingRequest, CodeCoARequest, CodeDisconnectRequest:
+		return [AuthenticatorLength]byte{}, true
+	default:
+		return p.requestAuth, p.hasRequestAuth
+	}
+}
+
+// finalizeDeferredEncryption transparently encrypts any pending attributes
+// using the packet-type-appropriate authenticator. It runs before every
+// serialization (Encode and the authenticator/integrity calculations), so
+// callers never invoke encryption explicitly.
+func (p *Packet) finalizeDeferredEncryption() {
+	if auth, ok := p.encryptionAuthenticator(); ok {
+		p.finalizeEncryption(auth)
+	}
 }
 
 // AttributeValue contains a single attribute value with type information
@@ -49,12 +101,20 @@ type AttributeValue struct {
 	Multiline  bool     // True if attribute supports multiline continuation
 
 	def *AttributeDefinition // Attribute definition (for decoding container types)
+
+	// decoded carries an already-decoded native value for container children
+	// (set by containerChildValues), covering types such as bits and union
+	// members that have no standalone byte decoder.
+	decoded any
 }
 
 // Decoded returns the attribute value decoded into its native Go type (string,
 // uint32, net.IP, uint64, time.Duration, ...) per the attribute's DataType.
 // Container types and values with no scalar decoder return the raw bytes.
 func (av AttributeValue) Decoded() any {
+	if av.decoded != nil {
+		return av.decoded
+	}
 	v, err := DecodeValue(av.Value, av.DataType)
 	if err != nil {
 		return av.Value
@@ -227,14 +287,16 @@ func (p *Packet) getAttributesByType(attrType uint8) []*Attribute {
 	return attrs
 }
 
-// getParsedVSA returns a cached parsed VSA or parses and caches it
-func (p *Packet) getParsedVSA(index int, attr *Attribute) (*VendorAttribute, error) {
+// getParsedVSAs returns the cached parsed vendor sub-attributes of a VSA, or
+// parses and caches them. One Vendor-Specific attribute may carry several
+// sub-attributes (RFC 2865 Section 5.26).
+func (p *Packet) getParsedVSAs(index int, attr *Attribute) ([]*VendorAttribute, error) {
 	if p.vsaCache == nil {
-		p.vsaCache = make(map[int]*VendorAttribute)
+		p.vsaCache = make(map[int][]*VendorAttribute)
 	}
 
-	if va, exists := p.vsaCache[index]; exists {
-		return va, nil
+	if vas, exists := p.vsaCache[index]; exists {
+		return vas, nil
 	}
 
 	// The Vendor-ID is always the first 4 octets regardless of format; read it
@@ -245,20 +307,37 @@ func (p *Packet) getParsedVSA(index int, attr *Attribute) (*VendorAttribute, err
 		typeOctets, lengthOctets = p.vsaFormat(vendorID)
 	}
 
-	va, err := ParseVSAFormat(attr, typeOctets, lengthOctets)
+	vas, err := parseVSAList(attr, typeOctets, lengthOctets)
 	if err != nil {
 		return nil, err
 	}
 
-	p.vsaCache[index] = va
-	return va, nil
+	// Tag detection needs the dictionary: only attributes defined as tagged
+	// carry a tag octet, and only a first octet of 1-31 is a tag (RFC 2868)
+	for _, va := range vas {
+		if p.Dict == nil {
+			break
+		}
+		if def, ok := p.Dict.LookupVendorAttributeByID(va.VendorID, va.VendorType); ok && def.HasTag {
+			if len(va.Value) > 0 && va.Value[0] >= 1 && va.Value[0] <= MaxAttributeTag {
+				va.Tag = va.Value[0]
+			}
+		}
+	}
+
+	p.vsaCache[index] = vas
+	return vas, nil
 }
 
 // GetVendorAttribute returns the first vendor attribute with the specified vendor ID and type
 func (p *Packet) GetVendorAttribute(vendorID uint32, vendorType uint32) (*VendorAttribute, bool) {
 	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
-			if va, err := p.getParsedVSA(i, attr); err == nil {
+			vas, err := p.getParsedVSAs(i, attr)
+			if err != nil {
+				continue
+			}
+			for _, va := range vas {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					return va, true
 				}
@@ -273,7 +352,11 @@ func (p *Packet) GetVendorAttributes(vendorID uint32, vendorType uint32) []*Vend
 	var attrs []*VendorAttribute
 	for i, attr := range p.Attributes {
 		if attr.Type == AttributeTypeVendorSpecific {
-			if va, err := p.getParsedVSA(i, attr); err == nil {
+			vas, err := p.getParsedVSAs(i, attr)
+			if err != nil {
+				continue
+			}
+			for _, va := range vas {
 				if va.VendorID == vendorID && va.VendorType == vendorType {
 					attrs = append(attrs, va)
 				}
@@ -351,14 +434,21 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 		return 0
 	}
 
-	// Remove all VSAs matching this vendor and attribute ID
+	// Remove all VSAs carrying this vendor and attribute ID. A multi-sub-attribute
+	// VSA is removed as a whole when any of its sub-attributes matches.
 	for i := len(p.Attributes) - 1; i >= 0; i-- {
 		if p.Attributes[i].Type == AttributeTypeVendorSpecific {
-			va, err := p.getParsedVSA(i, p.Attributes[i])
-			if err == nil && va.VendorID == vendorID && va.VendorType == attrDef.ID {
-				p.Length -= uint16(p.Attributes[i].Length)
-				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
-				removed++
+			vas, err := p.getParsedVSAs(i, p.Attributes[i])
+			if err != nil {
+				continue
+			}
+			for _, va := range vas {
+				if va.VendorID == vendorID && va.VendorType == attrDef.ID {
+					p.Length -= uint16(p.Attributes[i].Length)
+					p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
+					removed++
+					break
+				}
 			}
 		}
 	}
@@ -377,7 +467,14 @@ func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 }
 
 // EncryptAttributes finalizes any deferred attribute encryption using the
-// supplied authenticator, which per RFC depends on the packet type:
+// supplied authenticator. Calling it is OPTIONAL: encryption is transparent
+// and runs automatically with the packet-type-appropriate authenticator when
+// the packet is serialized (Encode, Message-Authenticator, and response or
+// request authenticator calculations). This method remains as a low-level
+// escape hatch for callers that need to key encryption with an authenticator
+// the packet cannot derive itself.
+//
+// Per RFC the authenticator depends on the packet type:
 //
 //   - Access-Request: the random Request Authenticator (RFC 2865 Section 3).
 //   - Accounting-Request, CoA-Request, Disconnect-Request: 16 zero octets,
@@ -387,9 +484,7 @@ func (p *Packet) SetAuthenticator(auth [AuthenticatorLength]byte) {
 //     Request Authenticator of the packet being answered (RFC 2865/2868).
 //
 // It is idempotent: once an attribute is encrypted its marker is cleared, so a
-// later Encode does not re-encrypt. Callers that build packets via the Client
-// or the server response path do not call this directly; it runs automatically
-// with the correct authenticator for the packet type.
+// later Encode does not re-encrypt.
 func (p *Packet) EncryptAttributes(auth [AuthenticatorLength]byte) {
 	p.finalizeEncryption(auth)
 }
@@ -397,7 +492,12 @@ func (p *Packet) EncryptAttributes(auth [AuthenticatorLength]byte) {
 // finalizeEncryption encrypts any attribute whose value was deferred for
 // encryption, in place, using the packet Secret and the supplied authenticator.
 // It is idempotent: once an attribute is encrypted its marker is cleared.
+// Without a Secret the markers are left in place, so Encode refuses to emit
+// the plaintext instead of sending it on the wire.
 func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
+	if len(p.Secret) == 0 {
+		return
+	}
 	for _, attr := range p.Attributes {
 		if attr.encryption == EncryptionNone {
 			continue
@@ -407,7 +507,16 @@ func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
 			continue
 		}
 		plaintext := attr.Value[off:]
-		ciphertext := EncryptAttributeValue(plaintext, attr.encryption, p.Secret, auth)
+
+		// RFC 2868 Section 3.5: each Salt in a packet MUST be unique, so
+		// Tunnel-Password attributes draw their salt from the packet-level
+		// uniqueness tracker.
+		var ciphertext []byte
+		if attr.encryption == EncryptionTunnelPassword {
+			ciphertext = encryptTunnelPasswordSalted(plaintext, p.Secret, auth, p.uniqueTunnelSalt())
+		} else {
+			ciphertext = EncryptAttributeValue(plaintext, attr.encryption, p.Secret, auth)
+		}
 
 		newValue := make([]byte, off+len(ciphertext))
 		copy(newValue, attr.Value[:off])
@@ -437,14 +546,30 @@ func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
 	}
 }
 
+// packetByteLength returns the total packet length computed from the
+// attributes in int space, so oversized packets cannot wrap the uint16
+// Length field and under-allocate serialization buffers.
+func (p *Packet) packetByteLength() int {
+	length := PacketHeaderLength
+	for _, attr := range p.Attributes {
+		length += int(attr.Length)
+	}
+	return length
+}
+
 // buildPacketBytes builds packet bytes for authentication/integrity calculations
 func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroMessageAuth bool) []byte {
-	packetBytes := make([]byte, int(p.Length))
+	// Integrity values must cover the encrypted attribute bytes, so pending
+	// encryption is finalized before the packet is rendered.
+	p.finalizeDeferredEncryption()
+
+	length := p.packetByteLength()
+	packetBytes := make([]byte, length)
 
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
-	packetBytes[2] = byte(p.Length >> 8)
-	packetBytes[3] = byte(p.Length)
+	packetBytes[2] = byte(length >> 8)
+	packetBytes[3] = byte(length)
 	copy(packetBytes[4:20], authenticator[:])
 
 	offset := PacketHeaderLength
@@ -465,14 +590,18 @@ func (p *Packet) buildPacketBytes(authenticator [AuthenticatorLength]byte, zeroM
 
 // calculateAuthenticator calculates RADIUS authenticator using MD5(packet + secret) per RFC 2865 Section 3
 func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
+	// The authenticator must cover the encrypted attribute bytes, so pending
+	// encryption is finalized before the packet is rendered.
+	p.finalizeDeferredEncryption()
+
 	// Pre-allocate with capacity for secret to avoid reallocation
-	capacity := int(p.Length) + len(secret)
-	packetBytes := make([]byte, int(p.Length), capacity)
+	length := p.packetByteLength()
+	packetBytes := make([]byte, length, length+len(secret))
 
 	packetBytes[0] = byte(p.Code)
 	packetBytes[1] = p.Identifier
-	packetBytes[2] = byte(p.Length >> 8)
-	packetBytes[3] = byte(p.Length)
+	packetBytes[2] = byte(length >> 8)
+	packetBytes[3] = byte(length)
 	copy(packetBytes[4:20], requestAuthenticator[:])
 
 	offset := PacketHeaderLength
@@ -489,7 +618,10 @@ func (p *Packet) calculateAuthenticator(secret []byte, requestAuthenticator [Aut
 
 // CalculateResponseAuthenticator calculates the Response Authenticator per RFC 2865 Section 3
 // ResponseAuth = MD5(Code + ID + Length + RequestAuth + Attributes + Secret)
+// The supplied request authenticator is bound to the packet so encrypted
+// response attributes finalize and decrypt transparently.
 func (p *Packet) CalculateResponseAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [AuthenticatorLength]byte {
+	p.bindRequestAuthenticator(requestAuthenticator)
 	return p.calculateAuthenticator(secret, requestAuthenticator)
 }
 
@@ -508,15 +640,21 @@ func (p *Packet) CalculateRequestAuthenticator(secret []byte) [AuthenticatorLeng
 func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) [16]byte {
 	var auth [AuthenticatorLength]byte
 	switch p.Code {
-	case CodeAccessRequest:
-		// RFC 2869 Section 5.14: computed with the random Request Authenticator in place
+	case CodeAccessRequest, CodeStatusServer:
+		// RFC 2869 Section 5.14 / RFC 5997: computed with the random Request
+		// Authenticator in place
 		auth = p.Authenticator
 	case CodeAccountingRequest, CodeCoARequest, CodeDisconnectRequest:
 		// RFC 5176 Section 3.4: the Request Authenticator field is considered to be
 		// sixteen octets of zero while computing the Message-Authenticator
 	default:
-		// Responses use the Request Authenticator of the corresponding request
+		// Responses use the Request Authenticator of the corresponding request;
+		// bind it so encrypted response attributes finalize and decrypt
+		// transparently.
 		auth = requestAuthenticator
+		if p.Code.IsReply() {
+			p.bindRequestAuthenticator(requestAuthenticator)
+		}
 	}
 
 	packetBytes := p.buildPacketBytes(auth, true)
@@ -526,6 +664,17 @@ func (p *Packet) calculateMessageAuthenticator(secret []byte, requestAuthenticat
 	var result [16]byte
 	copy(result[:], mac.Sum(nil))
 	return result
+}
+
+// hasMessageAuthenticator reports whether the packet carries a
+// Message-Authenticator attribute.
+func (p *Packet) hasMessageAuthenticator() bool {
+	for _, attr := range p.Attributes {
+		if attr.Type == AttributeTypeMessageAuthenticator {
+			return true
+		}
+	}
+	return false
 }
 
 // VerifyMessageAuthenticator verifies the Message-Authenticator attribute per RFC 2869 Section 5.14
@@ -576,17 +725,22 @@ func (p *Packet) IsValid() error {
 		return fmt.Errorf("packet too long: %d bytes", p.Length)
 	}
 
-	// Calculate expected length from attributes
-	expectedLength := uint16(PacketHeaderLength)
+	// Calculate expected length from attributes in int space, so an oversized
+	// packet cannot wrap the uint16 arithmetic back into the valid range
+	expectedLength := PacketHeaderLength
 	for _, attr := range p.Attributes {
 		// Catches uint8 overflow from constructors given oversized values
 		if int(attr.Length) != len(attr.Value)+AttributeHeaderLength {
 			return fmt.Errorf("attribute type %d length %d does not match value length %d", attr.Type, attr.Length, len(attr.Value))
 		}
-		expectedLength += uint16(attr.Length)
+		expectedLength += int(attr.Length)
 	}
 
-	if p.Length != expectedLength {
+	if expectedLength > MaxPacketLength {
+		return fmt.Errorf("packet too long: attributes total %d bytes", expectedLength)
+	}
+
+	if int(p.Length) != expectedLength {
 		return fmt.Errorf("packet length mismatch: header says %d, calculated %d", p.Length, expectedLength)
 	}
 
@@ -594,15 +748,14 @@ func (p *Packet) IsValid() error {
 }
 
 // AddAttributeByName adds an attribute to the packet using dictionary lookup
-// with full feature support. Attributes whose dictionary definition declares an
-// Encryption type are encrypted automatically using the packet's Secret and
-// Authenticator; the caller never supplies a secret here.
+// with full feature support. Attributes whose dictionary definition declares
+// an Encryption type are encrypted transparently with the packet's Secret
+// when the packet is serialized; the caller never supplies a secret or calls
+// an encryption step.
 func (p *Packet) AddAttributeByName(name string, value any) error {
 	if p.Dict == nil {
 		return fmt.Errorf("no dictionary loaded")
 	}
-
-	secret := p.Secret
 
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
@@ -610,7 +763,7 @@ func (p *Packet) AddAttributeByName(name string, value any) error {
 		if !p.isAttributeAllowed(attrDef) {
 			return nil
 		}
-		return p.addStandardAttribute(name, value, attrDef, secret)
+		return p.addStandardAttribute(name, value, attrDef)
 	}
 
 	// Tagged standard attribute using "name:tag" syntax (RFC 2868 tunnel attributes)
@@ -619,12 +772,12 @@ func (p *Packet) AddAttributeByName(name string, value any) error {
 			if !p.isAttributeAllowed(attrDef) {
 				return nil
 			}
-			return p.addStandardAttribute(name, value, attrDef, secret)
+			return p.addStandardAttribute(name, value, attrDef)
 		}
 	}
 
 	// Handle vendor attributes
-	return p.addVendorAttributeByName(name, value, secret)
+	return p.addVendorAttributeByName(name, value)
 }
 
 // SetAttributesFromStrings populates the packet from a flat map of string
@@ -810,8 +963,19 @@ func splitAttributeTag(key string) (base, tag string) {
 	return key, ""
 }
 
+// parseAttributeTag parses the tag portion of a "name:tag" key. RFC 2868
+// Section 3: valid tag values are 0x01-0x1F, with 0x00 meaning the tag field
+// is unused; greater values would be read as attribute data by receivers.
+func parseAttributeTag(tagValue string) (uint8, error) {
+	parsedTag, err := strconv.ParseUint(tagValue, 10, 8)
+	if err != nil || parsedTag > MaxAttributeTag {
+		return 0, fmt.Errorf("invalid tag %q: tag must be 0-31 (RFC 2868)", tagValue)
+	}
+	return uint8(parsedTag), nil
+}
+
 // addStandardAttribute handles standard attribute addition with full feature support
-func (p *Packet) addStandardAttribute(name string, value any, attrDef *AttributeDefinition, secret []byte) error {
+func (p *Packet) addStandardAttribute(name string, value any, attrDef *AttributeDefinition) error {
 	if attrDef == nil {
 		return nil
 	}
@@ -820,12 +984,12 @@ func (p *Packet) addStandardAttribute(name string, value any, attrDef *Attribute
 
 	if strings.Contains(name, ":") && attrDef.HasTag {
 		parts := strings.SplitN(name, ":", 2)
-		if len(parts) == 2 {
-			if tagValue := parts[1]; tagValue != "" {
-				if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
-					tag = uint8(parsedTag)
-				}
+		if len(parts) == 2 && parts[1] != "" {
+			parsedTag, err := parseAttributeTag(parts[1])
+			if err != nil {
+				return fmt.Errorf("attribute %q: %w", attrDef.Name, err)
 			}
+			tag = parsedTag
 		}
 	}
 
@@ -839,7 +1003,7 @@ func (p *Packet) addStandardAttribute(name string, value any, attrDef *Attribute
 
 	// Handle array attributes - check if value is a slice
 	// This handles both attributes marked as Array=true and user-provided slices
-	return p.addArrayAttribute(attrDef, processedValue, tag, secret)
+	return p.addArrayAttribute(attrDef, processedValue, tag)
 }
 
 // addExtendedAttribute encodes and adds an RFC 6929 extended attribute (short form for
@@ -914,24 +1078,22 @@ func (p *Packet) addEVSAttribute(attrDef *AttributeDefinition, baseType uint8, v
 // Supports formats:
 //   - "AttributeName" - vendor attribute without tag
 //   - "AttributeName:tag" - vendor attribute with tag (tag is a number)
-func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte) error {
-	var attrName string
-	var tag uint8
-
+func (p *Packet) addVendorAttributeByName(name string, value any) error {
 	parts := strings.SplitN(name, ":", 2)
-	attrName = parts[0]
-
-	if len(parts) == 2 {
-		if tagValue := parts[1]; tagValue != "" {
-			if parsedTag, err := strconv.ParseUint(tagValue, 10, 8); err == nil {
-				tag = uint8(parsedTag)
-			}
-		}
-	}
+	attrName := parts[0]
 
 	attrDef, exists := p.Dict.LookupByAttributeName(attrName)
 	if !exists {
 		return fmt.Errorf("attribute %q not found in dictionary", attrName)
+	}
+
+	var tag uint8
+	if len(parts) == 2 && parts[1] != "" && attrDef.HasTag {
+		parsedTag, err := parseAttributeTag(parts[1])
+		if err != nil {
+			return fmt.Errorf("attribute %q: %w", attrDef.Name, err)
+		}
+		tag = parsedTag
 	}
 
 	if !p.isAttributeAllowed(attrDef) {
@@ -954,7 +1116,6 @@ func (p *Packet) addVendorAttributeByName(name string, value any, secret []byte)
 		attrDef: attrDef,
 		value:   processedValue,
 		tag:     tag,
-		secret:  secret,
 	})
 }
 
@@ -1007,6 +1168,30 @@ func EncryptAttributeValue(value []byte, encryption EncryptionType, secret []byt
 	}
 }
 
+// DecryptAttributeValue reverses EncryptAttributeValue, recovering the
+// plaintext of an encrypted attribute value. The authenticator is the one
+// that keyed the encryption: the Request Authenticator for attributes in an
+// Access-Request or in any response, and sixteen zero octets for attributes
+// in Accounting-Request, CoA-Request, and Disconnect-Request packets.
+//
+// Calling it is normally unnecessary: GetAttribute decrypts transparently
+// when the packet Secret is set — for requests using the packet's own
+// authenticator, and for responses (for example MPPE keys received by the
+// Client) using the bound Request Authenticator. This function remains as a
+// low-level escape hatch for raw values obtained outside the packet API.
+func DecryptAttributeValue(value []byte, encryption EncryptionType, secret []byte, authenticator [16]byte) ([]byte, error) {
+	switch encryption {
+	case EncryptionUserPassword:
+		return decryptUserPassword(value, secret, authenticator)
+	case EncryptionTunnelPassword:
+		return decryptTunnelPassword(value, secret, authenticator)
+	case EncryptionAscendSecret:
+		return decryptAscendSecret(value, secret, authenticator)
+	default:
+		return value, nil
+	}
+}
+
 // encryptUserPassword implements User-Password encryption (RFC 2865, Section 5.2)
 func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte) []byte {
 	// User-Password encryption:
@@ -1051,21 +1236,46 @@ func encryptUserPassword(password []byte, secret []byte, authenticator [16]byte)
 }
 
 // encryptTunnelPassword implements Tunnel-Password encryption (RFC 2868, Section 3.5)
+// with a freshly drawn random salt. In-packet encryption goes through
+// finalizeEncryption, which draws salts from the packet-level uniqueness
+// tracker instead.
 func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byte) []byte {
+	return encryptTunnelPasswordSalted(password, secret, authenticator, newTunnelSalt())
+}
+
+// newTunnelSalt returns a random 2-octet salt with the high bit of the first
+// octet set, as required by RFC 2868 Section 3.5.
+func newTunnelSalt() [2]byte {
+	var salt [2]byte
+	// crypto/rand.Read never returns an error (Go 1.24+)
+	_, _ = rand.Read(salt[:])
+	salt[0] |= 0x80
+	return salt
+}
+
+// uniqueTunnelSalt returns a salt not yet used by this packet, satisfying the
+// RFC 2868 Section 3.5 requirement that each Salt field in a packet be unique.
+func (p *Packet) uniqueTunnelSalt() [2]byte {
+	if p.usedTunnelSalts == nil {
+		p.usedTunnelSalts = make(map[uint16]struct{})
+	}
+	for {
+		salt := newTunnelSalt()
+		key := uint16(salt[0])<<8 | uint16(salt[1])
+		if _, used := p.usedTunnelSalts[key]; !used {
+			p.usedTunnelSalts[key] = struct{}{}
+			return salt
+		}
+	}
+}
+
+// encryptTunnelPasswordSalted implements the Tunnel-Password cipher with the
+// supplied salt.
+func encryptTunnelPasswordSalted(password []byte, secret []byte, authenticator [16]byte, salt [2]byte) []byte {
 	// Tunnel-Password encryption (RFC 2868):
 	// Format: Salt (2 bytes, unencrypted) + encrypted(1-byte length + password + padding)
-	// Salt: first byte must have high bit set to 1
 	// Encryption: XOR with MD5(secret + authenticator + salt) for first block,
 	//             XOR with MD5(secret + previous encrypted block) for subsequent blocks
-
-	// Generate random salt with high bit set on first byte
-	salt := make([]byte, 2)
-	if _, err := rand.Read(salt); err != nil {
-		// Fallback to zero salt if random fails (should not happen)
-		salt[0] = 0x80
-		salt[1] = 0x00
-	}
-	salt[0] |= 0x80 // Set high bit as required by RFC 2868
 
 	// Build plaintext: 1-byte length + password, padded to 16-byte boundary
 	plainLen := 1 + len(password)
@@ -1083,7 +1293,7 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 	hashInput := make([]byte, len(secret)+16+2)
 	copy(hashInput, secret)
 	copy(hashInput[len(secret):], authenticator[:])
-	copy(hashInput[len(secret)+16:], salt)
+	copy(hashInput[len(secret)+16:], salt[:])
 
 	// First block: XOR with MD5(secret + authenticator + salt)
 	hash := md5.Sum(hashInput)
@@ -1107,7 +1317,7 @@ func encryptTunnelPassword(password []byte, secret []byte, authenticator [16]byt
 
 	// Result: salt (unencrypted) + encrypted data
 	result := make([]byte, 2+len(encrypted))
-	copy(result, salt)
+	copy(result, salt[:])
 	copy(result[2:], encrypted)
 
 	return result
@@ -1128,6 +1338,95 @@ func encryptAscendSecret(value []byte, secret []byte, authenticator [16]byte) []
 		digest[i] ^= value[i]
 	}
 	return digest[:]
+}
+
+// decryptUserPassword reverses encryptUserPassword (RFC 2865 Section 5.2).
+// Each block is XORed with MD5(secret + previous ciphertext block), with the
+// authenticator seeding the first block; trailing NUL padding is stripped.
+func decryptUserPassword(encrypted []byte, secret []byte, authenticator [16]byte) ([]byte, error) {
+	if len(encrypted) == 0 || len(encrypted)%16 != 0 {
+		return nil, fmt.Errorf("encrypted User-Password length %d is not a positive multiple of 16", len(encrypted))
+	}
+
+	decrypted := make([]byte, len(encrypted))
+
+	hashInput := make([]byte, len(secret)+16)
+	copy(hashInput, secret)
+	copy(hashInput[len(secret):], authenticator[:])
+
+	for block := 0; block < len(encrypted)/16; block++ {
+		offset := block * 16
+		hash := md5.Sum(hashInput)
+		for i := range 16 {
+			decrypted[offset+i] = encrypted[offset+i] ^ hash[i]
+		}
+		// The next block is chained on this block's ciphertext
+		copy(hashInput[len(secret):], encrypted[offset:offset+16])
+	}
+
+	return bytes.TrimRight(decrypted, "\x00"), nil
+}
+
+// decryptTunnelPassword reverses encryptTunnelPassword (RFC 2868 Section 3.5):
+// the 2-octet salt seeds the first block hash together with the authenticator,
+// and the first plaintext octet carries the password length.
+func decryptTunnelPassword(encrypted []byte, secret []byte, authenticator [16]byte) ([]byte, error) {
+	if len(encrypted) < 2+16 || (len(encrypted)-2)%16 != 0 {
+		return nil, fmt.Errorf("encrypted Tunnel-Password length %d is not a salt plus a positive multiple of 16", len(encrypted))
+	}
+
+	salt := encrypted[:2]
+	data := encrypted[2:]
+	decrypted := make([]byte, len(data))
+
+	hashInput := make([]byte, len(secret)+16+2)
+	copy(hashInput, secret)
+	copy(hashInput[len(secret):], authenticator[:])
+	copy(hashInput[len(secret)+16:], salt)
+
+	// First block: XOR with MD5(secret + authenticator + salt)
+	hash := md5.Sum(hashInput)
+	for i := range 16 {
+		decrypted[i] = data[i] ^ hash[i]
+	}
+
+	// Subsequent blocks: XOR with MD5(secret + previous ciphertext block)
+	hashInputSubseq := hashInput[:len(secret)+16]
+	for block := 1; block < len(data)/16; block++ {
+		offset := block * 16
+		copy(hashInputSubseq[len(secret):], data[offset-16:offset])
+		hash = md5.Sum(hashInputSubseq)
+		for i := range 16 {
+			decrypted[offset+i] = data[offset+i] ^ hash[i]
+		}
+	}
+
+	passwordLen := int(decrypted[0])
+	if passwordLen > len(decrypted)-1 {
+		return nil, fmt.Errorf("Tunnel-Password length octet %d exceeds decrypted data %d", passwordLen, len(decrypted)-1)
+	}
+
+	return decrypted[1 : 1+passwordLen], nil
+}
+
+// decryptAscendSecret reverses encryptAscendSecret: the single 16-octet block
+// is XORed with MD5(authenticator + secret) and trailing NUL padding stripped.
+func decryptAscendSecret(encrypted []byte, secret []byte, authenticator [16]byte) ([]byte, error) {
+	if len(encrypted) != AuthenticatorLength {
+		return nil, fmt.Errorf("encrypted Ascend secret length %d is not %d", len(encrypted), AuthenticatorLength)
+	}
+
+	hashInput := make([]byte, AuthenticatorLength+len(secret))
+	copy(hashInput, authenticator[:])
+	copy(hashInput[AuthenticatorLength:], secret)
+	digest := md5.Sum(hashInput)
+
+	decrypted := make([]byte, AuthenticatorLength)
+	for i := range decrypted {
+		decrypted[i] = encrypted[i] ^ digest[i]
+	}
+
+	return bytes.TrimRight(decrypted, "\x00"), nil
 }
 
 // squeezeTaggedInteger converts a 4-octet encoded integer into the 3-octet form used
@@ -1167,7 +1466,7 @@ func multilineSplittable(attrDef *AttributeDefinition, attrValue []byte, maxLen 
 
 // addArrayAttribute handles array attributes (multiple values for same attribute)
 // If value is a slice, it adds each element as a separate attribute instance
-func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag uint8, secret []byte) error {
+func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag uint8) error {
 	if attrDef == nil {
 		return nil
 	}
@@ -1229,26 +1528,27 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 				return err
 			}
 			// RFC 2868: tagged attributes always carry the tag octet; 0 means untagged
-			// Validate length for tagged attribute (value + 1 byte for tag)
-			if len(attrValue)+1 > MaxAttributeValueLength {
-				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxAttributeValueLength)
+			// Validate the length the value will have on the wire, including
+			// the tag octet and any growth from deferred encryption
+			if finalLen := encryptedValueLength(len(attrValue), attrDef.Encryption) + 1; finalLen > MaxAttributeValueLength {
+				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, finalLen, MaxAttributeValueLength)
 			}
 			taggedValue := make([]byte, len(attrValue)+1)
 			taggedValue[0] = tag
 			copy(taggedValue[1:], attrValue)
 			attr := NewAttribute(uint8(attrDef.ID), taggedValue)
-			if attrDef.Encryption != "" && secret != nil {
+			if attrDef.Encryption != "" {
 				attr.encryption = attrDef.Encryption
 				attr.encryptOffset = 1 // skip the leading tag octet
 			}
 			p.AddAttribute(attr)
 		} else {
-			// Validate length for standard attribute
-			if len(attrValue) > MaxAttributeValueLength {
-				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxAttributeValueLength)
+			// Validate the on-wire length, including growth from deferred encryption
+			if finalLen := encryptedValueLength(len(attrValue), attrDef.Encryption); finalLen > MaxAttributeValueLength {
+				return fmt.Errorf("attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, finalLen, MaxAttributeValueLength)
 			}
 			attr := NewAttribute(uint8(attrDef.ID), attrValue)
-			if attrDef.Encryption != "" && secret != nil {
+			if attrDef.Encryption != "" {
 				attr.encryption = attrDef.Encryption
 			}
 			p.AddAttribute(attr)
@@ -1257,21 +1557,44 @@ func (p *Packet) addArrayAttribute(attrDef *AttributeDefinition, value any, tag 
 	return nil
 }
 
+// encryptedValueLength returns the on-wire size of an attribute value after
+// deferred encryption expands it. User-Password pads to a 16-octet multiple
+// (RFC 2865 Section 5.2); Tunnel-Password adds a 2-octet salt plus a length
+// octet before padding (RFC 2868 Section 3.5); Ascend-Secret is a single
+// 16-octet block. Unencrypted values keep their length.
+func encryptedValueLength(plainLen int, encryption EncryptionType) int {
+	switch encryption {
+	case EncryptionUserPassword:
+		return max(((plainLen+15)/16)*16, 16)
+	case EncryptionTunnelPassword:
+		return 2 + ((1+plainLen+15)/16)*16
+	case EncryptionAscendSecret:
+		return 16
+	default:
+		return plainLen
+	}
+}
+
 type vendorAttrParams struct {
 	vendor  *VendorDefinition
 	attrDef *AttributeDefinition
 	value   any
 	tag     uint8
-	secret  []byte
 }
 
 // addVendorArrayAttribute handles vendor array attributes
 // If value is a slice, it adds each element as a separate vendor attribute instance
 func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
-	vendor, attrDef, value, tag, secret := params.vendor, params.attrDef, params.value, params.tag, params.secret
+	vendor, attrDef, value, tag := params.vendor, params.attrDef, params.value, params.tag
 	if vendor == nil || attrDef == nil {
 		return nil
 	}
+
+	// The vendor data cap depends on the vendor's VSA header widths: the
+	// outer attribute value (max 253 octets) carries the 4-octet Vendor-Id
+	// plus the vendor type and length fields.
+	typeOctets, lengthOctets := p.vsaFormat(vendor.ID)
+	maxVendorData := MaxAttributeValueLength - 4 - typeOctets - lengthOctets
 
 	values := []any{value}
 
@@ -1310,8 +1633,8 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 
 		// Multiline attributes carry long values as multiple instances, each but
 		// the last ending with the continuation marker (observed Junos behavior)
-		if multilineSplittable(attrDef, attrValue, MaxVSAValueLength) {
-			for _, chunk := range SplitMultilineAttribute(string(attrValue), MaxVSAValueLength) {
+		if multilineSplittable(attrDef, attrValue, maxVendorData) {
+			for _, chunk := range SplitMultilineAttribute(string(attrValue), maxVendorData) {
 				p.AddVendorAttribute(NewVendorAttribute(vendor.ID, attrDef.ID, []byte(chunk)))
 			}
 			continue
@@ -1331,21 +1654,22 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 				return err
 			}
 			// RFC 2868: tagged attributes always carry the tag octet; 0 means untagged
-			// Validate length for tagged vendor attribute (value + 1 byte for tag)
-			if len(attrValue)+1 > MaxVSAValueLength {
-				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue)+1, MaxVSAValueLength)
+			// Validate the on-wire vendor data length, including the tag octet
+			// and any growth from deferred encryption
+			if finalLen := encryptedValueLength(len(attrValue), attrDef.Encryption) + 1; finalLen > maxVendorData {
+				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, finalLen, maxVendorData)
 			}
 			vsa = NewTaggedVendorAttribute(vendor.ID, attrDef.ID, tag, attrValue)
 		} else {
-			// Validate length for vendor attribute
-			if len(attrValue) > MaxVSAValueLength {
-				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, len(attrValue), MaxVSAValueLength)
+			// Validate the on-wire vendor data length, including growth from
+			// deferred encryption
+			if finalLen := encryptedValueLength(len(attrValue), attrDef.Encryption); finalLen > maxVendorData {
+				return fmt.Errorf("vendor attribute %q value length %d exceeds maximum %d bytes", attrDef.Name, finalLen, maxVendorData)
 			}
 			vsa = NewVendorAttribute(vendor.ID, attrDef.ID, attrValue)
 		}
 		attr := p.AddVendorAttribute(vsa)
-		if attrDef.Encryption != "" && secret != nil {
-			typeOctets, lengthOctets := p.vsaFormat(vendor.ID)
+		if attrDef.Encryption != "" {
 			attr.encryption = attrDef.Encryption
 			attr.encryptOffset = p.vsaDataOffset(vendor.ID, attrDef.HasTag)
 			attr.vsaLengthPos = 4 + typeOctets
@@ -1367,34 +1691,30 @@ func (p *Packet) ListAttributes() []string {
 	seen := make(map[string]struct{}, len(p.Attributes))
 	result := make([]string, 0, len(p.Attributes))
 
-	for i, attr := range p.Attributes {
-		var name string
-
-		if attr.Type == AttributeTypeVendorSpecific {
-			va, err := p.getParsedVSA(i, attr)
-			if err != nil {
-				continue
-			}
-
-			attrDef, found := p.Dict.LookupVendorAttributeByID(va.VendorID, va.VendorType)
-			if !found {
-				continue
-			}
-
-			name = attrDef.Name
-		} else {
-			// Standard attribute
-			attrDef, exists := p.Dict.LookupStandardByID(uint32(attr.Type))
-			if !exists {
-				continue
-			}
-
-			name = attrDef.Name
-		}
-
+	addName := func(name string) {
 		if _, exists := seen[name]; !exists {
 			seen[name] = struct{}{}
 			result = append(result, name)
+		}
+	}
+
+	for i, attr := range p.Attributes {
+		if attr.Type == AttributeTypeVendorSpecific {
+			vas, err := p.getParsedVSAs(i, attr)
+			if err != nil {
+				continue
+			}
+			for _, va := range vas {
+				if attrDef, found := p.Dict.LookupVendorAttributeByID(va.VendorID, va.VendorType); found {
+					addName(attrDef.Name)
+				}
+			}
+			continue
+		}
+
+		// Standard attribute
+		if attrDef, exists := p.Dict.LookupStandardByID(uint32(attr.Type)); exists {
+			addName(attrDef.Name)
 		}
 	}
 
@@ -1428,6 +1748,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 					tag = attr.Value[0]
 					value = padTaggedInteger(attrDef, attr.Value[1:]) // Strip tag byte
 				}
+				value = p.decryptedAttributeValue(attr, attrDef, value)
 
 				result = append(result, AttributeValue{
 					Name:      attrDef.Name,
@@ -1454,42 +1775,70 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 
 		// Search packet attributes for this vendor attribute
 		for i, pktAttr := range p.Attributes {
-			if pktAttr.Type == AttributeTypeVendorSpecific {
-				va, err := p.getParsedVSA(i, pktAttr)
-				if err != nil {
+			if pktAttr.Type != AttributeTypeVendorSpecific {
+				continue
+			}
+			vas, err := p.getParsedVSAs(i, pktAttr)
+			if err != nil {
+				continue
+			}
+
+			for _, va := range vas {
+				if va.VendorID != vendorID || va.VendorType != attrDef.ID {
 					continue
 				}
-
-				if va.VendorID == vendorID && va.VendorType == attrDef.ID {
-					// For tagged attributes (HasTag=true), a first octet of 0x00-0x1F is
-					// the tag; RFC 2868 Section 3 treats a greater first octet as part
-					// of the attribute data, sent without a tag octet
-					tag := uint8(0)
-					value := va.Value
-					if attrDef.HasTag && len(va.Value) > 0 && va.Value[0] <= MaxAttributeTag {
-						tag = va.Value[0]
-						value = padTaggedInteger(attrDef, va.Value[1:]) // Strip tag byte
-					}
-
-					result = append(result, AttributeValue{
-						Name:       attrDef.Name,
-						Type:       pktAttr.Type,
-						DataType:   attrDef.DataType,
-						Value:      value,
-						Tag:        tag,
-						IsVSA:      true,
-						VendorID:   va.VendorID,
-						VendorType: va.VendorType,
-						Multiline:  attrDef.Multiline,
-						def:        attrDef,
-					})
+				// For tagged attributes (HasTag=true), a first octet of 0x00-0x1F is
+				// the tag; RFC 2868 Section 3 treats a greater first octet as part
+				// of the attribute data, sent without a tag octet
+				tag := uint8(0)
+				value := va.Value
+				if attrDef.HasTag && len(va.Value) > 0 && va.Value[0] <= MaxAttributeTag {
+					tag = va.Value[0]
+					value = padTaggedInteger(attrDef, va.Value[1:]) // Strip tag byte
 				}
+				value = p.decryptedAttributeValue(pktAttr, attrDef, value)
+
+				result = append(result, AttributeValue{
+					Name:       attrDef.Name,
+					Type:       pktAttr.Type,
+					DataType:   attrDef.DataType,
+					Value:      value,
+					Tag:        tag,
+					IsVSA:      true,
+					VendorID:   va.VendorID,
+					VendorType: va.VendorType,
+					Multiline:  attrDef.Multiline,
+					def:        attrDef,
+				})
 			}
 		}
 		return result
 	}
 
 	return []AttributeValue{}
+}
+
+// decryptedAttributeValue decrypts an encrypted attribute value when the
+// dictionary declares an Encryption type and the packet state permits: the
+// Secret is set, the attribute is not still awaiting deferred encryption (its
+// bytes would be plaintext), and the keying authenticator is known — the
+// packet's own for requests, the bound Request Authenticator for responses.
+// On a decrypt error the raw value is returned unchanged.
+func (p *Packet) decryptedAttributeValue(attr *Attribute, attrDef *AttributeDefinition, value []byte) []byte {
+	if attrDef.Encryption == EncryptionNone || len(p.Secret) == 0 || attr.encryption != EncryptionNone {
+		return value
+	}
+
+	auth, ok := p.encryptionAuthenticator()
+	if !ok {
+		return value
+	}
+
+	decrypted, err := DecryptAttributeValue(value, attrDef.Encryption, p.Secret, auth)
+	if err != nil {
+		return value
+	}
+	return decrypted
 }
 
 // GetAttributes returns the packet as a flat attribute map: attribute name (with
@@ -1548,21 +1897,54 @@ func (p *Packet) containerChildValues(av AttributeValue) []AttributeValue {
 		if !ok {
 			continue
 		}
-		encoded, err := EncodeValue(decoded, childDef.DataType)
-		if err != nil {
-			continue
-		}
 		result = append(result, AttributeValue{
 			Name:       childDef.Name,
 			DataType:   childDef.DataType,
-			Value:      encoded,
+			Value:      encodeContainerChild(childDef, decoded, raw),
 			IsVSA:      av.IsVSA,
 			VendorID:   av.VendorID,
 			VendorType: av.VendorType,
 			def:        childDef,
+			decoded:    decoded,
 		})
 	}
 	return result
+}
+
+// encodeContainerChild re-encodes a decoded container child to raw bytes for
+// the AttributeValue view. Bit-field members encode as an 8-octet big-endian
+// integer; a union member re-encodes its selected variant (chosen by the key
+// sibling in the same decoded map); scalar members use their natural encoding.
+// A child with no byte representation yields nil, with the decoded native
+// value still available via Decoded().
+func encodeContainerChild(childDef *AttributeDefinition, decoded any, siblings map[string]any) []byte {
+	switch childDef.DataType {
+	case DataTypeBits:
+		if v, ok := decoded.(uint64); ok {
+			return EncodeInteger64(v)
+		}
+	case DataTypeUnion:
+		sub, ok := decoded.(map[string]any)
+		if !ok {
+			return nil
+		}
+		key, err := unionKeyFromResult(siblings, childDef)
+		if err != nil {
+			return nil
+		}
+		variant := unionVariant(childDef, key)
+		if variant == nil {
+			return nil
+		}
+		if encoded, err := EncodeStruct(variant, sub); err == nil {
+			return encoded
+		}
+	default:
+		if encoded, err := EncodeValue(decoded, childDef.DataType); err == nil {
+			return encoded
+		}
+	}
+	return nil
 }
 
 // getExtendedAttribute collects RFC 6929 extended attribute values for the given
@@ -1609,9 +1991,14 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 	}
 
 	// Long extended: reassemble fragments that share the same extended type.
+	// RFC 6929 Section 2.2 requires fragments of one value to be consecutive
+	// attributes, a fragment with More set to be full-size, and the final
+	// fragment to clear More; chains violating any of these are invalid
+	// attributes and are discarded (Section 2.8), never surfaced as values.
 	var buf []byte
 	collecting := false
-	for _, attr := range p.Attributes {
+	prevIdx := 0
+	for i, attr := range p.Attributes {
 		if attr.Type != baseType {
 			continue
 		}
@@ -1619,6 +2006,23 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 		if err != nil || et != extType {
 			continue
 		}
+
+		// A continuation that is not the attribute immediately following the
+		// previous fragment invalidates the pending chain; this fragment
+		// starts a new chain instead.
+		if collecting && i != prevIdx+1 {
+			buf = nil
+		}
+
+		// More set on a fragment that is not full-size is invalid: the More
+		// flag MUST be clear when Length is below the maximum.
+		if more && len(value) != MaxLongExtendedValueLength {
+			buf = nil
+			collecting = false
+			continue
+		}
+
+		prevIdx = i
 		buf = append(buf, value...)
 		collecting = true
 		if !more {
@@ -1626,10 +2030,6 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 			buf = nil
 			collecting = false
 		}
-	}
-	// A dangling fragment chain (More never cleared) is still surfaced to the caller.
-	if collecting && len(buf) > 0 {
-		result = append(result, p.newExtendedValue(attrDef, baseType, buf))
 	}
 
 	return result

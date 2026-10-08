@@ -495,6 +495,21 @@ func (s *SecretStore) ServeSecret(
 }
 ```
 
+### Message-Authenticator Semantics
+
+A Message-Authenticator that is present in a received packet is always
+verified, and the packet is silently dropped on mismatch (RFC 3579
+Section 3.2). Configuration only controls whether the attribute must be
+present:
+
+- Access-Request: presence is governed by
+  `WithRequireMessageAuthenticator` (default on, the BlastRADIUS
+  hardening) and the per-secret policy below.
+- Status-Server: presence is always required (RFC 5997).
+- Accounting-Request, CoA-Request, Disconnect-Request: presence is
+  optional (RFC 2866, RFC 5176), so devices that do not support
+  Message-Authenticator interoperate out of the box.
+
 ### Per-Secret Message-Authenticator Policy
 
 `MessageAuthPolicy` on `SecretResponse` overrides the server-level
@@ -503,8 +518,8 @@ func (s *SecretStore) ServeSecret(
 | Value | Behaviour |
 |---|---|
 | `MessageAuthPolicyDefault` | Use the server setting (default) |
-| `MessageAuthPolicyRequired` | Enforce Message-Authenticator for this secret |
-| `MessageAuthPolicyOptional` | Skip enforcement for this secret |
+| `MessageAuthPolicyRequired` | Require presence on every request type for this secret |
+| `MessageAuthPolicyOptional` | Accept Access-Requests without the attribute for this secret |
 
 ```go
 return goradius.SecretResponse{
@@ -516,6 +531,8 @@ return goradius.SecretResponse{
 This allows incremental adoption — legacy devices can use
 `MessageAuthPolicyOptional` while new devices use
 `MessageAuthPolicyRequired`, without changing the global server setting.
+A present-but-wrong Message-Authenticator is rejected under every
+policy.
 
 ## Server Control
 

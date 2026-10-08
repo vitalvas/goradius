@@ -515,38 +515,60 @@ fmt.Println(req.String())
 
 ## Packet Security
 
-### Password Encryption
+### Transparent Encryption and Decryption
 
-Password encryption is handled automatically when
-using the dictionary API. The library supports
-multiple encryption types defined in the dictionary:
+Attribute encryption and decryption are fully
+transparent. The dictionary declares the encryption
+type (User-Password per RFC 2865, Tunnel-Password
+per RFC 2868, or Ascend-Secret) on the attribute
+definition, and the packet derives the correct
+keying authenticator from its own type: its random
+Request Authenticator for Access-Request, sixteen
+zero octets for Accounting/CoA/Disconnect requests,
+and the authenticator of the request being answered
+for responses. No encryption or decryption call ever
+appears in application code.
+
+Encryption happens automatically when the packet is
+serialized (`Encode`, Message-Authenticator, and
+authenticator calculations):
 
 ```go
-// User-Password encryption (RFC 2865)
-secret := []byte("testing123")
-authenticator := req.Authenticator
-req.AddAttributeByNameWithSecret(
-    "user-password", "secret123",
-    secret, authenticator,
+pkt := goradius.NewPacketWithDictionary(
+    goradius.CodeAccessRequest, 1, dict,
 )
+pkt.Secret = []byte("testing123")
+pkt.AddAttributeByName("user-password", "secret123")
+pkt.SetAuthenticator(authenticator)
 
-// Tunnel-Password encryption (RFC 2868)
-req.AddAttributeByNameWithSecret(
-    "tunnel-password:1", "tunnel-secret",
-    secret, authenticator,
-)
-
-// Ascend-Secret encryption
-req.AddAttributeByNameWithSecret(
-    "ascend-secret", "ascend-secret",
-    secret, authenticator,
-)
-
-// The dictionary determines the encryption type
-// based on the attribute definition
+data, err := pkt.Encode() // encrypted on the wire
 ```
 
-**Note:** Direct encryption functions like
-`EncryptAttributeValue()` are low-level APIs for
-advanced use. The dictionary-based methods are
-recommended for application code.
+Decryption happens automatically when reading
+attributes, as long as the packet `Secret` is set:
+
+```go
+pkt.Secret = secret
+values := pkt.GetAttribute("user-password")
+password := values[0].String() // plaintext
+```
+
+This also covers responses. The server pipeline and
+`NewResponse` bind the request authenticator to the
+reply, so handler code just sets attributes (for
+example MPPE keys) and they are encrypted on send.
+The `Client` binds it to received responses, so
+`resp.GetAttribute("ms-mppe-send-key")` returns the
+plaintext key.
+
+`Encode` refuses to serialize a packet whose
+encrypted attributes cannot be finalized (for
+example when no `Secret` is set), so plaintext
+passwords cannot leak onto the wire.
+
+**Note:** `EncryptAttributes()`,
+`EncryptAttributeValue()`, and
+`DecryptAttributeValue()` remain available as
+low-level escape hatches for raw values handled
+outside the packet API; application code does not
+need them.

@@ -893,7 +893,7 @@ var ERXVendorDefinition = &VendorDefinition{
 			HasTag:   true,
 			Values: map[string]uint32{
 				"dynamic":  1,
-				"opscript": 1,
+				"opscript": 2,
 			},
 		},
 		{

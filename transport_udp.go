@@ -67,7 +67,17 @@ func (t *UDPTransport) Serve(handler TransportHandler) error {
 			return err
 		}
 
+		// Reserve the WaitGroup slot atomically with the closed check so a
+		// datagram read concurrently with Close cannot spawn a handler after
+		// Close has returned (wg.Add racing wg.Wait).
+		t.mu.Lock()
+		if t.closed {
+			t.mu.Unlock()
+			return nil
+		}
 		t.wg.Add(1)
+		t.mu.Unlock()
+
 		go func() {
 			defer t.wg.Done()
 			handler(data, addr, respond)

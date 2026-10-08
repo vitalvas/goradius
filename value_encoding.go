@@ -173,10 +173,12 @@ func EncodeIPv6Prefix(prefix *net.IPNet) ([]byte, error) {
 		return nil, fmt.Errorf("not an IPv6 prefix address")
 	}
 
+	// RFC 3162 Section 2.3: bits outside the Prefix-Length must be zero, so
+	// mask the address before copying the prefix octets.
 	octets := (ones + 7) / 8
 	out := make([]byte, 2+octets)
 	out[1] = byte(ones)
-	copy(out[2:], ip[:octets])
+	copy(out[2:], ip.Mask(prefix.Mask)[:octets])
 	return out, nil
 }
 

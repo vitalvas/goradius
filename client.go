@@ -81,7 +81,12 @@ func WithClientUseMessageAuthenticator(b bool) ClientOption {
 	}
 }
 
-// WithVerifyMessageAuthenticator sets whether to verify Message-Authenticator in responses.
+// WithVerifyMessageAuthenticator sets whether a Message-Authenticator must be
+// present in responses to Access-Request and Status-Server (BlastRADIUS
+// hardening). Responses to Accounting/CoA/Disconnect carry the attribute
+// optionally per RFC 2866/5176, so servers that omit it keep working.
+// Regardless of this setting, a Message-Authenticator that IS present is
+// always verified and the response rejected on mismatch (RFC 3579 Section 3.2).
 func WithVerifyMessageAuthenticator(b bool) ClientOption {
 	return func(c *Client) {
 		c.verifyMessageAuth = b
@@ -205,6 +210,13 @@ func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
 	}
 	defer conn.Close()
 
+	// Close the connection as soon as the client is closed so Close()
+	// unblocks an in-flight Write/Read instead of waiting for the deadline.
+	// Hooked to the client context (not the request context) so a request
+	// timeout still surfaces as a deadline error, not a closed connection.
+	stop := context.AfterFunc(c.ctx, func() { conn.Close() })
+	defer stop()
+
 	// Set deadline from context
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
@@ -218,27 +230,57 @@ func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
 	}
 
 	if _, err := conn.Write(data); err != nil {
+		if c.closed.Load() {
+			return nil, ErrClientClosed
+		}
 		return nil, fmt.Errorf("failed to write packet: %w", err)
 	}
 
-	// Read response based on transport type
-	respData, err := c.readResponse(conn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
+	// Read until a verified response arrives. RFC 2865 Section 4.2: invalid
+	// packets (undecodable, wrong Identifier, failed authenticators) are
+	// silently discarded, so on UDP a stray or spoofed datagram must not
+	// abort the exchange; the deadline bounds the wait. On TCP/TLS the
+	// stream is framed by the server itself, so the first packet is
+	// authoritative and a verification failure is fatal (RFC 6613).
+	for {
+		respData, err := c.readResponse(conn)
+		if err != nil {
+			if c.closed.Load() {
+				return nil, ErrClientClosed
+			}
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
 
+		respPkt, err := c.verifyResponse(pkt, respData)
+		if err != nil {
+			if c.transport == TransportUDP {
+				continue
+			}
+			return nil, err
+		}
+
+		return respPkt, nil
+	}
+}
+
+// verifyResponse decodes and authenticates a candidate response to req:
+// Identifier match, Response Authenticator (RFC 2865 Section 3), and
+// Message-Authenticator per the client policy. On success the returned
+// packet carries the dictionary, the shared secret, and the request
+// authenticator so encrypted attributes decrypt transparently.
+func (c *Client) verifyResponse(req *Packet, respData []byte) (*Packet, error) {
 	respPkt, err := Decode(respData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	// Verify response identifier matches request identifier (RFC 2865)
-	if respPkt.Identifier != pkt.Identifier {
-		return nil, fmt.Errorf("response identifier mismatch: expected %d, got %d", pkt.Identifier, respPkt.Identifier)
+	if respPkt.Identifier != req.Identifier {
+		return nil, fmt.Errorf("response identifier mismatch: expected %d, got %d", req.Identifier, respPkt.Identifier)
 	}
 
 	// Verify response authenticator (RFC 2865)
-	expectedAuth := respPkt.CalculateResponseAuthenticator(c.secret, pkt.Authenticator)
+	expectedAuth := respPkt.CalculateResponseAuthenticator(c.secret, req.Authenticator)
 	if !bytes.Equal(respPkt.Authenticator[:], expectedAuth[:]) {
 		return nil, fmt.Errorf("response authenticator verification failed")
 	}
@@ -247,8 +289,22 @@ func (c *Client) sendRequest(pkt *Packet) (*Packet, error) {
 		respPkt.Dict = c.dict
 	}
 
-	if c.verifyMessageAuth {
-		if !respPkt.VerifyMessageAuthenticator(c.secret, pkt.Authenticator) {
+	// Carry the secret and the request's authenticator so encrypted reply
+	// attributes (for example MPPE keys) decrypt transparently via
+	// GetAttribute.
+	respPkt.Secret = c.secret
+	respPkt.bindRequestAuthenticator(req.Authenticator)
+
+	// RFC 3579 Section 3.2: a Message-Authenticator present in the response
+	// is always verified; verifyMessageAuth only governs whether its absence
+	// is fatal, and that requirement covers the Access and Status-Server
+	// exchanges, where BlastRADIUS-style forgery matters. Responses to
+	// Accounting/CoA/Disconnect carry the attribute optionally (RFC
+	// 2866/5176), so servers that omit it keep working.
+	requireMsgAuth := c.verifyMessageAuth &&
+		(req.Code == CodeAccessRequest || req.Code == CodeStatusServer)
+	if requireMsgAuth || respPkt.hasMessageAuthenticator() {
+		if !respPkt.VerifyMessageAuthenticator(c.secret, req.Authenticator) {
 			return nil, fmt.Errorf("message authenticator verification failed")
 		}
 	}
@@ -275,11 +331,10 @@ func (c *Client) CoA(attributes map[string]interface{}) (*Packet, error) {
 		}
 	}
 
-	// RFC 2868 Section 3.5 / RFC 5176: in a CoA-Request the Request
-	// Authenticator is computed over the attributes, so encrypted attributes
-	// use a zero authenticator. Encrypt before any authenticator computation.
-	pkt.EncryptAttributes([16]byte{})
-
+	// Encrypted attributes finalize transparently with a zero authenticator
+	// (RFC 2868 Section 3.5 / RFC 5176) before the integrity values below are
+	// computed.
+	//
 	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
 	// Authenticator field zeroed and inserted first; the Request Authenticator is
 	// then computed over the packet carrying the real Message-Authenticator value.
@@ -312,11 +367,10 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*Packet, error) 
 		}
 	}
 
-	// RFC 2868 Section 3.5 / RFC 5176: in a Disconnect-Request the Request
-	// Authenticator is computed over the attributes, so encrypted attributes
-	// use a zero authenticator. Encrypt before any authenticator computation.
-	pkt.EncryptAttributes([16]byte{})
-
+	// Encrypted attributes finalize transparently with a zero authenticator
+	// (RFC 2868 Section 3.5 / RFC 5176) before the integrity values below are
+	// computed.
+	//
 	// RFC 5176 Section 3.4: the Message-Authenticator is computed with the Request
 	// Authenticator field zeroed and inserted first; the Request Authenticator is
 	// then computed over the packet carrying the real Message-Authenticator value.
@@ -349,17 +403,15 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*Packet, erro
 		}
 	}
 
-	// RFC 2865 Section 3: Request Authenticator is 16 octets of random data
+	// RFC 2865 Section 3: Request Authenticator is 16 octets of random data.
+	// Encrypted attributes (User-Password, Tunnel-Password) finalize
+	// transparently with this authenticator before the Message-Authenticator
+	// HMAC and Encode render the packet (RFC 2865 Section 5.2 / RFC 2868).
 	authenticator := make([]byte, 16)
 	if _, err := rand.Read(authenticator); err != nil {
 		return nil, fmt.Errorf("failed to generate authenticator: %w", err)
 	}
 	pkt.SetAuthenticator([16]byte(authenticator))
-
-	// RFC 2865 Section 5.2 / RFC 2868: Access-Request encrypted attributes
-	// (User-Password, Tunnel-Password) use the random Request Authenticator, so
-	// encrypt after it is set and before the Message-Authenticator HMAC.
-	pkt.EncryptAttributes(pkt.Authenticator)
 
 	if c.useMessageAuth {
 		pkt.AddMessageAuthenticator(c.secret, pkt.Authenticator)
@@ -387,11 +439,9 @@ func (c *Client) AccountingRequest(attributes map[string]interface{}) (*Packet, 
 		}
 	}
 
-	// RFC 2868 Section 3.5: in an Accounting-Request the Request Authenticator
-	// is computed over the attributes, so encrypted attributes use a zero
-	// authenticator. Encrypt before any authenticator computation.
-	pkt.EncryptAttributes([16]byte{})
-
+	// Encrypted attributes finalize transparently with a zero authenticator
+	// (RFC 2868 Section 3.5) before the integrity values below are computed.
+	//
 	// Message-Authenticator is computed with the Request Authenticator field zeroed
 	// and inserted first, mirroring RFC 5176 Section 3.4; the Request Authenticator
 	// is then computed over the packet carrying the real Message-Authenticator value.

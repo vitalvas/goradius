@@ -253,37 +253,40 @@ func DecodeStruct(parent *AttributeDefinition, data []byte) (map[string]any, err
 	return result, nil
 }
 
-// bitWriter accumulates MSB-first bit fields and emits whole octets.
+// bitWriter accumulates MSB-first bit fields and emits whole octets. Completed
+// octets are drained into out as fields are written, so acc never holds more
+// than seven residual bits plus one field and bit runs of any total width are
+// encoded without overflowing the accumulator.
 type bitWriter struct {
 	acc  uint64
-	nset int // number of bits currently buffered
+	nset int // residual bits buffered in acc (always < 8 between writes)
+	out  []byte
 }
 
 func (w *bitWriter) write(width int, v uint64) error {
 	if width <= 0 || width > 32 {
 		return fmt.Errorf("invalid bit width %d", width)
 	}
-	if width < 64 && v >= (uint64(1)<<width) {
+	if v >= (uint64(1) << width) {
 		return fmt.Errorf("value %d does not fit in %d bits", v, width)
 	}
 	w.acc = (w.acc << width) | v
 	w.nset += width
+	for w.nset >= 8 {
+		w.out = append(w.out, byte(w.acc>>(w.nset-8)))
+		w.nset -= 8
+		w.acc &= (uint64(1) << w.nset) - 1
+	}
 	return nil
 }
 
-func (w *bitWriter) aligned() bool { return w.nset%8 == 0 }
+func (w *bitWriter) aligned() bool { return w.nset == 0 }
 
-// flush returns the buffered whole octets and resets the buffer. It must only be
+// flush returns the drained whole octets and resets the buffer. It must only be
 // called when aligned.
 func (w *bitWriter) flush() []byte {
-	n := w.nset / 8
-	out := make([]byte, n)
-	for i := n - 1; i >= 0; i-- {
-		out[i] = byte(w.acc)
-		w.acc >>= 8
-	}
-	w.acc = 0
-	w.nset = 0
+	out := w.out
+	w.out = nil
 	return out
 }
 

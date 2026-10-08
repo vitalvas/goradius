@@ -22,6 +22,21 @@ func TestNewEVSAttribute(t *testing.T) {
 	})
 }
 
+func TestEVSEmptyValue(t *testing.T) {
+	// RFC 6929 Section 2.4: the EVS-Value field is one or more octets.
+	_, err := NewEVSAttribute(241, 9, 1, nil)
+	require.Error(t, err)
+
+	vendorID, vendorType, value, parseErr := ParseEVS(&Attribute{
+		Type:  241,
+		Value: []byte{EVSExtendedType, 0, 0, 0, 9, 1},
+	})
+	require.Error(t, parseErr)
+	assert.Zero(t, vendorID)
+	assert.Zero(t, vendorType)
+	assert.Nil(t, value)
+}
+
 func TestParseEVS(t *testing.T) {
 	t.Run("round trip", func(t *testing.T) {
 		attr, err := NewEVSAttribute(242, 311, 7, []byte("data"))

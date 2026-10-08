@@ -37,11 +37,20 @@ func EncodeTLV(parent *AttributeDefinition, values map[string]any) ([]byte, erro
 			return nil, fmt.Errorf("unknown TLV child %q for attribute %q", name, parent.Name)
 		}
 
+		// RFC 6929 Section 2.3 bounds TLV-Type to one octet (and reserves 254-255)
+		if child.ID > 253 {
+			return nil, fmt.Errorf("TLV child %q ID %d exceeds the one-octet TLV-Type range", name, child.ID)
+		}
+
 		childValue, err := EncodeValue(processEnumeratedValueFor(raw, child), child.DataType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode TLV child %q: %w", name, err)
 		}
 
+		// RFC 6929 Section 2.3: TLV-Length is 3-255, so empty values cannot be carried
+		if len(childValue) == 0 {
+			return nil, fmt.Errorf("TLV child %q requires a non-empty value", name)
+		}
 		if len(childValue) > maxTLVChildValueLength {
 			return nil, fmt.Errorf("TLV child %q value length %d exceeds maximum %d bytes", name, len(childValue), maxTLVChildValueLength)
 		}
@@ -86,7 +95,9 @@ func DecodeTLV(parent *AttributeDefinition, data []byte) (map[string]any, error)
 		childID := uint32(data[offset])
 		childLen := int(data[offset+1])
 
-		if childLen < tlvChildHeaderLength {
+		// RFC 6929 Section 2.3: TLV-Length must be 3-255, so a header-only
+		// (empty value) sub-attribute is invalid
+		if childLen < tlvChildHeaderLength+1 {
 			return nil, fmt.Errorf("invalid TLV sub-attribute length %d at offset %d", childLen, offset)
 		}
 

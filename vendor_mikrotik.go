@@ -46,7 +46,7 @@ var MikrotikVendorDefinition = &VendorDefinition{
 		{ID: 22, Name: "mikrotik-delegated-ipv6-pool", DataType: DataTypeString, Usage: UsageAccessAccept},
 		{ID: 23, Name: "mikrotik-dhcp-option-set", DataType: DataTypeString},
 		{ID: 24, Name: "mikrotik-dhcp-option-param-str1", DataType: DataTypeString},
-		{ID: 25, Name: "mikrotik-dhcp-option-paramstr2", DataType: DataTypeString},
+		{ID: 25, Name: "mikrotik-dhcp-option-param-str2", DataType: DataTypeString},
 		{ID: 26, Name: "mikrotik-wireless-vlanid", DataType: DataTypeInteger, Usage: UsageAccessAccept},
 		{
 			ID:       27,

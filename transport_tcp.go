@@ -2,9 +2,12 @@ package goradius
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"sync"
+	"syscall"
+	"time"
 )
 
 // TCPTransport implements Transport for TCP/TLS connections.
@@ -28,7 +31,10 @@ func NewTCPTransport(listener net.Listener) *TCPTransport {
 
 // Serve implements Transport.Serve for TCP.
 // Runs an accept loop and spawns a goroutine for each connection.
+// Transient accept errors (such as file-descriptor exhaustion) are retried
+// with exponential backoff instead of terminating the server.
 func (t *TCPTransport) Serve(handler TransportHandler) error {
+	var backoff time.Duration
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
@@ -40,30 +46,62 @@ func (t *TCPTransport) Serve(handler TransportHandler) error {
 				return nil
 			}
 
+			if isTemporaryAcceptError(err) {
+				backoff = min(max(backoff*2, 5*time.Millisecond), time.Second)
+				time.Sleep(backoff)
+				continue
+			}
+
 			return err
 		}
+		backoff = 0
 
-		t.trackConn(conn, true)
-		t.wg.Add(1)
+		if !t.trackNewConn(conn) {
+			conn.Close()
+			return nil
+		}
 		go t.handleConnection(conn, handler)
 	}
 }
 
-// trackConn adds or removes a connection from tracking.
-func (t *TCPTransport) trackConn(conn net.Conn, add bool) {
+// isTemporaryAcceptError reports whether an Accept error is transient and the
+// accept loop should retry: a timeout, or resource exhaustion / connection
+// aborts that clear on their own.
+func isTemporaryAcceptError(err error) bool {
+	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		return true
+	}
+	return errors.Is(err, syscall.EMFILE) ||
+		errors.Is(err, syscall.ENFILE) ||
+		errors.Is(err, syscall.ECONNABORTED)
+}
+
+// trackNewConn registers an accepted connection and reserves its WaitGroup
+// slot atomically with the closed check, so Close cannot miss the connection
+// or observe wg.Add racing wg.Wait. Returns false when the transport is
+// already closed.
+func (t *TCPTransport) trackNewConn(conn net.Conn) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if add {
-		t.conns[conn] = struct{}{}
-	} else {
-		delete(t.conns, conn)
+	if t.closed {
+		return false
 	}
+	t.conns[conn] = struct{}{}
+	t.wg.Add(1)
+	return true
+}
+
+// forgetConn removes a connection from tracking.
+func (t *TCPTransport) forgetConn(conn net.Conn) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.conns, conn)
 }
 
 // handleConnection reads RADIUS packets from a single TCP connection.
 func (t *TCPTransport) handleConnection(conn net.Conn, handler TransportHandler) {
 	defer t.wg.Done()
-	defer t.trackConn(conn, false)
+	defer t.forgetConn(conn)
 	defer conn.Close()
 
 	remoteAddr := conn.RemoteAddr()

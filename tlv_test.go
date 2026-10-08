@@ -408,3 +408,48 @@ func FuzzDecodeTLV(f *testing.F) {
 		}
 	})
 }
+
+func TestTLVWireValidity(t *testing.T) {
+	t.Run("child ID above one octet is rejected", func(t *testing.T) {
+		parent := &AttributeDefinition{
+			ID:       100,
+			Name:     "big-id-parent",
+			DataType: DataTypeTLV,
+			Children: []*AttributeDefinition{
+				{ID: 300, Name: "big-id-child", DataType: DataTypeString},
+			},
+		}
+		_, err := EncodeTLV(parent, map[string]any{"big-id-child": "x"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TLV-Type range")
+	})
+
+	t.Run("empty child value is rejected on encode", func(t *testing.T) {
+		parent := &AttributeDefinition{
+			ID:       101,
+			Name:     "empty-parent",
+			DataType: DataTypeTLV,
+			Children: []*AttributeDefinition{
+				{ID: 1, Name: "empty-child", DataType: DataTypeString},
+			},
+		}
+		_, err := EncodeTLV(parent, map[string]any{"empty-child": ""})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "non-empty")
+	})
+
+	t.Run("header-only sub-attribute is rejected on decode", func(t *testing.T) {
+		parent := &AttributeDefinition{
+			ID:       102,
+			Name:     "decode-parent",
+			DataType: DataTypeTLV,
+			Children: []*AttributeDefinition{
+				{ID: 1, Name: "decode-child", DataType: DataTypeString},
+			},
+		}
+		// RFC 6929 Section 2.3: TLV-Length must be at least 3.
+		_, err := DecodeTLV(parent, []byte{1, 2})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid TLV sub-attribute length")
+	})
+}

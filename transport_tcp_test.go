@@ -2,9 +2,12 @@ package goradius
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
+	"os"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -140,4 +143,45 @@ func TestReadRADIUSPacket(t *testing.T) {
 		_, err := readRADIUSPacket(bytes.NewReader(header))
 		assert.Error(t, err)
 	})
+}
+
+func TestIsTemporaryAcceptError(t *testing.T) {
+	temporary := []error{
+		&net.OpError{Op: "accept", Err: &os.SyscallError{Syscall: "accept", Err: syscall.EMFILE}},
+		&net.OpError{Op: "accept", Err: &os.SyscallError{Syscall: "accept", Err: syscall.ENFILE}},
+		&net.OpError{Op: "accept", Err: &os.SyscallError{Syscall: "accept", Err: syscall.ECONNABORTED}},
+	}
+	for _, err := range temporary {
+		assert.True(t, isTemporaryAcceptError(err), "%v should be temporary", err)
+	}
+
+	assert.False(t, isTemporaryAcceptError(errors.New("boom")))
+	assert.False(t, isTemporaryAcceptError(net.ErrClosed))
+}
+
+// TestTCPTransportCloseAcceptRace exercises the shutdown path with
+// connections arriving concurrently with Close; run with -race it verifies
+// the accept/close interleaving cannot Add to the WaitGroup after Wait or
+// leak an untracked connection.
+func TestTCPTransportCloseAcceptRace(t *testing.T) {
+	for range 20 {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+
+		transport := NewTCPTransport(listener)
+		served := make(chan error, 1)
+		go func() {
+			served <- transport.Serve(func([]byte, net.Addr, ResponderFunc) {})
+		}()
+
+		addr := listener.Addr().String()
+		go func() {
+			if conn, err := net.Dial("tcp", addr); err == nil {
+				conn.Close()
+			}
+		}()
+
+		require.NoError(t, transport.Close())
+		assert.NoError(t, <-served)
+	}
 }

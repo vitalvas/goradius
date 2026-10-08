@@ -242,15 +242,27 @@ func TestPacketVendorAttributes(t *testing.T) {
 }
 
 func TestPacketTaggedVendorAttributes(t *testing.T) {
-	pkt := NewPacket(CodeAccessRequest, 1)
+	dict, err := NewDefault()
+	require.NoError(t, err)
 
-	va := NewTaggedVendorAttribute(4874, 1, 3, []byte("test-service"))
+	// erx-service-activate (vendor 4874, type 65) is defined as tagged, so the
+	// dictionary-aware parser detects the tag octet.
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	va := NewTaggedVendorAttribute(4874, 65, 3, []byte("test-service"))
 	pkt.AddVendorAttribute(va)
 
-	foundVA, ok := pkt.GetVendorAttribute(4874, 1)
+	foundVA, ok := pkt.GetVendorAttribute(4874, 65)
 	assert.True(t, ok)
 	assert.Equal(t, uint8(3), foundVA.Tag)
 	assert.Equal(t, []byte("test-service"), foundVA.GetValue())
+
+	// Without a dictionary the tag octet stays part of the value.
+	noDictPkt := NewPacket(CodeAccessAccept, 1)
+	noDictPkt.AddVendorAttribute(NewTaggedVendorAttribute(4874, 65, 3, []byte("test-service")))
+	foundVA, ok = noDictPkt.GetVendorAttribute(4874, 65)
+	assert.True(t, ok)
+	assert.Equal(t, uint8(0), foundVA.Tag)
+	assert.Equal(t, append([]byte{3}, []byte("test-service")...), foundVA.GetValue())
 }
 
 func TestPacketString(t *testing.T) {
@@ -2290,4 +2302,413 @@ func TestSetAttributesFromStrings(t *testing.T) {
 		err := pkt.SetAttributesFromStrings(map[string][]string{"session-timeout": {"notnum"}})
 		require.Error(t, err)
 	})
+}
+
+func TestPacketLengthOverflow(t *testing.T) {
+	// Enough 253-octet attributes to push the total past the uint16 range, so
+	// the Length field wraps back into the valid window.
+	pkt := NewPacket(CodeAccessRequest, 1)
+	for range 300 {
+		pkt.AddAttribute(NewAttribute(1, make([]byte, 251)))
+	}
+
+	t.Run("IsValid rejects wrapped length", func(t *testing.T) {
+		require.Error(t, pkt.IsValid())
+	})
+
+	t.Run("Encode rejects wrapped length", func(t *testing.T) {
+		_, err := pkt.Encode()
+		require.Error(t, err)
+	})
+
+	t.Run("authenticator calculations do not panic", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			pkt.AddMessageAuthenticator([]byte("secret"), [16]byte{})
+			pkt.CalculateRequestAuthenticator([]byte("secret"))
+		})
+	})
+}
+
+func TestTunnelPasswordLengthValidation(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("plaintext that fits after expansion is accepted", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.Secret = []byte("testing123")
+		require.NoError(t, pkt.AddAttributeByName("tunnel-password:1", strings.Repeat("x", 230)))
+
+		pkt.EncryptAttributes([16]byte{0x01})
+		_, err := pkt.Encode()
+		require.NoError(t, err)
+	})
+
+	t.Run("plaintext that overflows after expansion is rejected at add time", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.Secret = []byte("testing123")
+		err := pkt.AddAttributeByName("tunnel-password:1", strings.Repeat("x", 240))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds maximum")
+	})
+}
+
+func TestTransparentEncryption(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("encode refuses plaintext when no secret is set", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-password", "hunter2"))
+
+		_, err := pkt.Encode()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no shared secret")
+	})
+
+	t.Run("access-request encrypts on encode with no manual steps", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-password", "hunter2"))
+
+		// Secret set after the attribute was added; no EncryptAttributes call.
+		pkt.Secret = []byte("testing123")
+		auth := [16]byte{0xAA, 0xBB}
+		pkt.SetAuthenticator(auth)
+
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "hunter2")
+
+		decrypted, err := DecryptAttributeValue(pkt.Attributes[0].Value, EncryptionUserPassword, pkt.Secret, auth)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("hunter2"), decrypted)
+
+		// Reading the attribute back decrypts transparently too.
+		values := pkt.GetAttribute("user-password")
+		require.Len(t, values, 1)
+		assert.Equal(t, "hunter2", values[0].String())
+	})
+
+	t.Run("coa-request encrypts with a zero authenticator transparently", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeCoARequest, 1, dict)
+		pkt.Secret = []byte("testing123")
+		require.NoError(t, pkt.AddAttributeByName("tunnel-password:1", "tunnel-secret"))
+
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(pkt.Secret))
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "tunnel-secret")
+
+		// Reading back decrypts transparently with the zero authenticator.
+		values := pkt.GetAttribute("tunnel-password")
+		require.Len(t, values, 1)
+		assert.Equal(t, uint8(1), values[0].Tag)
+		assert.Equal(t, "tunnel-secret", values[0].String())
+	})
+}
+
+func TestTunnelPasswordSaltUniqueness(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("salts within one packet are unique", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.Secret = []byte("testing123")
+		pkt.bindRequestAuthenticator([16]byte{0x01})
+		require.NoError(t, pkt.AddAttributeByName("tunnel-password:1", "first-secret"))
+		require.NoError(t, pkt.AddAttributeByName("tunnel-password:2", "second-secret"))
+
+		_, err := pkt.Encode()
+		require.NoError(t, err)
+
+		// Wire layout per attribute: Tag(1) + Salt(2) + ciphertext.
+		require.Len(t, pkt.Attributes, 2)
+		saltA := [2]byte{pkt.Attributes[0].Value[1], pkt.Attributes[0].Value[2]}
+		saltB := [2]byte{pkt.Attributes[1].Value[1], pkt.Attributes[1].Value[2]}
+		assert.NotEqual(t, saltA, saltB)
+		assert.Equal(t, uint8(0x80), saltA[0]&0x80)
+		assert.Equal(t, uint8(0x80), saltB[0]&0x80)
+		assert.Len(t, pkt.usedTunnelSalts, 2)
+	})
+
+	t.Run("collision redraws until an unused salt is found", func(t *testing.T) {
+		pkt := NewPacket(CodeAccessAccept, 1)
+		// Pre-fill every possible salt except one: the draw loop must land
+		// on the single remaining value.
+		pkt.usedTunnelSalts = make(map[uint16]struct{}, 1<<15)
+		for i := 0x8000; i <= 0xFFFF; i++ {
+			if i == 0x8042 {
+				continue
+			}
+			pkt.usedTunnelSalts[uint16(i)] = struct{}{}
+		}
+		salt := pkt.uniqueTunnelSalt()
+		assert.Equal(t, [2]byte{0x80, 0x42}, salt)
+	})
+}
+
+func TestAttributeTagValidation(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("standard attribute tag above 31 is rejected", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.AddAttributeByName("tunnel-password:32", "x")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tag")
+	})
+
+	t.Run("non-numeric tag is rejected", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.AddAttributeByName("tunnel-password:abc", "x")
+		require.Error(t, err)
+	})
+
+	t.Run("vendor attribute tag above 31 is rejected", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		err := pkt.AddAttributeByName("erx-service-activate:77", "svc")
+		require.Error(t, err)
+	})
+
+	t.Run("valid tags are accepted", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.Secret = []byte("testing123")
+		require.NoError(t, pkt.AddAttributeByName("tunnel-password:31", "x"))
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "svc"))
+	})
+}
+
+func TestVSAFormatAwareLengthCap(t *testing.T) {
+	dict := NewDictionary()
+	require.NoError(t, dict.AddVendor(&VendorDefinition{
+		ID:           5555,
+		Name:         "wide-vendor",
+		TypeOctets:   2,
+		LengthOctets: 1,
+		Attributes: []*AttributeDefinition{
+			{ID: 1, Name: "wide-string", DataType: DataTypeString},
+		},
+	}))
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+
+	// format=2,1 leaves 253-4-2-1 = 246 octets of vendor data, one less
+	// than the standard 1,1 cap.
+	require.Error(t, pkt.AddAttributeByName("wide-string", strings.Repeat("x", 247)))
+
+	require.NoError(t, pkt.AddAttributeByName("wide-string", strings.Repeat("x", 246)))
+	_, err := pkt.Encode()
+	require.NoError(t, err)
+}
+
+func TestTransparentResponseEncryption(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	// A server-side flow built only from the public Response API: no
+	// EncryptAttributes, no explicit authenticator plumbing.
+	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 9, dict)
+	reqAuth := [16]byte{0x5A, 0x5B, 0x5C}
+	reqPkt.SetAuthenticator(reqAuth)
+	req := &Request{
+		packet: reqPkt,
+		Secret: SecretResponse{Secret: []byte("testing123")},
+	}
+
+	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
+	mppeKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	require.NoError(t, resp.AddAttribute("ms-mppe-send-key", mppeKey))
+
+	data, err := resp.packet.Encode()
+	require.NoError(t, err)
+
+	// The wire bytes are encrypted with the request authenticator.
+	decoded, err := Decode(data)
+	require.NoError(t, err)
+	decoded.Dict = dict
+	va, ok := decoded.GetVendorAttribute(311, 16)
+	require.True(t, ok)
+	decrypted, err := DecryptAttributeValue(va.Value, EncryptionTunnelPassword, []byte("testing123"), reqAuth)
+	require.NoError(t, err)
+	assert.Equal(t, mppeKey, decrypted)
+
+	// Reading the response packet back decrypts transparently.
+	values := resp.packet.GetAttribute("ms-mppe-send-key")
+	require.Len(t, values, 1)
+	assert.Equal(t, mppeKey, values[0].Value)
+}
+
+func TestDecryptAttributeValue(t *testing.T) {
+	secret := []byte("testing123")
+	auth := [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
+
+	t.Run("user-password round trip", func(t *testing.T) {
+		for _, password := range []string{"", "short", strings.Repeat("multi-block-password-", 4)} {
+			encrypted := EncryptAttributeValue([]byte(password), EncryptionUserPassword, secret, auth)
+			decrypted, err := DecryptAttributeValue(encrypted, EncryptionUserPassword, secret, auth)
+			require.NoError(t, err)
+			assert.Equal(t, []byte(password), decrypted)
+		}
+	})
+
+	t.Run("tunnel-password round trip", func(t *testing.T) {
+		for _, password := range []string{"", "tunnel-pass", strings.Repeat("long-tunnel-password-", 3)} {
+			encrypted := EncryptAttributeValue([]byte(password), EncryptionTunnelPassword, secret, auth)
+			decrypted, err := DecryptAttributeValue(encrypted, EncryptionTunnelPassword, secret, auth)
+			require.NoError(t, err)
+			assert.Equal(t, []byte(password), decrypted)
+		}
+	})
+
+	t.Run("ascend-secret round trip", func(t *testing.T) {
+		encrypted := EncryptAttributeValue([]byte("ascend-pw"), EncryptionAscendSecret, secret, auth)
+		decrypted, err := DecryptAttributeValue(encrypted, EncryptionAscendSecret, secret, auth)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("ascend-pw"), decrypted)
+	})
+
+	t.Run("no encryption passes through", func(t *testing.T) {
+		decrypted, err := DecryptAttributeValue([]byte("plain"), EncryptionNone, secret, auth)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("plain"), decrypted)
+	})
+
+	t.Run("malformed ciphertext errors", func(t *testing.T) {
+		_, err := DecryptAttributeValue([]byte{1, 2, 3}, EncryptionUserPassword, secret, auth)
+		require.Error(t, err)
+		_, err = DecryptAttributeValue([]byte{0x80, 0x01, 0xFF}, EncryptionTunnelPassword, secret, auth)
+		require.Error(t, err)
+		_, err = DecryptAttributeValue([]byte{1, 2, 3}, EncryptionAscendSecret, secret, auth)
+		require.Error(t, err)
+	})
+}
+
+func TestGetAttributeDecryptsRequestAttributes(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+	secret := []byte("testing123")
+
+	// Client side: build an Access-Request with an encrypted User-Password.
+	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 7, dict)
+	reqPkt.Secret = secret
+	require.NoError(t, reqPkt.AddAttributeByName("user-name", "bob"))
+	require.NoError(t, reqPkt.AddAttributeByName("user-password", "correct horse"))
+
+	auth := [16]byte{0x11, 0x22, 0x33, 0x44}
+	reqPkt.SetAuthenticator(auth)
+	reqPkt.EncryptAttributes(auth)
+	wire, err := reqPkt.Encode()
+	require.NoError(t, err)
+
+	// Server side: decode the wire bytes, attach dictionary and secret.
+	pkt, err := Decode(wire)
+	require.NoError(t, err)
+	pkt.Dict = dict
+	pkt.Secret = secret
+
+	values := pkt.GetAttribute("user-password")
+	require.Len(t, values, 1)
+	assert.Equal(t, "correct horse", values[0].String())
+
+	// Without the secret the raw ciphertext is surfaced unchanged.
+	pkt.Secret = nil
+	values = pkt.GetAttribute("user-password")
+	require.Len(t, values, 1)
+	assert.NotEqual(t, "correct horse", values[0].String())
+}
+
+func TestVSAUntaggedValueWithLowFirstOctet(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	// An untagged VSA whose value starts with an octet in the 1-31 range must
+	// not have that octet mistaken for a tag. erx-primary-dns (vendor 4874,
+	// type 4) is an untagged ipaddr attribute; 1.2.3.4 starts with 0x01.
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	va := NewVendorAttribute(4874, 4, []byte{0x01, 0x02, 0x03, 0x04})
+	pkt.AddVendorAttribute(va)
+
+	found, ok := pkt.GetVendorAttribute(4874, 4)
+	require.True(t, ok)
+	assert.Equal(t, uint8(0), found.Tag)
+	assert.Equal(t, []byte{0x01, 0x02, 0x03, 0x04}, found.GetValue())
+}
+
+func TestMultiSubAttributeVSA(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	// One Vendor-Specific attribute carrying two sub-attributes (RFC 2865
+	// Section 5.26): erx-ingress-policy-name (10) and erx-egress-policy-name (11).
+	vendorData := []byte{
+		0x00, 0x00, 0x13, 0x0A, // Vendor-Id 4874
+		10, 4, 'i', 'n', // sub-attribute 10, length 4
+		11, 5, 'o', 'u', 't', // sub-attribute 11, length 5
+	}
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	pkt.AddAttribute(NewAttribute(AttributeTypeVendorSpecific, vendorData))
+
+	ingress, ok := pkt.GetVendorAttribute(4874, 10)
+	require.True(t, ok)
+	assert.Equal(t, []byte("in"), ingress.Value)
+
+	egress, ok := pkt.GetVendorAttribute(4874, 11)
+	require.True(t, ok)
+	assert.Equal(t, []byte("out"), egress.Value)
+
+	values := pkt.GetAttribute("erx-egress-policy-name")
+	require.Len(t, values, 1)
+	assert.Equal(t, "out", values[0].String())
+
+	names := pkt.ListAttributes()
+	assert.Contains(t, names, "erx-ingress-policy-name")
+	assert.Contains(t, names, "erx-egress-policy-name")
+}
+
+func TestGetAttributesIncludesBitsAndUnionChildren(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+	require.NoError(t, pkt.SetAttributes(map[string][]any{
+		"3gpp-secondary-rat-usage-spare":          {uint64(0)},
+		"3gpp-secondary-rat-usage-sess":           {uint64(1)},
+		"3gpp-secondary-rat-usage-rat":            {uint64(0)},
+		"3gpp-secondary-rat-usage-ran-start-time": {time.Unix(1700000000, 0)},
+		"3gpp-secondary-rat-usage-ran-end-time":   {time.Unix(1700000600, 0)},
+		"3gpp-secondary-rat-usage-usage-data-dl":  {uint64(1234)},
+		"3gpp-secondary-rat-usage-usage-data-ul":  {uint64(5678)},
+		"3gpp-uli-type":                           {uint8(1)},
+		"3gpp-uli-plmn-id":                        {[]byte{0x12, 0x34, 0x56}},
+		"3gpp-uli-data": {map[string]any{
+			"3gpp-uli-sai-lac": uint16(0x1111),
+			"3gpp-uli-sai-sac": uint16(0x2222),
+		}},
+	}))
+
+	attrs := pkt.GetAttributes()
+
+	// Bit-field members must not be dropped from the flat map.
+	spare, ok := attrs["3gpp-secondary-rat-usage-spare"]
+	require.True(t, ok, "bits child missing from GetAttributes")
+	require.Len(t, spare, 1)
+	assert.Equal(t, uint64(0), spare[0].Decoded())
+
+	sess, ok := attrs["3gpp-secondary-rat-usage-sess"]
+	require.True(t, ok)
+	assert.Equal(t, uint64(1), sess[0].Decoded())
+
+	// Union members surface their decoded variant map and re-encoded bytes.
+	uliData, ok := attrs["3gpp-uli-data"]
+	require.True(t, ok, "union child missing from GetAttributes")
+	require.Len(t, uliData, 1)
+	sub, ok := uliData[0].Decoded().(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, uint16(0x1111), sub["3gpp-uli-sai-lac"])
+	assert.Equal(t, []byte{0x11, 0x11, 0x22, 0x22}, uliData[0].Value)
+
+	// Scalar siblings are still present.
+	dl, ok := attrs["3gpp-secondary-rat-usage-usage-data-dl"]
+	require.True(t, ok)
+	assert.Equal(t, uint64(1234), dl[0].Decoded())
 }

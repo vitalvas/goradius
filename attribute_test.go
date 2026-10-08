@@ -209,7 +209,7 @@ func TestParseVSA(t *testing.T) {
 			},
 		},
 		{
-			name: "tagged VSA",
+			name: "tagged VSA leaves tag detection to the dictionary",
 			setup: func() *Attribute {
 				va := NewTaggedVendorAttribute(4874, 1, 5, []byte("test"))
 				return va.ToVSA()
@@ -218,7 +218,10 @@ func TestParseVSA(t *testing.T) {
 			check: func(t *testing.T, va *VendorAttribute) {
 				assert.Equal(t, uint32(4874), va.VendorID)
 				assert.Equal(t, uint32(1), va.VendorType)
-				assert.Equal(t, uint8(5), va.Tag)
+				// Without a dictionary the parser cannot know whether the first
+				// octet is a tag, so it stays part of the value (Tag is zero).
+				assert.Equal(t, uint8(0), va.Tag)
+				assert.Equal(t, append([]byte{5}, []byte("test")...), va.Value)
 			},
 		},
 		{

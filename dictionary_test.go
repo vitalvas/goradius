@@ -1179,3 +1179,101 @@ func BenchmarkAddStandardAttributes(b *testing.B) {
 		dict.AddStandardAttributes(attrs)
 	}
 }
+
+func TestChildNameUniquenessAcrossCalls(t *testing.T) {
+	tlvWithChild := func(vendorAttrID uint32, attrName, childName string) *AttributeDefinition {
+		return &AttributeDefinition{
+			ID:       vendorAttrID,
+			Name:     attrName,
+			DataType: DataTypeTLV,
+			Children: []*AttributeDefinition{
+				{ID: 1, Name: childName, DataType: DataTypeString},
+			},
+		}
+	}
+
+	t.Run("child name conflicting with an earlier call's child is rejected", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:         1001,
+			Name:       "vendor-a",
+			Attributes: []*AttributeDefinition{tlvWithChild(1, "va-container", "shared-child-name")},
+		}))
+
+		err := dict.AddVendor(&VendorDefinition{
+			ID:         1002,
+			Name:       "vendor-b",
+			Attributes: []*AttributeDefinition{tlvWithChild(1, "vb-container", "shared-child-name")},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already a child")
+	})
+
+	t.Run("top-level name conflicting with an earlier call's child is rejected", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:         1001,
+			Name:       "vendor-a",
+			Attributes: []*AttributeDefinition{tlvWithChild(1, "va-container", "va-child")},
+		}))
+
+		err := dict.AddStandardAttributes([]*AttributeDefinition{
+			{ID: 240, Name: "va-child", DataType: DataTypeString},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already a child")
+	})
+}
+
+func TestAddVendorSplitRegistration(t *testing.T) {
+	t.Run("merged definition lists attributes from every call", func(t *testing.T) {
+		dict := NewDictionary()
+		first := &VendorDefinition{
+			ID:   2001,
+			Name: "split-vendor",
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "split-first", DataType: DataTypeString},
+			},
+		}
+		second := &VendorDefinition{
+			ID:   2001,
+			Name: "split-vendor",
+			Attributes: []*AttributeDefinition{
+				{ID: 2, Name: "split-second", DataType: DataTypeString},
+			},
+		}
+		require.NoError(t, dict.AddVendor(first))
+		require.NoError(t, dict.AddVendor(second))
+
+		merged, ok := dict.LookupVendorByID(2001)
+		require.True(t, ok)
+		assert.Len(t, merged.Attributes, 2)
+
+		// The caller-supplied definitions are not mutated by the merge.
+		assert.Len(t, first.Attributes, 1)
+		assert.Len(t, second.Attributes, 1)
+	})
+
+	t.Run("VSA format mismatch across calls is rejected", func(t *testing.T) {
+		dict := NewDictionary()
+		require.NoError(t, dict.AddVendor(&VendorDefinition{
+			ID:           2002,
+			Name:         "fmt-vendor",
+			TypeOctets:   2,
+			LengthOctets: 1,
+			Attributes: []*AttributeDefinition{
+				{ID: 1, Name: "fmt-first", DataType: DataTypeString},
+			},
+		}))
+
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   2002,
+			Name: "fmt-vendor",
+			Attributes: []*AttributeDefinition{
+				{ID: 2, Name: "fmt-second", DataType: DataTypeString},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "VSA format")
+	})
+}

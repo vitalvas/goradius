@@ -89,9 +89,14 @@ type MessageAuthPolicy uint8
 const (
 	// MessageAuthPolicyDefault defers to the server-level WithRequireMessageAuthenticator setting.
 	MessageAuthPolicyDefault MessageAuthPolicy = 0
-	// MessageAuthPolicyRequired enforces Message-Authenticator for this secret regardless of server setting.
+	// MessageAuthPolicyRequired enforces Message-Authenticator presence for
+	// this secret on every request type, regardless of the server setting.
 	MessageAuthPolicyRequired MessageAuthPolicy = 1
-	// MessageAuthPolicyOptional skips Message-Authenticator enforcement for this secret regardless of server setting.
+	// MessageAuthPolicyOptional accepts Access-Requests without a
+	// Message-Authenticator for this secret, regardless of the server
+	// setting. A Message-Authenticator that is present is still verified
+	// (RFC 3579 Section 3.2), and Status-Server always requires one
+	// (RFC 5997).
 	MessageAuthPolicyOptional MessageAuthPolicy = 2
 )
 

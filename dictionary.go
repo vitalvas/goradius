@@ -127,16 +127,20 @@ func validateAttributeDefinition(attr *AttributeDefinition, allowZeroID bool) er
 // attribute name, and must not duplicate a name or ID within the batch itself.
 // Every attribute name must be globally flat-unique, including nested children
 // (struct members and tlv/evs sub-attributes), so a child name cannot shadow a
-// top-level attribute or another parent's child.
-func validateBatch(attrs []*AttributeDefinition, existingByName map[string]*AttributeDefinition) error {
+// top-level attribute or another parent's child, in either registration order.
+func validateBatch(attrs []*AttributeDefinition, existingByName, existingChildren map[string]*AttributeDefinition) error {
 	seenNames := make(map[string]struct{}, len(attrs))
 	seenIDs := make(map[uint32]struct{}, len(attrs))
 
 	// checkName enforces flat name uniqueness for an attribute and, recursively,
-	// its children against both the already-registered names and this batch.
+	// its children against the already-registered top-level names, the
+	// already-registered container child names, and this batch.
 	checkName := func(name string) error {
 		if _, exists := existingByName[name]; exists {
 			return fmt.Errorf("duplicate attribute name %q: already exists", name)
+		}
+		if parent, exists := existingChildren[name]; exists {
+			return fmt.Errorf("duplicate attribute name %q: already a child of %q", name, parent.Name)
 		}
 		if _, exists := seenNames[name]; exists {
 			return fmt.Errorf("duplicate attribute name %q within batch", name)
@@ -186,7 +190,7 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if err := validateBatch(attrs, d.allAttrByName); err != nil {
+	if err := validateBatch(attrs, d.allAttrByName, d.childParentByName); err != nil {
 		return err
 	}
 
@@ -216,7 +220,7 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if err := validateBatch(vendor.Attributes, d.allAttrByName); err != nil {
+	if err := validateBatch(vendor.Attributes, d.allAttrByName, d.childParentByName); err != nil {
 		return err
 	}
 
@@ -231,7 +235,27 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 		}
 	}
 
-	d.vendorByID[vendor.ID] = vendor
+	// A split registration of the same vendor ID must agree on the VSA header
+	// format (the widths drive every encode/decode of that vendor), and the
+	// stored definition must keep listing every attribute. A merged copy is
+	// stored so neither caller-supplied definition is mutated; the first
+	// registration's name is kept (the name is documentation only).
+	if prev, ok := d.vendorByID[vendor.ID]; ok {
+		if prev.TypeOctets != vendor.TypeOctets || prev.LengthOctets != vendor.LengthOctets {
+			return fmt.Errorf("vendor ID %d re-registered with VSA format %d,%d, already registered with %d,%d",
+				vendor.ID, vendor.TypeOctets, vendor.LengthOctets, prev.TypeOctets, prev.LengthOctets)
+		}
+		merged := &VendorDefinition{
+			ID:           vendor.ID,
+			Name:         prev.Name,
+			TypeOctets:   prev.TypeOctets,
+			LengthOctets: prev.LengthOctets,
+			Attributes:   append(append([]*AttributeDefinition{}, prev.Attributes...), vendor.Attributes...),
+		}
+		d.vendorByID[vendor.ID] = merged
+	} else {
+		d.vendorByID[vendor.ID] = vendor
+	}
 
 	if d.vendorAttrByID[vendor.ID] == nil {
 		d.vendorAttrByID[vendor.ID] = make(map[uint32]*AttributeDefinition)

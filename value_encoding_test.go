@@ -948,3 +948,18 @@ func BenchmarkDecodeValueIPAddr(b *testing.B) {
 		_, _ = DecodeValue(data, DataTypeIPAddr)
 	}
 }
+
+func TestEncodeIPv6PrefixMasksHostBits(t *testing.T) {
+	// RFC 3162 Section 2.3: bits outside the Prefix-Length must be zero, even
+	// when the caller passes an unmasked address in the IPNet.
+	prefix := &net.IPNet{
+		IP:   net.ParseIP("2001:db8::"),
+		Mask: net.CIDRMask(12, 128),
+	}
+
+	encoded, err := EncodeIPv6Prefix(prefix)
+	require.NoError(t, err)
+	// Reserved(0) + Prefix-Length(12) + 2 prefix octets with host bits cleared:
+	// 0x20, then 0x01 & 0xF0 = 0x00.
+	assert.Equal(t, []byte{0x00, 0x0C, 0x20, 0x00}, encoded)
+}

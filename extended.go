@@ -31,6 +31,10 @@ func NewExtendedAttribute(baseType, extType uint8, value []byte) (*Attribute, er
 	if !IsExtendedBaseType(baseType) || IsLongExtendedBaseType(baseType) {
 		return nil, fmt.Errorf("invalid short extended base type %d (must be 241-244)", baseType)
 	}
+	// RFC 6929 Section 2.1: Length is 4-255, so the value carries at least one octet
+	if len(value) == 0 {
+		return nil, fmt.Errorf("short extended attribute requires a non-empty value")
+	}
 	if len(value) > MaxShortExtendedValueLength {
 		return nil, fmt.Errorf("short extended value length %d exceeds maximum %d bytes", len(value), MaxShortExtendedValueLength)
 	}
@@ -52,7 +56,9 @@ func ParseExtendedAttribute(attr *Attribute) (extType uint8, value []byte, err e
 	if !IsExtendedBaseType(attr.Type) || IsLongExtendedBaseType(attr.Type) {
 		return 0, nil, fmt.Errorf("attribute type %d is not a short extended type (241-244)", attr.Type)
 	}
-	if len(attr.Value) < 1 {
+	// RFC 6929 Section 2.1: an extended attribute with Length 2 or 3 (fewer
+	// than two value octets here) is an invalid attribute
+	if len(attr.Value) < 2 {
 		return 0, nil, fmt.Errorf("short extended attribute too short: %d bytes", len(attr.Value))
 	}
 	return attr.Value[0], attr.Value[1:], nil
@@ -66,6 +72,10 @@ func ParseExtendedAttribute(attr *Attribute) (extType uint8, value []byte, err e
 func NewLongExtendedAttributes(baseType, extType uint8, value []byte) ([]*Attribute, error) {
 	if !IsLongExtendedBaseType(baseType) {
 		return nil, fmt.Errorf("invalid long extended base type %d (must be 245-246)", baseType)
+	}
+	// RFC 6929 Section 2.2: Length is 5-255, so the value carries at least one octet
+	if len(value) == 0 {
+		return nil, fmt.Errorf("long extended attribute requires a non-empty value")
 	}
 
 	fragments := max((len(value)+MaxLongExtendedValueLength-1)/MaxLongExtendedValueLength, 1)
@@ -109,7 +119,9 @@ func parseLongExtendedFragment(attr *Attribute) (extType uint8, more bool, value
 	if !IsLongExtendedBaseType(attr.Type) {
 		return 0, false, nil, fmt.Errorf("attribute type %d is not a long extended type (245-246)", attr.Type)
 	}
-	if len(attr.Value) < 2 {
+	// RFC 6929 Section 2.2: a long extended attribute with Length 2, 3, or 4
+	// (fewer than three value octets here) is an invalid attribute
+	if len(attr.Value) < 3 {
 		return 0, false, nil, fmt.Errorf("long extended attribute too short: %d bytes", len(attr.Value))
 	}
 	extType = attr.Value[0]

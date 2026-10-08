@@ -19,6 +19,8 @@ func TestNewResponse(t *testing.T) {
 		{"Accounting-Request", CodeAccountingRequest, CodeAccountingResponse},
 		{"Disconnect-Request", CodeDisconnectRequest, CodeDisconnectNAK},
 		{"CoA-Request", CodeCoARequest, CodeCoANAK},
+		// RFC 5997 Section 4.1: the reply to Status-Server is never a reject.
+		{"Status-Server", CodeStatusServer, CodeAccessAccept},
 	}
 
 	for _, tt := range tests {
@@ -1326,4 +1328,29 @@ func BenchmarkCompleteResponseCreation(b *testing.B) {
 		_ = resp.SetAttribute("framed-ip-netmask", "255.255.255.0")
 		_ = resp.AddAttribute("reply-message", "Authentication successful")
 	}
+}
+
+func TestResponseSetAttributesReplacesContainerChildren(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	reqPkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+	req := &Request{packet: reqPkt}
+	resp := NewResponse(req)
+
+	uli := map[string][]any{
+		"3gpp-uli-type":    {uint8(1)},
+		"3gpp-uli-plmn-id": {[]byte{0x12, 0x34, 0x56}},
+		"3gpp-uli-data": {map[string]any{
+			"3gpp-uli-sai-lac": uint16(0x1111),
+			"3gpp-uli-sai-sac": uint16(0x2222),
+		}},
+	}
+
+	// Setting the same container children twice must replace the container
+	// instance, not accumulate a duplicate on the wire.
+	require.NoError(t, resp.SetAttributes(uli))
+	require.NoError(t, resp.SetAttributes(uli))
+
+	assert.Len(t, resp.packet.Attributes, 1)
 }

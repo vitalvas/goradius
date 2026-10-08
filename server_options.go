@@ -19,7 +19,13 @@ func WithDictionary(d *Dictionary) ServerOption {
 	}
 }
 
-// WithRequireMessageAuthenticator sets whether Message-Authenticator is required.
+// WithRequireMessageAuthenticator sets whether a Message-Authenticator must be
+// present in Access-Request packets (BlastRADIUS hardening). The requirement
+// covers only the Access exchange: Accounting, CoA, and Disconnect requests
+// carry the attribute optionally per RFC 2866/5176, so devices that do not
+// support it keep working, and Status-Server always requires it per RFC 5997.
+// Regardless of this setting, a Message-Authenticator that IS present is
+// always verified and the packet dropped on mismatch (RFC 3579 Section 3.2).
 func WithRequireMessageAuthenticator(b bool) ServerOption {
 	return func(s *Server) {
 		s.requireMessageAuth = b

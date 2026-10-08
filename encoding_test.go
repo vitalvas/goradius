@@ -97,6 +97,26 @@ func TestDecodeIgnoresTrailingPadding(t *testing.T) {
 		_, err := Decode(data[:len(data)-1])
 		require.Error(t, err)
 	})
+
+	t.Run("padding beyond the maximum packet length ignored", func(t *testing.T) {
+		// RFC 2865 Section 3: the Length field bounds the packet; octets
+		// beyond it are padding even when the datagram exceeds 4096 octets.
+		padded := make([]byte, 5000)
+		copy(padded, data)
+		decoded, err := Decode(padded)
+		require.NoError(t, err)
+		assert.Equal(t, pkt.Length, decoded.Length)
+		assert.Len(t, decoded.Attributes, 1)
+	})
+
+	t.Run("length field above the maximum rejected", func(t *testing.T) {
+		oversized := make([]byte, 5000)
+		oversized[0] = byte(CodeAccessRequest)
+		oversized[2] = 0x13 // Length 5000 > 4096
+		oversized[3] = 0x88
+		_, err := Decode(oversized)
+		require.Error(t, err)
+	})
 }
 
 // FuzzDecode ensures the packet parser never panics on arbitrary input and that a

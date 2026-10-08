@@ -9,7 +9,7 @@ import (
 
 // Server is a RADIUS server supporting UDP, TCP, and TLS transports
 type Server struct {
-	transport          Transport
+	transports         []Transport
 	handler            Handler
 	dict               *Dictionary
 	middlewares        []Middleware
@@ -46,10 +46,11 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 }
 
 // Serve starts the server using the provided transport.
-// Supports UDP, TCP, and TLS transports.
+// Supports UDP, TCP, and TLS transports. Serve may be called once per
+// transport to listen on several sockets with one server.
 func (s *Server) Serve(transport Transport) error {
 	s.mu.Lock()
-	s.transport = transport
+	s.transports = append(s.transports, transport)
 	// Guard against closing twice when Serve is called for multiple transports
 	if !s.readyClosed {
 		close(s.ready)
@@ -57,19 +58,25 @@ func (s *Server) Serve(transport Transport) error {
 	}
 	s.mu.Unlock()
 
-	return transport.Serve(s.handlePacket)
+	// Bind this transport's address so each packet reports the local address
+	// it actually arrived on, which keys per-listener secret lookup.
+	localAddr := transport.LocalAddr()
+	return transport.Serve(func(data []byte, remoteAddr net.Addr, respond ResponderFunc) {
+		s.handlePacketFrom(localAddr, data, remoteAddr, respond)
+	})
 }
 
-// Addr returns the local address the server is listening on.
-// Blocks until the server is ready.
+// Addr returns the local address the server is listening on. When Serve has
+// been called for multiple transports, the first transport's address is
+// returned. Blocks until the server is ready.
 func (s *Server) Addr() net.Addr {
 	<-s.ready
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.transport == nil {
+	if len(s.transports) == 0 {
 		return nil
 	}
-	return s.transport.LocalAddr()
+	return s.transports[0].LocalAddr()
 }
 
 // ProcessRawPacket processes a single RADIUS packet from raw bytes and the
@@ -97,16 +104,20 @@ func (s *Server) ProcessRawPacket(data []byte, remoteAddr net.Addr) ([]byte, err
 }
 
 // Close stops the server and waits for in-flight requests to complete.
+// Every transport passed to Serve is closed.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	transport := s.transport
+	transports := s.transports
 	s.mu.Unlock()
 
-	if transport == nil {
-		return nil
+	var firstErr error
+	for _, transport := range transports {
+		if err := transport.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
 
-	return transport.Close()
+	return firstErr
 }
 
 // Use adds middleware to the server
@@ -133,11 +144,30 @@ func (s *Server) buildHandler() Handler {
 	return handler
 }
 
-// handlePacket processes a single RADIUS
-// Called by the transport for each received
+// handlePacket processes a single RADIUS packet using the first transport's
+// local address (or none when no transport is bound).
 func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond ResponderFunc) {
+	s.mu.RLock()
+	var localAddr net.Addr
+	if len(s.transports) > 0 {
+		localAddr = s.transports[0].LocalAddr()
+	}
+	s.mu.RUnlock()
+
+	s.handlePacketFrom(localAddr, data, remoteAddr, respond)
+}
+
+// handlePacketFrom processes a single RADIUS packet received on the transport
+// bound to localAddr. Called by the transport for each received packet.
+func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr net.Addr, respond ResponderFunc) {
 	pkt, err := Decode(data)
 	if err != nil {
+		return
+	}
+
+	// RFC 2865 Section 3: packets with an invalid Code field are silently
+	// discarded; only request codes are dispatched to the handler.
+	if !pkt.Code.IsRequest() {
 		return
 	}
 
@@ -158,16 +188,6 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		defer cancel()
 	} else {
 		ctx = context.Background()
-	}
-
-	// Get local address from transport
-	s.mu.RLock()
-	transport := s.transport
-	s.mu.RUnlock()
-
-	var localAddr net.Addr
-	if transport != nil {
-		localAddr = transport.LocalAddr()
 	}
 
 	// Get secret (attempt 0)
@@ -206,6 +226,11 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 		}
 	}
 
+	// Carry the resolved secret on the request packet so encrypted
+	// attributes (for example User-Password) decrypt transparently when the
+	// handler reads them.
+	pkt.Secret = secretResp.Secret
+
 	// Handle RADIUS request
 	req := &Request{
 		Context:    ctx,
@@ -225,11 +250,12 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 
 	// RFC 2865 Section 5 / RFC 2868: reply attributes that are encrypted
 	// (for example MPPE keys and Tunnel-Password) use the Request
-	// Authenticator of the packet being answered. Encrypt before computing the
-	// response Message-Authenticator and Response Authenticator, which cover
-	// the encrypted bytes.
+	// Authenticator of the packet being answered. Binding it here keeps
+	// encryption transparent even for handler-built response packets; the
+	// attributes finalize automatically before the Message-Authenticator and
+	// Response Authenticator are computed, which cover the encrypted bytes.
 	resp.packet.Secret = secretResp.Secret
-	resp.packet.EncryptAttributes(pkt.Authenticator)
+	resp.packet.bindRequestAuthenticator(pkt.Authenticator)
 
 	if s.useMessageAuth {
 		resp.packet.AddMessageAuthenticator(secretResp.Secret, pkt.Authenticator)
@@ -249,7 +275,16 @@ func (s *Server) handlePacket(data []byte, remoteAddr net.Addr, respond Responde
 
 // validatePacketSecret validates the packet against the given secret
 // using Message-Authenticator and/or Request Authenticator checks.
-// The per-secret RequireMessageAuthenticator overrides the server default when set.
+//
+// Message-Authenticator handling follows RFC 3579 Section 3.2: when the
+// attribute is present it is always verified, regardless of configuration;
+// policy only governs whether its absence is fatal. The presence requirement
+// covers Access-Request (BlastRADIUS hardening, overridable via
+// WithRequireMessageAuthenticator and the per-secret policy) and is
+// unconditional for Status-Server (RFC 5997 Section 4.2). Accounting, CoA,
+// and Disconnect requests carry the attribute optionally (RFC 2866/5176), so
+// devices that do not send it keep working; a per-secret
+// MessageAuthPolicyRequired still enforces presence for every request type.
 func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bool {
 	secret := secretResp.Secret
 
@@ -260,15 +295,26 @@ func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bo
 		}
 	}
 
-	requireMsgAuth := s.requireMessageAuth
-	switch secretResp.MessageAuthPolicy {
-	case MessageAuthPolicyRequired:
+	requireMsgAuth := false
+	switch pkt.Code {
+	case CodeAccessRequest:
+		requireMsgAuth = s.requireMessageAuth
+		switch secretResp.MessageAuthPolicy {
+		case MessageAuthPolicyRequired:
+			requireMsgAuth = true
+		case MessageAuthPolicyOptional:
+			requireMsgAuth = false
+		}
+	case CodeStatusServer:
+		// RFC 5997: all Status-Server packets MUST include Message-Authenticator
 		requireMsgAuth = true
-	case MessageAuthPolicyOptional:
-		requireMsgAuth = false
+	default:
+		if secretResp.MessageAuthPolicy == MessageAuthPolicyRequired {
+			requireMsgAuth = true
+		}
 	}
 
-	if requireMsgAuth {
+	if requireMsgAuth || pkt.hasMessageAuthenticator() {
 		if !pkt.VerifyMessageAuthenticator(secret, pkt.Authenticator) {
 			return false
 		}

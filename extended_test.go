@@ -253,6 +253,73 @@ func FuzzParseExtendedAttribute(f *testing.F) {
 	})
 }
 
+func TestExtendedAttributeStrictReceive(t *testing.T) {
+	dict := extendedDict(t)
+
+	t.Run("short extended below minimum length is invalid", func(t *testing.T) {
+		// RFC 6929 Section 2.1: Length 2 or 3 is an invalid attribute.
+		_, _, err := ParseExtendedAttribute(&Attribute{Type: 241, Value: []byte{1}})
+		require.Error(t, err)
+	})
+
+	t.Run("long extended below minimum length is invalid", func(t *testing.T) {
+		// RFC 6929 Section 2.2: Length 2, 3, or 4 is an invalid attribute.
+		_, _, _, err := parseLongExtendedFragment(&Attribute{Type: 245, Value: []byte{1, 0}})
+		require.Error(t, err)
+	})
+
+	t.Run("dangling fragment chain is discarded", func(t *testing.T) {
+		// A full-size fragment with More set and no final fragment is an
+		// invalid attribute (RFC 6929 Sections 2.2 and 2.8).
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		frag := make([]byte, 2+MaxLongExtendedValueLength)
+		frag[0] = 1
+		frag[1] = LongExtendedMoreBit
+		pkt.AddAttribute(NewAttribute(245, frag))
+
+		assert.Empty(t, pkt.GetAttribute("ext-long-octets"))
+	})
+
+	t.Run("more bit on a short fragment discards the chain", func(t *testing.T) {
+		// The More flag MUST be clear when the fragment is not full-size.
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		pkt.AddAttribute(NewAttribute(245, []byte{1, LongExtendedMoreBit, 'x', 'y'}))
+		pkt.AddAttribute(NewAttribute(245, []byte{1, 0, 'z'}))
+
+		// The invalid chain is dropped; the following self-contained
+		// fragment is a separate, valid value.
+		vals := pkt.GetAttribute("ext-long-octets")
+		require.Len(t, vals, 1)
+		assert.Equal(t, []byte("z"), vals[0].Value)
+	})
+
+	t.Run("non-consecutive fragments are discarded", func(t *testing.T) {
+		// RFC 6929 Section 2.2: fragments of one value MUST be consecutive
+		// attributes; an interrupted chain is invalid.
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		frag := make([]byte, 2+MaxLongExtendedValueLength)
+		frag[0] = 1
+		frag[1] = LongExtendedMoreBit
+		pkt.AddAttribute(NewAttribute(245, frag))
+		pkt.AddAttribute(NewAttribute(1, []byte("interloper")))
+		pkt.AddAttribute(NewAttribute(245, []byte{1, 0, 'e', 'n', 'd'}))
+
+		vals := pkt.GetAttribute("ext-long-octets")
+		require.Len(t, vals, 1)
+		assert.Equal(t, []byte("end"), vals[0].Value)
+	})
+}
+
+func TestExtendedAttributeEmptyValue(t *testing.T) {
+	// RFC 6929 Sections 2.1 and 2.2: Length is at least 4 (short) / 5 (long),
+	// so an extended attribute always carries at least one value octet.
+	_, err := NewExtendedAttribute(241, 1, nil)
+	require.Error(t, err)
+
+	_, err = NewLongExtendedAttributes(245, 1, nil)
+	require.Error(t, err)
+}
+
 // FuzzLongExtendedRoundTrip ensures fragmentation and reassembly of long extended
 // attributes is lossless for arbitrary payloads.
 func FuzzLongExtendedRoundTrip(f *testing.F) {
@@ -262,6 +329,11 @@ func FuzzLongExtendedRoundTrip(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		attrs, err := NewLongExtendedAttributes(245, 7, payload)
+		// RFC 6929 Section 2.2: Length is at least 5, so empty values are rejected
+		if len(payload) == 0 {
+			require.Error(t, err)
+			return
+		}
 		require.NoError(t, err)
 
 		var reassembled []byte
@@ -273,10 +345,6 @@ func FuzzLongExtendedRoundTrip(f *testing.F) {
 			reassembled = append(reassembled, frag...)
 		}
 
-		if len(payload) == 0 {
-			assert.Empty(t, reassembled)
-			return
-		}
 		assert.Equal(t, payload, reassembled)
 	})
 }

@@ -5,12 +5,27 @@ import (
 )
 
 // Encode converts a Packet into its binary representation per RFC 2865 Section 3.
-// Any deferred attribute encryption must already have been finalized via
-// EncryptAttributes with the packet-type-appropriate authenticator; the Client
-// and server response path do this automatically.
+// Attribute encryption is transparent: any attribute whose dictionary
+// definition declares an Encryption type is encrypted here (or by an earlier
+// authenticator calculation) using the packet Secret and the packet-type-
+// appropriate authenticator. A packet whose encryption cannot be finalized
+// (no Secret set, or a response with no request authenticator bound) is
+// refused rather than emitting the plaintext on the wire.
 func (p *Packet) Encode() ([]byte, error) {
+	p.finalizeDeferredEncryption()
+
 	if err := p.IsValid(); err != nil {
 		return nil, fmt.Errorf("invalid packet: %w", err)
+	}
+
+	for _, attr := range p.Attributes {
+		if attr.encryption == EncryptionNone {
+			continue
+		}
+		if len(p.Secret) == 0 {
+			return nil, fmt.Errorf("attribute type %d requires encryption but no shared secret is set on the packet", attr.Type)
+		}
+		return nil, fmt.Errorf("attribute type %d requires encryption but the request authenticator is unknown; build the response with NewResponse or compute its response authenticator first", attr.Type)
 	}
 
 	data := make([]byte, p.Length)
@@ -40,23 +55,22 @@ func Decode(data []byte) (*Packet, error) {
 		return nil, fmt.Errorf("packet too short: %d bytes", len(data))
 	}
 
-	if len(data) > MaxPacketLength {
-		return nil, fmt.Errorf("packet too long: %d bytes", len(data))
-	}
-
 	// Parse header
 	code := Code(data[0])
 	identifier := data[1]
 	length := uint16(data[2])<<8 | uint16(data[3])
 
-	// RFC 2865 Section 3: a packet shorter than the Length field is silently
-	// discarded; octets beyond the Length field are padding and ignored
-	if int(length) > len(data) {
-		return nil, fmt.Errorf("packet shorter than length field: header says %d, got %d", length, len(data))
+	// RFC 2865 Section 3: the Length field bounds the packet at 20-4096
+	// octets; input beyond the Length field is padding and ignored, even
+	// when the datagram itself exceeds the maximum packet length
+	if length < MinPacketLength || length > MaxPacketLength {
+		return nil, fmt.Errorf("invalid packet length in header: %d", length)
 	}
 
-	if length < MinPacketLength {
-		return nil, fmt.Errorf("invalid packet length in header: %d", length)
+	// RFC 2865 Section 3: a packet shorter than the Length field is silently
+	// discarded
+	if int(length) > len(data) {
+		return nil, fmt.Errorf("packet shorter than length field: header says %d, got %d", length, len(data))
 	}
 
 	var authenticator [AuthenticatorLength]byte

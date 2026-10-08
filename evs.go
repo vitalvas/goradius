@@ -22,6 +22,10 @@ func NewEVSAttribute(baseType uint8, vendorID uint32, vendorType uint8, value []
 	if !IsExtendedBaseType(baseType) || IsLongExtendedBaseType(baseType) {
 		return nil, fmt.Errorf("invalid EVS base type %d (must be 241-244)", baseType)
 	}
+	// RFC 6929 Section 2.4: the EVS-Value field is one or more octets
+	if len(value) == 0 {
+		return nil, fmt.Errorf("EVS attribute requires a non-empty value")
+	}
 
 	payload := make([]byte, EVSVendorHeaderLength+len(value))
 	payload[0] = byte(vendorID >> 24)
@@ -43,7 +47,9 @@ func ParseEVS(attr *Attribute) (vendorID uint32, vendorType uint8, value []byte,
 	if extType != EVSExtendedType {
 		return 0, 0, nil, fmt.Errorf("attribute extended type %d is not EVS (%d)", extType, EVSExtendedType)
 	}
-	if len(payload) < EVSVendorHeaderLength {
+	// RFC 6929 Section 2.4: the vendor header is followed by at least one
+	// EVS-Value octet
+	if len(payload) < EVSVendorHeaderLength+1 {
 		return 0, 0, nil, fmt.Errorf("EVS payload too short: %d bytes", len(payload))
 	}
 

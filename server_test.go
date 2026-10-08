@@ -378,7 +378,7 @@ func BenchmarkServerHandlePacket(b *testing.B) {
 	conn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	defer conn.Close()
 	transport := NewUDPTransport(conn)
-	srv.transport = transport
+	srv.transports = append(srv.transports, transport)
 	close(srv.ready)
 
 	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
@@ -2413,4 +2413,252 @@ func TestServerUseConcurrentWithRequests(t *testing.T) {
 		srv.Use(func(next Handler) Handler { return next })
 	}
 	wg.Wait()
+}
+
+// localAddrRecordingHandler records the LocalAddr presented to ServeSecret so
+// multi-transport tests can verify each packet reports the address of the
+// transport it arrived on.
+type localAddrRecordingHandler struct {
+	addrs chan net.Addr
+}
+
+func (h *localAddrRecordingHandler) ServeSecret(req SecretRequest) (SecretResponse, error) {
+	h.addrs <- req.LocalAddr
+	return SecretResponse{Secret: []byte("testing123")}, nil
+}
+
+func (h *localAddrRecordingHandler) ServeRADIUS(_ *Request) (Response, error) {
+	return Response{}, nil
+}
+
+func TestServerMultiTransport(t *testing.T) {
+	handler := &localAddrRecordingHandler{addrs: make(chan net.Addr, 4)}
+	srv, err := NewServer(WithHandler(handler))
+	require.NoError(t, err)
+
+	conn1, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	conn2, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+
+	transport1 := NewUDPTransport(conn1)
+	transport2 := NewUDPTransport(conn2)
+
+	served := make(chan error, 2)
+	go func() { served <- srv.Serve(transport1) }()
+	go func() { served <- srv.Serve(transport2) }()
+	<-time.After(50 * time.Millisecond)
+
+	pkt := NewPacket(CodeAccessRequest, 1)
+	data, err := pkt.Encode()
+	require.NoError(t, err)
+
+	// A packet to each listener must report that listener's local address.
+	for _, target := range []net.Addr{conn1.LocalAddr(), conn2.LocalAddr()} {
+		client, err := net.DialUDP("udp", nil, target.(*net.UDPAddr))
+		require.NoError(t, err)
+		_, err = client.Write(data)
+		require.NoError(t, err)
+		client.Close()
+
+		select {
+		case got := <-handler.addrs:
+			assert.Equal(t, target.String(), got.String())
+		case <-time.After(2 * time.Second):
+			t.Fatalf("no packet observed on %s", target)
+		}
+	}
+
+	// Close must stop every transport, not only the last one registered.
+	require.NoError(t, srv.Close())
+	for range 2 {
+		select {
+		case err := <-served:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("a transport Serve loop did not stop after Close")
+		}
+	}
+}
+
+// passwordRecordingHandler records the User-Password a handler reads from the
+// request, proving decryption is transparent on the server side.
+type passwordRecordingHandler struct {
+	password chan string
+}
+
+func (h *passwordRecordingHandler) ServeSecret(_ SecretRequest) (SecretResponse, error) {
+	return SecretResponse{Secret: []byte("testing123")}, nil
+}
+
+func (h *passwordRecordingHandler) ServeRADIUS(req *Request) (Response, error) {
+	values := req.GetAttribute("user-password")
+	if len(values) == 1 {
+		h.password <- values[0].String()
+	} else {
+		h.password <- ""
+	}
+	return Response{}, nil
+}
+
+func TestServerDropsNonRequestCodes(t *testing.T) {
+	// RFC 2865 Section 3: packets with an invalid Code field are silently
+	// discarded, and reply codes are never dispatched to the handler.
+	handler := &testHandler{
+		secretResp: SecretResponse{Secret: []byte("testing123")},
+		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+	}
+	srv, err := NewServer(WithHandler(handler), WithRequireMessageAuthenticator(false))
+	require.NoError(t, err)
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812}
+
+	t.Run("invalid code is silently discarded", func(t *testing.T) {
+		data := make([]byte, PacketHeaderLength)
+		data[0] = 99
+		data[1] = 1
+		data[3] = PacketHeaderLength
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("reply code sent to the server is silently discarded", func(t *testing.T) {
+		pkt := NewPacket(CodeAccessAccept, 2)
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+}
+
+func TestMessageAuthenticatorVerifyWhenPresent(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+	secret := []byte("testing123")
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812}
+
+	newServer := func(t *testing.T, policy MessageAuthPolicy, opts ...ServerOption) (*Server, *testHandler) {
+		t.Helper()
+		handler := &testHandler{
+			secretResp: SecretResponse{
+				Secret:            secret,
+				MessageAuthPolicy: policy,
+			},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+		srv, err := NewServer(append([]ServerOption{WithHandler(handler), WithDictionary(dict)}, opts...)...)
+		require.NoError(t, err)
+		return srv, handler
+	}
+
+	t.Run("accounting without MA is accepted with default settings", func(t *testing.T) {
+		// Devices that do not support Message-Authenticator omit it; RFC 2866
+		// makes it optional for Accounting-Request, so the default server must
+		// not drop these packets.
+		srv, handler := newServer(t, MessageAuthPolicyDefault)
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.NotNil(t, reply)
+		assert.True(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("forged MA on accounting is rejected even though MA is not required", func(t *testing.T) {
+		// RFC 3579 Section 3.2: a present Message-Authenticator must verify.
+		srv, handler := newServer(t, MessageAuthPolicyDefault)
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 2, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.AddMessageAuthenticator([]byte("wrong-secret"), [16]byte{})
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("forged MA on access-request is rejected under optional policy", func(t *testing.T) {
+		srv, handler := newServer(t, MessageAuthPolicyOptional)
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 3, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.SetAuthenticator([16]byte{0x55})
+		pkt.AddMessageAuthenticator([]byte("wrong-secret"), pkt.Authenticator)
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("status-server requires MA even when the requirement is disabled", func(t *testing.T) {
+		// RFC 5997: all Status-Server packets MUST include Message-Authenticator.
+		srv, handler := newServer(t, MessageAuthPolicyOptional, WithRequireMessageAuthenticator(false))
+		pkt := NewPacketWithDictionary(CodeStatusServer, 4, dict)
+		pkt.SetAuthenticator([16]byte{0x66})
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("status-server with valid MA is accepted", func(t *testing.T) {
+		srv, handler := newServer(t, MessageAuthPolicyDefault)
+		pkt := NewPacketWithDictionary(CodeStatusServer, 5, dict)
+		pkt.SetAuthenticator([16]byte{0x77})
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.NotNil(t, reply)
+		assert.True(t, handler.WasRADIUSCalled())
+	})
+}
+
+func TestServerTransparentPasswordDecryption(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	handler := &passwordRecordingHandler{password: make(chan string, 1)}
+	srv, err := NewServer(WithHandler(handler), WithDictionary(dict))
+	require.NoError(t, err)
+
+	// Client side: no explicit encryption step anywhere.
+	secret := []byte("testing123")
+	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 3, dict)
+	reqPkt.Secret = secret
+	require.NoError(t, reqPkt.AddAttributeByName("user-name", "alice"))
+	require.NoError(t, reqPkt.AddAttributeByName("user-password", "pap-password"))
+	reqPkt.SetAuthenticator([16]byte{0x42, 0x24})
+	reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+	data, err := reqPkt.Encode()
+	require.NoError(t, err)
+
+	_, err = srv.ProcessRawPacket(data, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812})
+	require.NoError(t, err)
+
+	select {
+	case got := <-handler.password:
+		assert.Equal(t, "pap-password", got)
+	case <-time.After(time.Second):
+		t.Fatal("handler did not run")
+	}
 }

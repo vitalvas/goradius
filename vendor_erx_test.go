@@ -72,3 +72,19 @@ func TestNoDuplicateERXAttributeIDs(t *testing.T) {
 		seen[attr.ID] = attr.Name
 	}
 }
+
+func TestERXServiceActivateTypeValues(t *testing.T) {
+	var def *AttributeDefinition
+	for _, attr := range ERXVendorDefinition.Attributes {
+		if attr.Name == "erx-service-activate-type" {
+			def = attr
+			break
+		}
+	}
+	// The Juniper AAA Service Framework defines 1 = dynamic-profile and
+	// 2 = op-script; they are distinct values, not aliases.
+	if assert.NotNil(t, def) {
+		assert.Equal(t, uint32(1), def.Values["dynamic"])
+		assert.Equal(t, uint32(2), def.Values["opscript"])
+	}
+}

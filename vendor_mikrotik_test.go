@@ -60,6 +60,18 @@ func TestMikrotikVendorDefinition(t *testing.T) {
 		}
 	}
 
+	// Verify the DHCP option parameter pair uses consistent naming
+	paramStr1, exists := attrMap["mikrotik-dhcp-option-param-str1"]
+	assert.True(t, exists, "mikrotik-dhcp-option-param-str1 should exist")
+	if exists {
+		assert.Equal(t, uint32(24), paramStr1.ID)
+	}
+	paramStr2, exists := attrMap["mikrotik-dhcp-option-param-str2"]
+	assert.True(t, exists, "mikrotik-dhcp-option-param-str2 should exist")
+	if exists {
+		assert.Equal(t, uint32(25), paramStr2.ID)
+	}
+
 	// Verify all 30 attributes exist
 	assert.Len(t, MikrotikVendorDefinition.Attributes, 30)
 }

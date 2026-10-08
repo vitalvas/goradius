@@ -240,6 +240,8 @@ func (va *VendorAttribute) ToVSAFormat(typeOctets, lengthOctets int) *Attribute 
 
 // ParseVSA parses a Vendor-Specific Attribute (Type 26) into VendorAttribute
 // using the RFC 2865 Section 5.26 format (1-octet type, 1-octet length).
+// When the VSA carries several sub-attributes, the first is returned; the
+// Packet accessors (GetVendorAttributes, GetAttribute) surface all of them.
 func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
 	return ParseVSAFormat(attr, 1, 1)
 }
@@ -247,8 +249,26 @@ func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
 // ParseVSAFormat parses a Vendor-Specific Attribute (Type 26) using a
 // vendor-specific header format: typeOctets wide Vendor-Type and lengthOctets
 // wide Vendor-Length (0 means no length field). The fields are big-endian.
+// When the VSA carries several sub-attributes, the first is returned; the
+// Packet accessors (GetVendorAttributes, GetAttribute) surface all of them.
+//
+// Tag detection requires the attribute definition and is left to the
+// dictionary-aware Packet accessors; the returned Tag is always zero.
 func ParseVSAFormat(attr *Attribute, typeOctets, lengthOctets int) (*VendorAttribute, error) {
-	if attr.Type != 26 {
+	vas, err := parseVSAList(attr, typeOctets, lengthOctets)
+	if err != nil {
+		return nil, err
+	}
+	return vas[0], nil
+}
+
+// parseVSAList parses every vendor sub-attribute carried by a Vendor-Specific
+// Attribute. RFC 2865 Section 5.26 allows the String field to contain one or
+// more Vendor-Type / Vendor-Length / value triplets after the 4-octet
+// Vendor-Id. With no Vendor-Length field (lengthOctets 0) the single
+// sub-attribute consumes the remaining octets.
+func parseVSAList(attr *Attribute, typeOctets, lengthOctets int) ([]*VendorAttribute, error) {
+	if attr.Type != AttributeTypeVendorSpecific {
 		return nil, fmt.Errorf("not a vendor-specific attribute (type %d)", attr.Type)
 	}
 
@@ -260,37 +280,40 @@ func ParseVSAFormat(attr *Attribute, typeOctets, lengthOctets int) (*VendorAttri
 	// Extract Vendor-ID (4 bytes, big-endian)
 	vendorID := uint32(attr.Value[0])<<24 | uint32(attr.Value[1])<<16 | uint32(attr.Value[2])<<8 | uint32(attr.Value[3])
 
-	// Extract Vendor-Type (typeOctets bytes, big-endian)
-	var vendorType uint32
-	for i := 0; i < typeOctets; i++ {
-		vendorType = vendorType<<8 | uint32(attr.Value[4+i])
-	}
-
-	// Extract and validate Vendor-Length when present
-	if lengthOctets > 0 {
-		var vendorLength int
-		for i := 0; i < lengthOctets; i++ {
-			vendorLength = vendorLength<<8 | int(attr.Value[4+typeOctets+i])
+	var result []*VendorAttribute
+	offset := 4
+	for offset < len(attr.Value) {
+		if offset+header > len(attr.Value) {
+			return nil, fmt.Errorf("truncated vendor sub-attribute header at offset %d", offset)
 		}
-		if vendorLength != len(attr.Value)-4 {
-			return nil, fmt.Errorf("invalid vendor length: %d, expected %d", vendorLength, len(attr.Value)-4)
+
+		// Extract Vendor-Type (typeOctets bytes, big-endian)
+		var vendorType uint32
+		for i := 0; i < typeOctets; i++ {
+			vendorType = vendorType<<8 | uint32(attr.Value[offset+i])
 		}
+
+		// Vendor-Length counts the type, length, and data octets. Without a
+		// length field the sub-attribute consumes the remaining octets.
+		end := len(attr.Value)
+		if lengthOctets > 0 {
+			vendorLength := 0
+			for i := 0; i < lengthOctets; i++ {
+				vendorLength = vendorLength<<8 | int(attr.Value[offset+typeOctets+i])
+			}
+			if vendorLength < header || offset+vendorLength > len(attr.Value) {
+				return nil, fmt.Errorf("invalid vendor length: %d at offset %d", vendorLength, offset)
+			}
+			end = offset + vendorLength
+		}
+
+		result = append(result, &VendorAttribute{
+			VendorID:   vendorID,
+			VendorType: vendorType,
+			Value:      attr.Value[offset+header : end],
+		})
+		offset = end
 	}
 
-	// Extract vendor data
-	vendorData := attr.Value[4+header:]
-
-	va := &VendorAttribute{
-		VendorID:   vendorID,
-		VendorType: vendorType,
-		Value:      vendorData,
-	}
-
-	// Check if this is a tagged vendor attribute
-	if len(vendorData) > 0 && vendorData[0] <= 31 && vendorData[0] != 0 {
-		// Potential tag (tags are 1-31, 0 means no tag)
-		va.Tag = vendorData[0]
-	}
-
-	return va, nil
+	return result, nil
 }

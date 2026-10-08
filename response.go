@@ -18,6 +18,11 @@ func NewResponse(req *Request) Response {
 		responseCode = CodeDisconnectNAK
 	case CodeCoARequest:
 		responseCode = CodeCoANAK
+	case CodeStatusServer:
+		// RFC 5997 Section 4.1: the reply to a Status-Server probe on the
+		// authentication port is Access-Accept. Accounting-port deployments
+		// override with SetCode(CodeAccountingResponse).
+		responseCode = CodeAccessAccept
 	default:
 		responseCode = CodeAccessReject // fallback
 	}
@@ -29,10 +34,11 @@ func NewResponse(req *Request) Response {
 		pkt.Dict = req.packet.Dict
 	}
 
-	// Carry the shared secret so encrypted reply attributes (for example MPPE
-	// keys) are marked for encryption as they are added; the server finalizes
-	// them with the request authenticator before sending.
+	// Carry the shared secret and the Request Authenticator of the packet
+	// being answered, so encrypted reply attributes (for example MPPE keys)
+	// are encrypted transparently when the response is serialized.
 	pkt.Secret = req.Secret.Secret
+	pkt.bindRequestAuthenticator(req.packet.Authenticator)
 
 	return Response{
 		packet: pkt,
@@ -71,6 +77,15 @@ func (r *Response) SetAttributes(attrs map[string][]any) error {
 
 	for name := range attrs {
 		base, _ := splitAttributeTag(name)
+		// Container children (struct/tlv/evs members addressed by their flat
+		// child name) are carried by their parent attribute, so replacement
+		// removes the parent container instance.
+		if r.packet.Dict != nil {
+			if parent, ok := r.packet.Dict.childParent(base); ok {
+				r.packet.RemoveAttributeByName(parent.Name)
+				continue
+			}
+		}
 		r.packet.RemoveAttributeByName(base)
 	}
 	return r.packet.SetAttributes(attrs)

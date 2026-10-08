@@ -2,6 +2,7 @@ package goradius
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"testing"
 
@@ -421,4 +422,46 @@ func FuzzDecodeStruct(f *testing.F) {
 			t.Fatalf("struct round-trip mismatch: in=%x out=%x", data, reencoded)
 		}
 	})
+}
+
+func TestStructBitRunLongerThan64Bits(t *testing.T) {
+	// Eight 9-bit members form a 72-bit run (9 octets): wider than a single
+	// uint64 accumulator, so the writer must drain octets incrementally.
+	children := make([]*AttributeDefinition, 8)
+	for i := range children {
+		children[i] = &AttributeDefinition{
+			ID:       uint32(i + 1),
+			Name:     fmt.Sprintf("wide-f%d", i),
+			DataType: DataTypeBits,
+			Bits:     9,
+		}
+	}
+	parent := &AttributeDefinition{
+		ID:       1,
+		Name:     "wide-bits",
+		DataType: DataTypeStruct,
+		Children: children,
+	}
+
+	values := map[string]any{
+		"wide-f0": uint64(0x1FF),
+		"wide-f1": uint64(0),
+		"wide-f2": uint64(0x155),
+		"wide-f3": uint64(0),
+		"wide-f4": uint64(0),
+		"wide-f5": uint64(0),
+		"wide-f6": uint64(0),
+		"wide-f7": uint64(0x0AA),
+	}
+
+	encoded, err := EncodeStruct(parent, values)
+	require.NoError(t, err)
+	require.Len(t, encoded, 9)
+	// The first field occupies the full first octet plus the top bit of the second.
+	assert.Equal(t, uint8(0xFF), encoded[0])
+	assert.Equal(t, uint8(0x80), encoded[1]&0x80)
+
+	decoded, err := DecodeStruct(parent, encoded)
+	require.NoError(t, err)
+	assert.Equal(t, values, decoded)
 }
