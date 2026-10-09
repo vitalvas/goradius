@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.0](https://github.com/vitalvas/goradius/compare/v0.3.0...v0.4.0) (2026-10-09)
+
+
+### Features
+
+* add a10, f5, arista, ciena, and benu vendor dictionaries ([7a75654](https://github.com/vitalvas/goradius/commit/7a7565431a5b56ad69eb9fa62cede547074de04e))
+* add alcatel-lucent aaa vendor dictionary ([0051175](https://github.com/vitalvas/goradius/commit/005117522814e4415caabe2860c1c1ae9cdec9d0))
+* add bng attributes for junos, dsl-forum and microsoft vendors ([7a5d4c0](https://github.com/vitalvas/goradius/commit/7a5d4c042c3914407ae929f0892dea3cedb80f83))
+* add byte, short, integer64, signed, combo-ip, time_delta types ([5dbe880](https://github.com/vitalvas/goradius/commit/5dbe8806c6977934b379d621a14d3b8455d98e16))
+* add Cisco dictionary with TLV, struct, and extended attributes ([041cafc](https://github.com/vitalvas/goradius/commit/041cafcc0698fc3385b711b59b6020283866cf78))
+* add nokia sr vendor dictionary ([855156d](https://github.com/vitalvas/goradius/commit/855156da18df202e9c120928b0889851a34e2b49))
+* add per-packet-type attribute usage masks ([9e6025e](https://github.com/vitalvas/goradius/commit/9e6025e8defb6fe49574e9f5655c428ce136bebc))
+* add transparent encryption and rfc compliance fixes ([3b2d81d](https://github.com/vitalvas/goradius/commit/3b2d81dab8c817ee3fa4763ad948b55ebbe62f54))
+* complete vendor and rfc dictionaries against freeradius ([caa3a46](https://github.com/vitalvas/goradius/commit/caa3a4646574636c7d7b6489ac036412f1b126b2))
+* flat attribute interface with automatic encryption ([bededf4](https://github.com/vitalvas/goradius/commit/bededf457008f4a74c095be36bc0fb8b6ca85e5a))
+* implement bit-field and union types with 3gpp vendor ([ad632fc](https://github.com/vitalvas/goradius/commit/ad632fc1776e05c66300469b6d7bbfda7f284035))
+* support vendor-specific VSA header formats ([b446a44](https://github.com/vitalvas/goradius/commit/b446a44ae7d3b1940de458d5a40ddf771ccdc603))
+
+
+### Bug Fixes
+
+* align erx dictionary with official junos 18.4 dictionary ([26357e3](https://github.com/vitalvas/goradius/commit/26357e3b6500cbcd70de7259934325496f7746e8))
+* align wire handling with RFC 2865/2868/3162 and update RFC docs ([3487e3e](https://github.com/vitalvas/goradius/commit/3487e3ebac6b1840de562f23c82f901a659df16a))
+* correct fragment reassembly and validation defaults per rfc ([ead1854](https://github.com/vitalvas/goradius/commit/ead18546418dadd44c995285a1309dd24d8daab7))
+* correct RFC 2868/5176 wire formats, races, and validation ([0c92bf3](https://github.com/vitalvas/goradius/commit/0c92bf31d55d78cb42d8c31a588793e6c2c41c10))
+* match freeradius ascend-secret cipher and junos multiline split ([bf82ae7](https://github.com/vitalvas/goradius/commit/bf82ae7fa1e0fc3195d7ac536e8657d11451ea66))
+
 ## [0.3.0](https://github.com/vitalvas/goradius/compare/v0.2.0...v0.3.0) (2026-08-28)
 
 
