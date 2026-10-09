@@ -39,8 +39,12 @@ func WithUseMessageAuthenticator(b bool) ServerOption {
 	}
 }
 
-// WithRequireRequestAuthenticator sets whether to validate Request Authenticator
-// for non-Access-Request packets (RFC 2866, RFC 5176).
+// WithRequireRequestAuthenticator sets whether the computed Request
+// Authenticator of Accounting-Request, CoA-Request, and Disconnect-Request
+// packets is validated (RFC 2866 Section 3, RFC 5176 Section 3.3, RFC 5080
+// Section 2.3.3). Default is true; disable only for devices that compute it
+// incorrectly. Access-Request and Status-Server carry a random authenticator
+// and are never subject to this check.
 func WithRequireRequestAuthenticator(b bool) ServerOption {
 	return func(s *Server) {
 		s.requireRequestAuth = b

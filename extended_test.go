@@ -280,33 +280,51 @@ func TestExtendedAttributeStrictReceive(t *testing.T) {
 		assert.Empty(t, pkt.GetAttribute("ext-long-octets"))
 	})
 
-	t.Run("more bit on a short fragment discards the chain", func(t *testing.T) {
-		// The More flag MUST be clear when the fragment is not full-size.
+	t.Run("more bit on a short fragment invalidates the whole chain", func(t *testing.T) {
+		// The More flag MUST be clear when the fragment is not full-size;
+		// the chain, including its remaining fragments, is an invalid
+		// attribute and must not surface as a truncated value.
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 		pkt.AddAttribute(NewAttribute(245, []byte{1, LongExtendedMoreBit, 'x', 'y'}))
 		pkt.AddAttribute(NewAttribute(245, []byte{1, 0, 'z'}))
 
-		// The invalid chain is dropped; the following self-contained
-		// fragment is a separate, valid value.
-		vals := pkt.GetAttribute("ext-long-octets")
-		require.Len(t, vals, 1)
-		assert.Equal(t, []byte("z"), vals[0].Value)
+		assert.Empty(t, pkt.GetAttribute("ext-long-octets"))
 	})
 
-	t.Run("non-consecutive fragments are discarded", func(t *testing.T) {
-		// RFC 6929 Section 2.2: fragments of one value MUST be consecutive
-		// attributes; an interrupted chain is invalid.
+	t.Run("fragments mixed with different-type attributes reassemble", func(t *testing.T) {
+		// RFC 6929 Section 2.2: implementations MUST be able to process
+		// fragments mixed together with other attributes of a different
+		// Type (proxies may reorder attributes of different types).
 		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
 		frag := make([]byte, 2+MaxLongExtendedValueLength)
 		frag[0] = 1
 		frag[1] = LongExtendedMoreBit
+		for i := 2; i < len(frag); i++ {
+			frag[i] = 0xAB
+		}
 		pkt.AddAttribute(NewAttribute(245, frag))
 		pkt.AddAttribute(NewAttribute(1, []byte("interloper")))
 		pkt.AddAttribute(NewAttribute(245, []byte{1, 0, 'e', 'n', 'd'}))
 
 		vals := pkt.GetAttribute("ext-long-octets")
 		require.Len(t, vals, 1)
-		assert.Equal(t, []byte("end"), vals[0].Value)
+		require.Len(t, vals[0].Value, MaxLongExtendedValueLength+3)
+		assert.Equal(t, []byte("end"), vals[0].Value[MaxLongExtendedValueLength:])
+	})
+
+	t.Run("same-base-type interruption invalidates the chain", func(t *testing.T) {
+		// A same-base-type attribute that is not the chain's continuation
+		// makes the fragments non-consecutive, hence invalid; its tail must
+		// not surface as a standalone truncated value.
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		frag := make([]byte, 2+MaxLongExtendedValueLength)
+		frag[0] = 1
+		frag[1] = LongExtendedMoreBit
+		pkt.AddAttribute(NewAttribute(245, frag))
+		pkt.AddAttribute(NewAttribute(245, []byte{2, 0, 'o', 't', 'h', 'e', 'r'}))
+		pkt.AddAttribute(NewAttribute(245, []byte{1, 0, 't', 'a', 'i', 'l'}))
+
+		assert.Empty(t, pkt.GetAttribute("ext-long-octets"))
 	})
 }
 

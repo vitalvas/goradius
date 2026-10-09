@@ -2388,6 +2388,18 @@ func TestTransparentEncryption(t *testing.T) {
 		assert.Equal(t, "hunter2", values[0].String())
 	})
 
+	t.Run("encode refuses an access-request with no authenticator set", func(t *testing.T) {
+		// Encoding before SetAuthenticator must fail closed rather than key
+		// the cipher with a predictable all-zero authenticator.
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.Secret = []byte("testing123")
+		require.NoError(t, pkt.AddAttributeByName("user-password", "hunter2"))
+
+		_, err := pkt.Encode()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "keying authenticator")
+	})
+
 	t.Run("coa-request encrypts with a zero authenticator transparently", func(t *testing.T) {
 		pkt := NewPacketWithDictionary(CodeCoARequest, 1, dict)
 		pkt.Secret = []byte("testing123")
@@ -2404,6 +2416,25 @@ func TestTransparentEncryption(t *testing.T) {
 		assert.Equal(t, uint8(1), values[0].Tag)
 		assert.Equal(t, "tunnel-secret", values[0].String())
 	})
+}
+
+func TestAddMessageAuthenticatorReplacesExisting(t *testing.T) {
+	// RFC 2869 Section 5.19: at most one Message-Authenticator per packet.
+	// A duplicate would also fail verification, which reads the first
+	// instance while computation writes the appended one.
+	pkt := NewPacket(CodeAccessRequest, 1)
+	pkt.SetAuthenticator([16]byte{0x01, 0x02})
+	pkt.AddMessageAuthenticator([]byte("stale-secret"), pkt.Authenticator)
+	pkt.AddMessageAuthenticator([]byte("secret"), pkt.Authenticator)
+
+	count := 0
+	for _, attr := range pkt.Attributes {
+		if attr.Type == AttributeTypeMessageAuthenticator {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+	assert.True(t, pkt.VerifyMessageAuthenticator([]byte("secret"), pkt.Authenticator))
 }
 
 func TestTunnelPasswordSaltUniqueness(t *testing.T) {

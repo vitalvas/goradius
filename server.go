@@ -27,7 +27,11 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 		ready:              make(chan struct{}),
 		requireMessageAuth: true,
 		useMessageAuth:     true,
-		requireRequestAuth: false,
+		// RFC 5080 Section 2.3.3: servers MUST validate the computed Request
+		// Authenticator of Accounting/CoA/Disconnect requests and silently
+		// discard invalid packets. Every compliant device computes it from
+		// the shared secret, so this is on by default.
+		requireRequestAuth: true,
 	}
 
 	for _, opt := range opts {
@@ -288,7 +292,11 @@ func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr ne
 func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bool {
 	secret := secretResp.Secret
 
-	if s.requireRequestAuth && pkt.Code != CodeAccessRequest {
+	// Access-Request and Status-Server carry a random authenticator (RFC
+	// 2865 Section 3, RFC 5997 Section 3), so the computed-hash check only
+	// applies to Accounting/CoA/Disconnect requests (RFC 2866 Section 3,
+	// RFC 5176 Section 3.3).
+	if s.requireRequestAuth && pkt.Code != CodeAccessRequest && pkt.Code != CodeStatusServer {
 		expectedAuth := pkt.CalculateRequestAuthenticator(secret)
 		if pkt.Authenticator != expectedAuth {
 			return false

@@ -495,6 +495,17 @@ func (s *SecretStore) ServeSecret(
 }
 ```
 
+### Request Authenticator Validation
+
+The computed Request Authenticator of Accounting-Request, CoA-Request,
+and Disconnect-Request packets is validated by default and invalid
+packets are silently discarded (RFC 2866 Section 3, RFC 5176
+Section 3.3, RFC 5080 Section 2.3.3). Every compliant device computes
+it from the shared secret, so this costs no interoperability; use
+`WithRequireRequestAuthenticator(false)` only for devices that compute
+it incorrectly. Access-Request and Status-Server carry a random
+authenticator and are never subject to this check.
+
 ### Message-Authenticator Semantics
 
 A Message-Authenticator that is present in a received packet is always

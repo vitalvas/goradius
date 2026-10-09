@@ -25,7 +25,7 @@ func (p *Packet) Encode() ([]byte, error) {
 		if len(p.Secret) == 0 {
 			return nil, fmt.Errorf("attribute type %d requires encryption but no shared secret is set on the packet", attr.Type)
 		}
-		return nil, fmt.Errorf("attribute type %d requires encryption but the request authenticator is unknown; build the response with NewResponse or compute its response authenticator first", attr.Type)
+		return nil, fmt.Errorf("attribute type %d requires encryption but the keying authenticator is not available: set the packet authenticator first, or build responses with NewResponse", attr.Type)
 	}
 
 	data := make([]byte, p.Length)

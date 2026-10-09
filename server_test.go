@@ -742,10 +742,13 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			secretResp: SecretResponse{Secret: secret},
 		}
 
-		// RequireRequestAuthenticator defaults to false
+		// Validation is on by default (RFC 5080 Section 2.3.3); disabling it
+		// is the explicit opt-out for devices that compute the authenticator
+		// incorrectly.
 		srv, err := NewServer(
 			WithHandler(handler),
 			WithDictionary(dict),
+			WithRequireRequestAuthenticator(false),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -2240,9 +2243,12 @@ func TestServerProcessRawPacket(t *testing.T) {
 		require.NoError(t, err)
 		defer srv.Close()
 
+		// RFC 2866 Section 3 flow: Message-Authenticator inserted first, then
+		// the Request Authenticator computed over the attributes.
 		reqPkt := NewPacket(CodeAccountingRequest, 7)
 		reqPkt.AddAttribute(NewAttribute(1, []byte("testuser")))
-		reqPkt.AddMessageAuthenticator(secret, reqPkt.Authenticator)
+		reqPkt.AddMessageAuthenticator(secret, [16]byte{})
+		reqPkt.SetAuthenticator(reqPkt.CalculateRequestAuthenticator(secret))
 		data, err := reqPkt.Encode()
 		require.NoError(t, err)
 
@@ -2499,6 +2505,85 @@ func (h *passwordRecordingHandler) ServeRADIUS(req *Request) (Response, error) {
 		h.password <- ""
 	}
 	return Response{}, nil
+}
+
+func TestRequestAuthenticatorValidatedByDefault(t *testing.T) {
+	// RFC 5080 Section 2.3.3: servers MUST validate the computed Request
+	// Authenticator of Accounting/CoA/Disconnect requests and silently
+	// discard invalid packets.
+	dict, err := NewDefault()
+	require.NoError(t, err)
+	secret := []byte("testing123")
+	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1813}
+
+	newServer := func(t *testing.T, opts ...ServerOption) (*Server, *testHandler) {
+		t.Helper()
+		handler := &testHandler{
+			secretResp: SecretResponse{Secret: secret},
+			radiusResp: Response{packet: NewPacket(CodeAccountingResponse, 1)},
+		}
+		srv, err := NewServer(append([]ServerOption{WithHandler(handler), WithDictionary(dict)}, opts...)...)
+		require.NoError(t, err)
+		return srv, handler
+	}
+
+	t.Run("forged accounting request is dropped by default", func(t *testing.T) {
+		srv, handler := newServer(t)
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.SetAuthenticator([16]byte{0xDE, 0xAD, 0xBE, 0xEF})
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.Nil(t, reply)
+		assert.False(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("valid accounting request is accepted", func(t *testing.T) {
+		srv, handler := newServer(t)
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 2, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.NotNil(t, reply)
+		assert.True(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("opt-out accepts a broken authenticator", func(t *testing.T) {
+		srv, handler := newServer(t, WithRequireRequestAuthenticator(false))
+		pkt := NewPacketWithDictionary(CodeAccountingRequest, 3, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		pkt.SetAuthenticator([16]byte{0xDE, 0xAD})
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.NotNil(t, reply)
+		assert.True(t, handler.WasRADIUSCalled())
+	})
+
+	t.Run("status-server is exempt from the computed check", func(t *testing.T) {
+		// RFC 5997 Section 3: Status-Server carries a random authenticator,
+		// so the MD5-computed validation must never apply to it.
+		srv, handler := newServer(t)
+		pkt := NewPacketWithDictionary(CodeStatusServer, 4, dict)
+		pkt.SetAuthenticator([16]byte{0x99, 0x88, 0x77})
+		pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+
+		reply, err := srv.ProcessRawPacket(data, clientAddr)
+		require.NoError(t, err)
+		assert.NotNil(t, reply)
+		assert.True(t, handler.WasRADIUSCalled())
+	})
 }
 
 func TestServerDropsNonRequestCodes(t *testing.T) {

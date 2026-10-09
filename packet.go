@@ -70,6 +70,12 @@ func (p *Packet) bindRequestAuthenticator(auth [AuthenticatorLength]byte) {
 func (p *Packet) encryptionAuthenticator() (auth [AuthenticatorLength]byte, ok bool) {
 	switch p.Code {
 	case CodeAccessRequest, CodeStatusServer:
+		// An all-zero authenticator means SetAuthenticator has not run yet;
+		// defer (failing closed at Encode) rather than key the ciphers with
+		// a predictable value that a later SetAuthenticator cannot re-key.
+		if p.Authenticator == [AuthenticatorLength]byte{} {
+			return [AuthenticatorLength]byte{}, false
+		}
 		return p.Authenticator, true
 	case CodeAccountingRequest, CodeCoARequest, CodeDisconnectRequest:
 		return [AuthenticatorLength]byte{}, true
@@ -700,8 +706,13 @@ func (p *Packet) VerifyMessageAuthenticator(secret []byte, requestAuthenticator 
 	return hmac.Equal(messageAuth, expected[:])
 }
 
-// AddMessageAuthenticator adds a Message-Authenticator attribute to the packet
+// AddMessageAuthenticator adds a Message-Authenticator attribute to the packet.
+// Any existing instance is replaced: RFC 2869 Section 5.19 permits at most one,
+// and verification reads the first instance, so a stale duplicate would make
+// the packet fail its own verification.
 func (p *Packet) AddMessageAuthenticator(secret []byte, requestAuthenticator [AuthenticatorLength]byte) {
+	p.RemoveAttributes(AttributeTypeMessageAuthenticator)
+
 	// The zeroed placeholder must be present during the HMAC computation so the
 	// attribute's type and length bytes are covered; the result is copied into it.
 	attr := NewAttribute(AttributeTypeMessageAuthenticator, make([]byte, 16))
@@ -1991,27 +2002,39 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 	}
 
 	// Long extended: reassemble fragments that share the same extended type.
-	// RFC 6929 Section 2.2 requires fragments of one value to be consecutive
-	// attributes, a fragment with More set to be full-size, and the final
-	// fragment to clear More; chains violating any of these are invalid
-	// attributes and are discarded (Section 2.8), never surfaced as values.
+	// RFC 6929 Section 2.2: receivers MUST process fragments mixed with
+	// attributes of a DIFFERENT Type (proxies may reorder those), so only a
+	// same-base-type attribute that is not the chain's continuation breaks
+	// consecutiveness. A fragment with More set must be full-size, and the
+	// final fragment clears More; a chain violating any of these is an
+	// invalid attribute and is discarded in full (Section 2.8) — including
+	// its remaining fragments, which must not surface as truncated values.
 	var buf []byte
-	collecting := false
-	prevIdx := 0
-	for i, attr := range p.Attributes {
+	collecting := false // accumulating a valid chain for extType
+	skipping := false   // discarding the remainder of an invalidated chain
+	for _, attr := range p.Attributes {
 		if attr.Type != baseType {
-			continue
+			continue // different Type never interrupts a chain
 		}
 		et, more, value, err := parseLongExtendedFragment(attr)
 		if err != nil || et != extType {
+			// A same-base-type attribute that cannot continue the pending
+			// chain makes the chain non-consecutive, hence invalid.
+			if collecting {
+				buf = nil
+				collecting = false
+				skipping = true
+			}
 			continue
 		}
 
-		// A continuation that is not the attribute immediately following the
-		// previous fragment invalidates the pending chain; this fragment
-		// starts a new chain instead.
-		if collecting && i != prevIdx+1 {
-			buf = nil
+		// Consume the leftover fragments of an invalidated chain up to and
+		// including its final (More clear) fragment.
+		if skipping {
+			if !more {
+				skipping = false
+			}
+			continue
 		}
 
 		// More set on a fragment that is not full-size is invalid: the More
@@ -2019,10 +2042,10 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 		if more && len(value) != MaxLongExtendedValueLength {
 			buf = nil
 			collecting = false
+			skipping = true
 			continue
 		}
 
-		prevIdx = i
 		buf = append(buf, value...)
 		collecting = true
 		if !more {
@@ -2031,6 +2054,7 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 			collecting = false
 		}
 	}
+	// A dangling chain (More never cleared) is invalid and discarded.
 
 	return result
 }
