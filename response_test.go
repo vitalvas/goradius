@@ -126,7 +126,7 @@ func TestResponseSetAttributes(t *testing.T) {
 	// Authorization attributes are only allowed in Access-Accept (RFC 2865 5.44)
 	resp.SetCode(CodeAccessAccept)
 
-	attrs := map[string][]interface{}{
+	attrs := map[string][]any{
 		"reply-message":     {"Access granted"},
 		"framed-ip-address": {"192.0.2.10"},
 		"session-timeout":   {3600},
@@ -159,7 +159,7 @@ func TestResponseSetAttributesNilPacket(t *testing.T) {
 	resp := Response{packet: nil}
 
 	// Should not crash and return nil
-	err := resp.SetAttributes(map[string][]interface{}{
+	err := resp.SetAttributes(map[string][]any{
 		"reply-message": {"test"},
 	})
 	assert.NoError(t, err)
@@ -177,7 +177,7 @@ func TestResponseAddAttributesNilPacket(t *testing.T) {
 	resp := Response{packet: nil}
 
 	// Should not crash and return nil
-	err := resp.AddAttributes(map[string][]interface{}{
+	err := resp.AddAttributes(map[string][]any{
 		"reply-message": {"test"},
 	})
 	assert.NoError(t, err)
@@ -198,7 +198,7 @@ func TestResponseSetAttributesWithMultipleValues(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Set multiple values for the same attribute using array syntax
-	err := resp.SetAttributes(map[string][]interface{}{
+	err := resp.SetAttributes(map[string][]any{
 		"reply-message":   {"First message", "Second message", "Third message"},
 		"session-timeout": {3600},
 	})
@@ -271,7 +271,7 @@ func TestResponseFullWorkflow(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Add attributes
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":     {"Access granted"},
 		"session-timeout":   {3600},
 		"framed-ip-address": {"192.0.2.10"},
@@ -357,13 +357,13 @@ func TestResponseSetAttributesOverwrites(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Set attributes first time
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"First message"},
 		"session-timeout": {3600},
 	}))
 
 	// Set attributes second time - should overwrite
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"Second message"},
 		"session-timeout": {7200},
 	}))
@@ -418,12 +418,12 @@ func TestResponseAddAttributesAppends(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Add attributes first time
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message": {"First message"},
 	}))
 
 	// Add attributes second time - should append
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message": {"Second message"},
 	}))
 
@@ -447,7 +447,7 @@ func TestResponseAddAttributesWithMultipleValues(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Add multiple values for the same attribute using array syntax
-	err := resp.AddAttributes(map[string][]interface{}{
+	err := resp.AddAttributes(map[string][]any{
 		"reply-message":   {"First message", "Second message", "Third message"},
 		"session-timeout": {3600},
 	})
@@ -479,7 +479,7 @@ func TestResponseSetAttributesThenAddAttributes(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Set attributes first (removes any existing and adds new)
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"First message", "Second message"},
 		"session-timeout": {3600},
 	}))
@@ -488,7 +488,7 @@ func TestResponseSetAttributesThenAddAttributes(t *testing.T) {
 	assert.Len(t, resp.packet.Attributes, 3)
 
 	// Add attributes (should append to existing)
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":     {"Third message"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -524,7 +524,7 @@ func TestResponseAddAttributesThenSetAttributes(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// Add attributes first
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":   {"First message", "Second message", "Third message"},
 		"session-timeout": {3600},
 	}))
@@ -533,7 +533,7 @@ func TestResponseAddAttributesThenSetAttributes(t *testing.T) {
 	assert.Len(t, resp.packet.Attributes, 4)
 
 	// Set attributes (should overwrite existing Reply-Message, keep Session-Timeout)
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":     {"Final message"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -635,7 +635,7 @@ func TestResponseSetAttributesNotInDictionary(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Try to set attributes where one doesn't exist in the dictionary
-	err = resp.SetAttributes(map[string][]interface{}{
+	err = resp.SetAttributes(map[string][]any{
 		"reply-message":         {"Valid attribute"},
 		"NonExistent-Attribute": {"Invalid attribute"},
 	})
@@ -672,7 +672,7 @@ func TestResponseAddAttributesNotInDictionary(t *testing.T) {
 	resp := NewResponse(req)
 
 	// Try to add attributes where one doesn't exist in the dictionary
-	err = resp.AddAttributes(map[string][]interface{}{
+	err = resp.AddAttributes(map[string][]any{
 		"reply-message":         {"Valid attribute"},
 		"NonExistent-Attribute": {"Invalid attribute"},
 	})
@@ -912,7 +912,7 @@ func TestResponseSetAttributeThenSetAttributes(t *testing.T) {
 	require.NoError(t, resp.SetAttribute("reply-message", "Single"))
 	require.NoError(t, resp.SetAttribute("session-timeout", 1800))
 
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":     {"Bulk message"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -934,7 +934,7 @@ func TestResponseSetAttributesThenSetAttribute(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Set
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"Bulk 1", "Bulk 2"},
 		"session-timeout": {3600},
 	}))
@@ -959,7 +959,7 @@ func TestResponseAddAttributeThenAddAttributes(t *testing.T) {
 
 	// Add → AddS
 	require.NoError(t, resp.AddAttribute("reply-message", "Single"))
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":   {"Bulk 1", "Bulk 2"},
 		"session-timeout": {3600},
 	}))
@@ -983,7 +983,7 @@ func TestResponseAddAttributesThenAddAttribute(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Add
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":   {"Bulk 1", "Bulk 2"},
 		"session-timeout": {3600},
 	}))
@@ -1008,7 +1008,7 @@ func TestResponseSetAttributesThenDelete(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Del
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"Msg 1", "Msg 2"},
 		"session-timeout": {3600},
 	}))
@@ -1032,7 +1032,7 @@ func TestResponseAddAttributesThenDelete(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Del
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":   {"Msg 1", "Msg 2", "Msg 3"},
 		"session-timeout": {3600},
 	}))
@@ -1059,7 +1059,7 @@ func TestResponseSetAttributeThenAddAttributes(t *testing.T) {
 
 	// Set → AddS
 	require.NoError(t, resp.SetAttribute("reply-message", "Single"))
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":     {"Bulk 1", "Bulk 2"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -1083,7 +1083,7 @@ func TestResponseSetAttributesThenAddAttribute(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// SetS → Add
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":   {"Bulk 1", "Bulk 2"},
 		"session-timeout": {3600},
 	}))
@@ -1110,7 +1110,7 @@ func TestResponseAddAttributeThenSetAttributes(t *testing.T) {
 	// Add → SetS
 	require.NoError(t, resp.AddAttribute("reply-message", "Single"))
 	require.NoError(t, resp.AddAttribute("session-timeout", 1800))
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":     {"Bulk"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -1132,7 +1132,7 @@ func TestResponseAddAttributesThenSetAttribute(t *testing.T) {
 	resp.SetCode(CodeAccessAccept)
 
 	// AddS → Set
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":   {"Bulk 1", "Bulk 2"},
 		"session-timeout": {3600},
 	}))
@@ -1159,7 +1159,7 @@ func TestResponseDeleteThenSetAttributes(t *testing.T) {
 	require.NoError(t, resp.AddAttribute("session-timeout", 1800))
 	resp.DeleteAttribute("reply-message")
 
-	require.NoError(t, resp.SetAttributes(map[string][]interface{}{
+	require.NoError(t, resp.SetAttributes(map[string][]any{
 		"reply-message":     {"New 1", "New 2"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -1186,7 +1186,7 @@ func TestResponseDeleteThenAddAttributes(t *testing.T) {
 	require.NoError(t, resp.AddAttribute("session-timeout", 1800))
 	resp.DeleteAttribute("reply-message")
 
-	require.NoError(t, resp.AddAttributes(map[string][]interface{}{
+	require.NoError(t, resp.AddAttributes(map[string][]any{
 		"reply-message":     {"New 1", "New 2"},
 		"framed-ip-address": {"192.0.2.1"},
 	}))
@@ -1219,7 +1219,7 @@ func BenchmarkResponseSetAttributes(b *testing.B) {
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: reqPkt}
 
-	attrs := map[string][]interface{}{
+	attrs := map[string][]any{
 		"session-timeout":   {uint32(3600)},
 		"framed-ip-address": {"10.0.0.1"},
 		"framed-ip-netmask": {"255.255.255.0"},
@@ -1253,7 +1253,7 @@ func BenchmarkResponseAddAttributes(b *testing.B) {
 	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
 	req := &Request{packet: reqPkt}
 
-	attrs := map[string][]interface{}{
+	attrs := map[string][]any{
 		"reply-message":     {"Welcome"},
 		"session-timeout":   {uint32(3600)},
 		"framed-ip-address": {"10.0.0.1"},

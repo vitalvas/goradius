@@ -13,8 +13,8 @@ import (
 	"github.com/vitalvas/goradius"
 )
 
-func parseAttributes(scanner *bufio.Scanner) (map[string]interface{}, error) {
-	attributes := make(map[string]interface{})
+func parseAttributes(scanner *bufio.Scanner) (map[string]any, error) {
+	attributes := make(map[string]any)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -30,7 +30,7 @@ func parseAttributes(scanner *bufio.Scanner) (map[string]interface{}, error) {
 		name := strings.TrimSpace(parts[0])
 		valueStr := strings.TrimSpace(parts[1])
 
-		var value interface{}
+		var value any
 		if num, err := strconv.ParseUint(valueStr, 10, 32); err == nil {
 			value = uint32(num)
 		} else {

@@ -428,7 +428,7 @@ func BenchmarkServerBuildHandler(b *testing.B) {
 	}
 
 	// Add multiple middlewares
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		srv.Use(func(next Handler) Handler {
 			return HandlerFunc(func(r *Request) (Response, error) {
 				return next.ServeRADIUS(r)
@@ -578,7 +578,7 @@ func TestServerStressWithHighPacketRate(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, numPackets)
 
-	for i := 0; i < numPackets; i++ {
+	for i := range numPackets {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -652,7 +652,7 @@ func TestServerConcurrentPackets(t *testing.T) {
 	addr := srv.Addr().(*net.UDPAddr)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -1103,7 +1103,7 @@ func TestServerShutdownWaitsForAllRequests(t *testing.T) {
 	// Send multiple concurrent requests
 	numRequests := 5
 	var wg sync.WaitGroup
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -2405,13 +2405,11 @@ func TestServerUseConcurrentWithRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_, _ = srv.ProcessRawPacket(data, clientAddr)
 			}
-		}()
+		})
 	}
 
 	// Adding middleware while requests are in flight must be race-free.

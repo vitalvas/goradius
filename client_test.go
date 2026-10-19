@@ -81,7 +81,7 @@ func TestCoA(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.CoA(map[string]interface{}{
+	resp, err := client.CoA(map[string]any{
 		"user-name":       "testuser",
 		"session-timeout": uint32(3600),
 	})
@@ -130,7 +130,7 @@ func TestDisconnect(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.Disconnect(map[string]interface{}{
+	resp, err := client.Disconnect(map[string]any{
 		"user-name": "testuser",
 	})
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestCoAWithInvalidAttribute(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.CoA(map[string]interface{}{
+	_, err = client.CoA(map[string]any{
 		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
@@ -167,7 +167,7 @@ func TestDisconnectWithInvalidAttribute(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.Disconnect(map[string]interface{}{
+	_, err = client.Disconnect(map[string]any{
 		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
@@ -192,7 +192,7 @@ func TestTimeout(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.CoA(map[string]interface{}{
+	_, err = client.CoA(map[string]any{
 		"user-name": "testuser",
 	})
 	assert.Error(t, err)
@@ -239,7 +239,7 @@ func TestAccessRequest(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.AccessRequest(map[string]interface{}{
+	resp, err := client.AccessRequest(map[string]any{
 		"user-name":     "testuser",
 		"user-password": "testpass",
 	})
@@ -288,7 +288,7 @@ func TestAccountingRequest(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.AccountingRequest(map[string]interface{}{
+	resp, err := client.AccountingRequest(map[string]any{
 		"user-name":         "testuser",
 		"acct-status-type":  uint32(1), // Start
 		"acct-session-id":   "session123",
@@ -311,7 +311,7 @@ func TestAccessRequestWithInvalidAttribute(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.AccessRequest(map[string]interface{}{
+	_, err = client.AccessRequest(map[string]any{
 		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
@@ -329,7 +329,7 @@ func TestAccountingRequestWithInvalidAttribute(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.AccountingRequest(map[string]interface{}{
+	_, err = client.AccountingRequest(map[string]any{
 		"invalid-attribute": "value",
 	})
 	assert.Error(t, err)
@@ -390,7 +390,7 @@ func BenchmarkClientAccessRequest(b *testing.B) {
 		WithTimeout(2*time.Second),
 	)
 
-	attrs := map[string]interface{}{
+	attrs := map[string]any{
 		"user-name":     "testuser",
 		"user-password": "testpass",
 	}
@@ -440,7 +440,7 @@ func BenchmarkClientAccessRequestParallel(b *testing.B) {
 		WithTimeout(2*time.Second),
 	)
 
-	attrs := map[string]interface{}{
+	attrs := map[string]any{
 		"user-name":     "testuser",
 		"user-password": "testpass",
 	}
@@ -492,7 +492,7 @@ func BenchmarkClientAccountingRequest(b *testing.B) {
 		WithTimeout(2*time.Second),
 	)
 
-	attrs := map[string]interface{}{
+	attrs := map[string]any{
 		"user-name":         "testuser",
 		"acct-status-type":  uint32(1),
 		"acct-session-id":   "session123",
@@ -545,7 +545,7 @@ func BenchmarkClientCoA(b *testing.B) {
 		WithTimeout(2*time.Second),
 	)
 
-	attrs := map[string]interface{}{
+	attrs := map[string]any{
 		"user-name":       "testuser",
 		"session-timeout": uint32(3600),
 	}
@@ -595,7 +595,7 @@ func BenchmarkClientDisconnect(b *testing.B) {
 		WithTimeout(2*time.Second),
 	)
 
-	attrs := map[string]interface{}{
+	attrs := map[string]any{
 		"user-name": "testuser",
 	}
 
@@ -642,7 +642,7 @@ func TestClientAcceptsAccountingResponseWithoutMessageAuthenticator(t *testing.T
 	)
 	require.NoError(t, err)
 
-	resp, err := client.AccountingRequest(map[string]interface{}{"user-name": "testuser"})
+	resp, err := client.AccountingRequest(map[string]any{"user-name": "testuser"})
 	require.NoError(t, err)
 	assert.Equal(t, CodeAccountingResponse, resp.Code)
 }
@@ -687,7 +687,7 @@ func TestClientDiscardsForgedMessageAuthenticatorWhenVerificationDisabled(t *tes
 	)
 	require.NoError(t, err)
 
-	_, err = client.AccessRequest(map[string]interface{}{"user-name": "testuser"})
+	_, err = client.AccessRequest(map[string]any{"user-name": "testuser"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read response")
 }
@@ -740,7 +740,7 @@ func TestClientTransparentResponseDecryption(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.AccessRequest(map[string]interface{}{
+	resp, err := client.AccessRequest(map[string]any{
 		"user-name":     "testuser",
 		"user-password": "testpass",
 	})
@@ -802,7 +802,7 @@ func TestClientIgnoresStrayDatagrams(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	resp, err := client.AccessRequest(map[string]interface{}{"user-name": "testuser"})
+	resp, err := client.AccessRequest(map[string]any{"user-name": "testuser"})
 	require.NoError(t, err)
 	assert.Equal(t, CodeAccessAccept, resp.Code)
 }
@@ -826,7 +826,7 @@ func TestClientCloseUnblocksInflightRequest(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := client.AccessRequest(map[string]interface{}{"user-name": "testuser"})
+		_, err := client.AccessRequest(map[string]any{"user-name": "testuser"})
 		errCh <- err
 	}()
 

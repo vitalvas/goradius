@@ -1022,7 +1022,7 @@ func TestAddVendorChildNameMustBeLowercase(t *testing.T) {
 func BenchmarkLookupStandardByID(b *testing.B) {
 	dict := NewDictionary()
 	attrs := make([]*AttributeDefinition, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		attrs[i] = &AttributeDefinition{
 			ID:       uint32(i + 1),
 			Name:     fmt.Sprintf("Attr-%d", i+1),
@@ -1043,7 +1043,7 @@ func BenchmarkLookupStandardByID(b *testing.B) {
 func BenchmarkLookupStandardByName(b *testing.B) {
 	dict := NewDictionary()
 	attrs := make([]*AttributeDefinition, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		attrs[i] = &AttributeDefinition{
 			ID:       uint32(i + 1),
 			Name:     fmt.Sprintf("Attr-%d", i+1),
@@ -1065,9 +1065,9 @@ func BenchmarkLookupVendorAttributeByID(b *testing.B) {
 	dict := NewDictionary()
 
 	// Add 10 vendors with 50 attributes each
-	for v := 0; v < 10; v++ {
+	for v := range 10 {
 		attrs := make([]*AttributeDefinition, 50)
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			attrs[i] = &AttributeDefinition{
 				ID:       uint32(i + 1),
 				Name:     fmt.Sprintf("Vendor%d-Attr-%d", v, i+1),
@@ -1095,9 +1095,9 @@ func BenchmarkLookupByAttributeName(b *testing.B) {
 	dict := NewDictionary()
 
 	// Add 10 vendors with 50 attributes each
-	for v := 0; v < 10; v++ {
+	for v := range 10 {
 		attrs := make([]*AttributeDefinition, 50)
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			attrs[i] = &AttributeDefinition{
 				ID:       uint32(i + 1),
 				Name:     fmt.Sprintf("Vendor%d-Attr-%d", v, i+1),
@@ -1125,7 +1125,7 @@ func BenchmarkGetAllVendors(b *testing.B) {
 	dict := NewDictionary()
 
 	// Add 10 vendors
-	for v := 0; v < 10; v++ {
+	for v := range 10 {
 		vendor := &VendorDefinition{
 			ID:         uint32(1000 + v),
 			Name:       fmt.Sprintf("Vendor-%d", v),
@@ -1148,7 +1148,7 @@ func BenchmarkAddVendor(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		dict := NewDictionary()
 		attrs := make([]*AttributeDefinition, 50)
-		for j := 0; j < 50; j++ {
+		for j := range 50 {
 			attrs[j] = &AttributeDefinition{
 				ID:       uint32(j + 1),
 				Name:     fmt.Sprintf("attr-%d", j+1),
@@ -1169,7 +1169,7 @@ func BenchmarkAddStandardAttributes(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		dict := NewDictionary()
 		attrs := make([]*AttributeDefinition, 100)
-		for j := 0; j < 100; j++ {
+		for j := range 100 {
 			attrs[j] = &AttributeDefinition{
 				ID:       uint32(j + 1),
 				Name:     fmt.Sprintf("attr-%d", j+1),

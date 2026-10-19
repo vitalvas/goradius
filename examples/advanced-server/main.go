@@ -44,7 +44,7 @@ func (h *advancedHandler) ServeRADIUS(req *goradius.Request) (goradius.Response,
 	}
 
 	// Add response attributes
-	if err := resp.SetAttributes(map[string][]interface{}{
+	if err := resp.SetAttributes(map[string][]any{
 		"reply-message":           {"Access granted via advanced server"},
 		"session-timeout":         {3600},
 		"framed-ip-address":       {"192.0.2.100"},

@@ -215,7 +215,7 @@ func (va *VendorAttribute) ToVSAFormat(typeOctets, lengthOctets int) *Attribute 
 	vsaValue[3] = uint8(va.VendorID)
 
 	// Vendor-Type (typeOctets bytes, big-endian)
-	for i := 0; i < typeOctets; i++ {
+	for i := range typeOctets {
 		shift := uint(8 * (typeOctets - 1 - i))
 		vsaValue[4+i] = uint8(va.VendorType >> shift)
 	}
@@ -223,7 +223,7 @@ func (va *VendorAttribute) ToVSAFormat(typeOctets, lengthOctets int) *Attribute 
 	// Vendor-Length (lengthOctets bytes, big-endian) counts the type, length,
 	// and data octets, per the RFC 2865 convention.
 	vendorLength := header + len(va.Value)
-	for i := 0; i < lengthOctets; i++ {
+	for i := range lengthOctets {
 		shift := uint(8 * (lengthOctets - 1 - i))
 		vsaValue[4+typeOctets+i] = uint8(uint(vendorLength) >> shift)
 	}
@@ -289,7 +289,7 @@ func parseVSAList(attr *Attribute, typeOctets, lengthOctets int) ([]*VendorAttri
 
 		// Extract Vendor-Type (typeOctets bytes, big-endian)
 		var vendorType uint32
-		for i := 0; i < typeOctets; i++ {
+		for i := range typeOctets {
 			vendorType = vendorType<<8 | uint32(attr.Value[offset+i])
 		}
 
@@ -298,7 +298,7 @@ func parseVSAList(attr *Attribute, typeOctets, lengthOctets int) ([]*VendorAttri
 		end := len(attr.Value)
 		if lengthOctets > 0 {
 			vendorLength := 0
-			for i := 0; i < lengthOctets; i++ {
+			for i := range lengthOctets {
 				vendorLength = vendorLength<<8 | int(attr.Value[offset+typeOctets+i])
 			}
 			if vendorLength < header || offset+vendorLength > len(attr.Value) {

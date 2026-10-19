@@ -56,7 +56,7 @@ func (r *Response) SetCode(code Code) {
 // If the attribute already exists, it is removed first and then the new value is added.
 // This ensures only one instance of the attribute exists.
 // Returns an error if the attribute is not found in the dictionary.
-func (r *Response) SetAttribute(name string, value interface{}) error {
+func (r *Response) SetAttribute(name string, value any) error {
 	if r.packet == nil {
 		return nil
 	}
@@ -94,7 +94,7 @@ func (r *Response) SetAttributes(attrs map[string][]any) error {
 // AddAttribute adds a single attribute to the response packet.
 // If the attribute already exists, the new value is appended (multiple values).
 // Returns an error if the attribute is not found in the dictionary.
-func (r *Response) AddAttribute(name string, value interface{}) error {
+func (r *Response) AddAttribute(name string, value any) error {
 	if r.packet == nil {
 		return nil
 	}

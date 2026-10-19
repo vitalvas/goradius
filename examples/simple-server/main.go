@@ -59,7 +59,7 @@ func (h *simpleHandler) ServeRADIUS(req *goradius.Request) (goradius.Response, e
 		resp.SetCode(goradius.CodeAccountingResponse)
 	}
 
-	attrs := map[string][]interface{}{
+	attrs := map[string][]any{
 		"reply-message":           {"Hello, RADIUS client!"},
 		"erx-service-activate:1":  {"ipoe-parking"},
 		"erx-service-activate:3":  {"svc-ipoe-policer(52428800, 52428800)"},

@@ -597,7 +597,7 @@ func TestArrayAttributeHandling(t *testing.T) {
 		pkt3 := NewPacketWithDictionary(CodeAccessAccept, 3, dict)
 
 		// Pass a slice of interface{}
-		messages := []interface{}{"Message one", "Message two"}
+		messages := []any{"Message one", "Message two"}
 		pkt3.AddAttributeByName("reply-message", messages)
 
 		attrs := pkt3.GetAttribute("reply-message")
@@ -1228,7 +1228,7 @@ func BenchmarkE2EAuthenticationFlowMinimal(b *testing.B) {
 func BenchmarkVSAParsingWithCache(b *testing.B) {
 	pkt := NewPacket(CodeAccessRequest, 1)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		va := NewVendorAttribute(4874, uint32(i+1), []byte("test-value"))
 		pkt.AddVendorAttribute(va)
 	}
@@ -1237,7 +1237,7 @@ func BenchmarkVSAParsingWithCache(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for j := 0; j < 5; j++ {
+		for range 5 {
 			pkt.GetVendorAttribute(4874, 1)
 			pkt.GetVendorAttribute(4874, 5)
 			pkt.GetVendorAttributes(4874, 1)
@@ -1378,7 +1378,7 @@ func TestVSACacheIsBounded(t *testing.T) {
 	pkt := NewPacket(CodeAccessRequest, 1)
 
 	// Add many VSA attributes with different indices
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		va := NewVendorAttribute(4874, uint32(i%256), []byte("test-value"))
 		pkt.AddVendorAttribute(va)
 	}

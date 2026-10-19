@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -390,9 +391,9 @@ func (p *Packet) RemoveAttribute(attrType uint8) bool {
 // INTERNAL: This method is for internal library use only and may be removed in future versions.
 func (p *Packet) RemoveAttributes(attrType uint8) int {
 	removed := 0
-	for i := len(p.Attributes) - 1; i >= 0; i-- {
-		if p.Attributes[i].Type == attrType {
-			p.Length -= uint16(p.Attributes[i].Length)
+	for i, v := range slices.Backward(p.Attributes) {
+		if v.Type == attrType {
+			p.Length -= uint16(v.Length)
 			p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 			removed++
 		}
@@ -414,9 +415,9 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 	// Try standard attribute first
 	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
 		// Remove all standard attributes of this type
-		for i := len(p.Attributes) - 1; i >= 0; i-- {
-			if p.Attributes[i].Type == uint8(attrDef.ID) {
-				p.Length -= uint16(p.Attributes[i].Length)
+		for i, v := range slices.Backward(p.Attributes) {
+			if v.Type == uint8(attrDef.ID) {
+				p.Length -= uint16(v.Length)
 				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 				removed++
 			}
@@ -442,15 +443,15 @@ func (p *Packet) RemoveAttributeByName(name string) int {
 
 	// Remove all VSAs carrying this vendor and attribute ID. A multi-sub-attribute
 	// VSA is removed as a whole when any of its sub-attributes matches.
-	for i := len(p.Attributes) - 1; i >= 0; i-- {
-		if p.Attributes[i].Type == AttributeTypeVendorSpecific {
-			vas, err := p.getParsedVSAs(i, p.Attributes[i])
+	for i, v := range slices.Backward(p.Attributes) {
+		if v.Type == AttributeTypeVendorSpecific {
+			vas, err := p.getParsedVSAs(i, v)
 			if err != nil {
 				continue
 			}
 			for _, va := range vas {
 				if va.VendorID == vendorID && va.VendorType == attrDef.ID {
-					p.Length -= uint16(p.Attributes[i].Length)
+					p.Length -= uint16(v.Length)
 					p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
 					removed++
 					break
@@ -1186,7 +1187,7 @@ func EncryptAttributeValue(value []byte, encryption EncryptionType, secret []byt
 // in Accounting-Request, CoA-Request, and Disconnect-Request packets.
 //
 // Calling it is normally unnecessary: GetAttribute decrypts transparently
-// when the packet Secret is set — for requests using the packet's own
+// when the packet Secret is set: for requests using the packet's own
 // authenticator, and for responses (for example MPPE keys received by the
 // Client) using the bound Request Authenticator. This function remains as a
 // low-level escape hatch for raw values obtained outside the packet API.
@@ -1832,7 +1833,7 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 // decryptedAttributeValue decrypts an encrypted attribute value when the
 // dictionary declares an Encryption type and the packet state permits: the
 // Secret is set, the attribute is not still awaiting deferred encryption (its
-// bytes would be plaintext), and the keying authenticator is known — the
+// bytes would be plaintext), and the keying authenticator is known: the
 // packet's own for requests, the bound Request Authenticator for responses.
 // On a decrypt error the raw value is returned unchanged.
 func (p *Packet) decryptedAttributeValue(attr *Attribute, attrDef *AttributeDefinition, value []byte) []byte {
@@ -2007,7 +2008,7 @@ func (p *Packet) getExtendedAttribute(attrDef *AttributeDefinition) []AttributeV
 	// same-base-type attribute that is not the chain's continuation breaks
 	// consecutiveness. A fragment with More set must be full-size, and the
 	// final fragment clears More; a chain violating any of these is an
-	// invalid attribute and is discarded in full (Section 2.8) — including
+	// invalid attribute and is discarded in full (Section 2.8), including
 	// its remaining fragments, which must not surface as truncated values.
 	var buf []byte
 	collecting := false // accumulating a valid chain for extType

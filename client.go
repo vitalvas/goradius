@@ -313,7 +313,7 @@ func (c *Client) verifyResponse(req *Packet, respData []byte) (*Packet, error) {
 }
 
 // CoA sends a Change-of-Authorization Request packet per RFC 5176
-func (c *Client) CoA(attributes map[string]interface{}) (*Packet, error) {
+func (c *Client) CoA(attributes map[string]any) (*Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
@@ -349,7 +349,7 @@ func (c *Client) CoA(attributes map[string]interface{}) (*Packet, error) {
 }
 
 // Disconnect sends a Disconnect-Request packet per RFC 5176
-func (c *Client) Disconnect(attributes map[string]interface{}) (*Packet, error) {
+func (c *Client) Disconnect(attributes map[string]any) (*Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
@@ -385,7 +385,7 @@ func (c *Client) Disconnect(attributes map[string]interface{}) (*Packet, error) 
 }
 
 // AccessRequest sends an Access-Request packet per RFC 2865
-func (c *Client) AccessRequest(attributes map[string]interface{}) (*Packet, error) {
+func (c *Client) AccessRequest(attributes map[string]any) (*Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)
@@ -421,7 +421,7 @@ func (c *Client) AccessRequest(attributes map[string]interface{}) (*Packet, erro
 }
 
 // AccountingRequest sends an Accounting-Request packet per RFC 2866
-func (c *Client) AccountingRequest(attributes map[string]interface{}) (*Packet, error) {
+func (c *Client) AccountingRequest(attributes map[string]any) (*Packet, error) {
 	identifier := make([]byte, 1)
 	if _, err := rand.Read(identifier); err != nil {
 		return nil, fmt.Errorf("failed to generate identifier: %w", err)

@@ -3,6 +3,7 @@ package goradius
 import (
 	"context"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -141,8 +142,8 @@ func (s *Server) buildHandler() Handler {
 	handler := s.handler
 
 	// Apply middlewares in reverse order (last added is outermost)
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		handler = middlewares[i](handler)
+	for _, middleware := range slices.Backward(middlewares) {
+		handler = middleware(handler)
 	}
 
 	return handler
