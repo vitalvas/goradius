@@ -21,7 +21,7 @@ both standard and vendor-specific attributes.
 ### Creating a Dictionary
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create a new dictionary
 dict := goradius.NewDictionary()
@@ -219,7 +219,7 @@ for _, vendor := range vendors {
 ### Adding Attributes by Name
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create packet with dictionary
 req := goradius.NewWithDictionary(
@@ -541,7 +541,7 @@ dictionary with all standard attributes and common
 vendors:
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create dictionary with standard RFC attributes
 // and common vendors
@@ -562,7 +562,7 @@ For more control, you can build a dictionary
 manually:
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create empty dictionary
 dict := goradius.NewDictionary()
@@ -586,7 +586,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/vitalvas/goradius"
+    "go.vitalvas.com/goradius"
 )
 
 func main() {

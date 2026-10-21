@@ -15,7 +15,7 @@ import (
     "log"
     "net"
 
-    "github.com/vitalvas/goradius"
+    "go.vitalvas.com/goradius"
 )
 
 type myHandler struct{}

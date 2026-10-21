@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/vitalvas/goradius"
+	"go.vitalvas.com/goradius"
 )
 
 type AuditLog struct {

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vitalvas/goradius"
+	"go.vitalvas.com/goradius"
 )
 
 func parseAttributes(scanner *bufio.Scanner) (map[string]any, error) {

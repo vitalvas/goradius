@@ -1,4 +1,4 @@
-module github.com/vitalvas/goradius
+module go.vitalvas.com/goradius
 
 go 1.27
 

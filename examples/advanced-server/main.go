@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/vitalvas/goradius"
+	"go.vitalvas.com/goradius"
 )
 
 type advancedHandler struct{}

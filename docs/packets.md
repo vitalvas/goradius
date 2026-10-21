@@ -34,7 +34,7 @@ graph LR
 ### Basic Packet Creation
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create a new Access-Request packet
 req := goradius.New(
@@ -81,7 +81,7 @@ The recommended way to work with attributes is using
 the dictionary-based API:
 
 ```go
-import "github.com/vitalvas/goradius"
+import "go.vitalvas.com/goradius"
 
 // Create packet with dictionary
 dict, err := goradius.NewDefault()
