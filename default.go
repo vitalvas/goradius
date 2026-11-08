@@ -39,7 +39,7 @@ package goradius
 //	if err != nil {
 //		return err
 //	}
-//	srv, err := server.NewServer(":1812", handler, dict)
+//	srv, err := NewServer(WithHandler(handler), WithDictionary(dict))
 func NewDefault() (*Dictionary, error) {
 	dict := NewDictionary()
 

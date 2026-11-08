@@ -24,18 +24,22 @@ type Server struct {
 	closed             bool
 	closeDone          chan struct{}
 	closeErr           error
-	requireMessageAuth bool
-	useMessageAuth     bool
+	messageAuthPolicy  MessageAuthPolicy
 	requireRequestAuth bool
 	requestTimeout     time.Duration // 0 means no timeout
+
+	// messageAuthSeen holds the device keys (source IP) that have sent a
+	// verified Message-Authenticator, for MessageAuthPolicyAuto. Entries are
+	// only added after a packet validated under a shared secret, so a forged
+	// attribute can neither lock a device out nor grow the map.
+	messageAuthSeen sync.Map
 }
 
 func NewServer(opts ...ServerOption) (*Server, error) {
 	s := &Server{
-		ready:              make(chan struct{}),
-		closeDone:          make(chan struct{}),
-		requireMessageAuth: true,
-		useMessageAuth:     true,
+		ready:             make(chan struct{}),
+		closeDone:         make(chan struct{}),
+		messageAuthPolicy: MessageAuthPolicyAuto,
 		// RFC 5080 Section 2.3.3: servers MUST validate the computed Request
 		// Authenticator of Accounting/CoA/Disconnect requests and silently
 		// discard invalid packets. Every compliant device computes it from
@@ -247,11 +251,12 @@ func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr ne
 	}
 
 	totalAttempts := max(secretResp.Attempts, 1)
+	device := deviceKey(remoteAddr)
 
 	// Validate packet with secret rotation support
 	if totalAttempts <= 1 {
 		// Fast path: single secret
-		if !s.validatePacketSecret(pkt, secretResp) {
+		if !s.validatePacketSecret(pkt, secretResp, device) {
 			return
 		}
 	} else {
@@ -263,10 +268,19 @@ func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr ne
 			pkt:           pkt,
 			firstResp:     secretResp,
 			totalAttempts: totalAttempts,
+			device:        device,
 		})
 		if secretResp.Secret == nil {
 			return
 		}
+	}
+
+	// The packet validated, so a Message-Authenticator it carries is genuine.
+	// Under the auto policy that proves the device supports the attribute,
+	// and it is required from this device from now on.
+	policy := s.effectiveMessageAuthPolicy(secretResp)
+	if policy == MessageAuthPolicyAuto && pkt.Code == CodeAccessRequest && pkt.hasMessageAuthenticator() {
+		s.messageAuthSeen.Store(device, struct{}{})
 	}
 
 	// Carry the resolved secret on the request packet so encrypted
@@ -300,7 +314,7 @@ func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr ne
 	resp.packet.Secret = secretResp.Secret
 	resp.packet.bindRequestAuthenticator(pkt.Authenticator)
 
-	if s.useMessageAuth {
+	if policy != MessageAuthPolicyDisabled {
 		resp.packet.AddMessageAuthenticator(secretResp.Secret, pkt.Authenticator)
 	}
 
@@ -316,19 +330,14 @@ func (s *Server) handlePacketFrom(localAddr net.Addr, data []byte, remoteAddr ne
 	_ = respond(respData)
 }
 
-// validatePacketSecret validates the packet against the given secret
-// using Message-Authenticator and/or Request Authenticator checks.
+// validatePacketSecret validates the packet against the given secret using
+// the Request Authenticator and Message-Authenticator checks. device is the
+// key into the MessageAuthPolicyAuto memory.
 //
 // Message-Authenticator handling follows RFC 3579 Section 3.2: when the
-// attribute is present it is always verified, regardless of configuration;
-// policy only governs whether its absence is fatal. The presence requirement
-// covers Access-Request (BlastRADIUS hardening, overridable via
-// WithRequireMessageAuthenticator and the per-secret policy) and is
-// unconditional for Status-Server (RFC 5997 Section 4.2). Accounting, CoA,
-// and Disconnect requests carry the attribute optionally (RFC 2866/5176), so
-// devices that do not send it keep working; a per-secret
-// MessageAuthPolicyRequired still enforces presence for every request type.
-func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bool {
+// attribute is present it is always verified, regardless of policy; the
+// policy only governs whether its absence is fatal.
+func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse, device string) bool {
 	secret := secretResp.Secret
 
 	// Access-Request and Status-Server carry a random authenticator (RFC
@@ -342,25 +351,7 @@ func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bo
 		}
 	}
 
-	requireMsgAuth := false
-	switch pkt.Code {
-	case CodeAccessRequest:
-		requireMsgAuth = s.requireMessageAuth
-		switch secretResp.MessageAuthPolicy {
-		case MessageAuthPolicyRequired:
-			requireMsgAuth = true
-		case MessageAuthPolicyOptional:
-			requireMsgAuth = false
-		}
-	case CodeStatusServer:
-		// RFC 5997: all Status-Server packets MUST include Message-Authenticator
-		requireMsgAuth = true
-	default:
-		if secretResp.MessageAuthPolicy == MessageAuthPolicyRequired {
-			requireMsgAuth = true
-		}
-	}
-
+	requireMsgAuth := s.messageAuthRequired(pkt, s.effectiveMessageAuthPolicy(secretResp), device)
 	if requireMsgAuth || pkt.hasMessageAuthenticator() {
 		if !pkt.VerifyMessageAuthenticator(secret, pkt.Authenticator) {
 			return false
@@ -370,6 +361,54 @@ func (s *Server) validatePacketSecret(pkt *Packet, secretResp SecretResponse) bo
 	return true
 }
 
+// effectiveMessageAuthPolicy resolves the per-device override against the
+// server-wide policy.
+func (s *Server) effectiveMessageAuthPolicy(secretResp SecretResponse) MessageAuthPolicy {
+	if secretResp.MessageAuthPolicy != MessageAuthPolicyDefault {
+		return secretResp.MessageAuthPolicy
+	}
+	return s.messageAuthPolicy
+}
+
+// messageAuthRequired reports whether the packet must carry a
+// Message-Authenticator. Status-Server always must (RFC 5997 Section 4.2).
+// Required covers every request type; Auto covers Access-Requests from a
+// device that has already sent a verified one; Optional and Disabled never
+// require it. Accounting, CoA, and Disconnect carry it optionally per RFC
+// 2866/5176 unless the policy is Required, so devices that do not send it
+// keep working.
+func (s *Server) messageAuthRequired(pkt *Packet, policy MessageAuthPolicy, device string) bool {
+	if pkt.Code == CodeStatusServer {
+		return true
+	}
+	switch policy {
+	case MessageAuthPolicyRequired:
+		return true
+	case MessageAuthPolicyAuto:
+		if pkt.Code != CodeAccessRequest {
+			return false
+		}
+		_, seen := s.messageAuthSeen.Load(device)
+		return seen
+	default:
+		return false
+	}
+}
+
+// deviceKey identifies a device for the MessageAuthPolicyAuto memory by its
+// source IP, as FreeRADIUS keys clients, so the source port a device picks
+// per request does not matter.
+func deviceKey(addr net.Addr) string {
+	if addr == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+	return host
+}
+
 type resolveSecretParams struct {
 	ctx           context.Context
 	localAddr     net.Addr
@@ -377,6 +416,7 @@ type resolveSecretParams struct {
 	pkt           *Packet
 	firstResp     SecretResponse
 	totalAttempts int
+	device        string
 }
 
 // resolveSecret tries each secret in order until one validates the packet.
@@ -384,7 +424,7 @@ type resolveSecretParams struct {
 // if all attempts fail.
 func (s *Server) resolveSecret(params resolveSecretParams) SecretResponse {
 	// Try first secret (already fetched)
-	if s.validatePacketSecret(params.pkt, params.firstResp) {
+	if s.validatePacketSecret(params.pkt, params.firstResp, params.device) {
 		return params.firstResp
 	}
 
@@ -400,7 +440,7 @@ func (s *Server) resolveSecret(params resolveSecretParams) SecretResponse {
 			continue
 		}
 
-		if s.validatePacketSecret(params.pkt, resp) {
+		if s.validatePacketSecret(params.pkt, resp, params.device) {
 			return resp
 		}
 	}

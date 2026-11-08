@@ -53,13 +53,26 @@ const (
     DataTypeStruct     DataType = "struct"
     DataTypeEVS        DataType = "evs"
     DataTypeABinary    DataType = "abinary"
+
+    // FreeRADIUS scalar types used by vendor dictionaries
+    DataTypeByte      DataType = "byte"       // 1 octet
+    DataTypeShort     DataType = "short"      // 2 octets
+    DataTypeInteger64 DataType = "integer64"  // 8 octets
+    DataTypeSigned    DataType = "signed"     // 4 octets, signed
+    DataTypeComboIP   DataType = "combo-ip"   // 4 or 16 octets
+    DataTypeTimeDelta DataType = "time_delta" // seconds, 4 octets
+
+    // Struct members only
+    DataTypeBits  DataType = "bits"
+    DataTypeUnion DataType = "union"
 )
 ```
 
 The container types `tlv`, `struct`, and `evs` describe
 attributes whose value is composed of sub-attributes
-(`Children`). See the "Complex Attribute Types" section
-below for details.
+(`Children`). `bits` and `union` are valid only as
+struct members. See the "Complex Attribute Types"
+section below for details.
 
 ### Attribute Definition Structure
 
@@ -76,13 +89,24 @@ type AttributeDefinition struct {
     Extended   bool              // RFC 6929 extended attribute
     Size       int               // Fixed width for struct members
     Values     map[string]uint32 // Enum values
+    Bits       int               // Width of a bits struct member
+    UnionKey   string            // Sibling member selecting a union layout
     VendorID   uint32            // EVS vendor ID
     VendorType uint8             // EVS vendor type
 
     // Children holds sub-attributes for tlv, struct, and
-    // evs container types.
+    // evs container types, and the variants of a union.
     Children []*AttributeDefinition
 }
+```
+
+`LookupChildByID` and `LookupChildByName` find a child
+of a container definition:
+
+```go
+def, _ := dict.LookupByAttributeName("cisco-example-tlv")
+child, ok := def.LookupChildByName("tlv-name")
+child, ok = def.LookupChildByID(1)
 ```
 
 Attribute names (and child names) must be lowercase only.
@@ -214,6 +238,21 @@ for _, vendor := range vendors {
 }
 ```
 
+### Get All Attributes
+
+`GetAllAttributes` returns every top-level attribute
+definition, standard and vendor alike, in no
+particular order:
+
+```go
+for _, attr := range dict.GetAllAttributes() {
+    fmt.Printf(
+        "%s (ID: %d, Type: %s)\n",
+        attr.Name, attr.ID, attr.DataType,
+    )
+}
+```
+
 ## Using Dictionaries with Packets
 
 ### Adding Attributes by Name
@@ -222,7 +261,7 @@ for _, vendor := range vendors {
 import "go.vitalvas.com/goradius"
 
 // Create packet with dictionary
-req := goradius.NewWithDictionary(
+req := goradius.NewPacketWithDictionary(
     goradius.CodeAccessRequest, 1, dict,
 )
 
@@ -309,6 +348,31 @@ vendor := &goradius.VendorDefinition{
 dict.AddVendor(vendor)
 ```
 
+### Vendor Header Format
+
+`TypeOctets` and `LengthOctets` on a
+`VendorDefinition` describe the width of the
+Vendor-Type and Vendor-Length fields inside the VSA,
+matching the FreeRADIUS `format=t,l` dictionary flag.
+Both zero means the RFC 2865 layout of a 1-octet type
+and a 1-octet length. Supported widths are 1, 2, or 4
+for the type and 0, 1, or 2 for the length; a length
+width of 0 means the vendor carries no length field.
+Alcatel-ESAM, for example, uses a 2-octet type:
+
+```go
+vendor := &goradius.VendorDefinition{
+    ID:           637,
+    Name:         "alcatel-esam",
+    TypeOctets:   2,
+    LengthOctets: 1,
+    Attributes:   attrs,
+}
+```
+
+The packet API encodes and decodes VSAs for the
+vendor with these widths automatically.
+
 ### Using VSAs in Packets
 
 The recommended approach is to use the dictionary API
@@ -387,6 +451,18 @@ req.AddAttributeByName("juniper-user-permissions", longPermissions)
 
 permissions := resp.GetAttributeString("juniper-user-permissions")
 // returns the joined value
+```
+
+`SplitMultilineAttribute` and `JoinMultilineAttribute`
+expose the same split and join for values handled outside
+the packet API, and `ContinuationMarker` holds the
+`<contd>` suffix:
+
+```go
+chunks := goradius.SplitMultilineAttribute(
+    longValue, goradius.MaxVSAValueLength,
+)
+joined := goradius.JoinMultilineAttribute(chunks)
 ```
 
 ## Complex Attribute Types
@@ -470,6 +546,79 @@ req.AddAttributeByName("cisco-example-struct", map[string]any{
 All members must be supplied. Decoding rejects a stream
 with trailing bytes or one too short for the layout.
 
+#### Bit Fields and Unions
+
+A `bits` member is a sub-octet unsigned integer whose
+width is given by `Bits` (FreeRADIUS `bit[N]`).
+Consecutive bit members are packed MSB-first and must
+together fill a whole number of octets. A `union`
+member is the final member of its struct; `UnionKey`
+names the sibling whose value selects the layout.
+Each variant in `Children` is a nested struct whose
+ID is the matching key value, and the union value is
+the map of that variant's members:
+
+```go
+{
+    ID:       222,
+    Name:     "cisco-example-flags",
+    DataType: goradius.DataTypeStruct,
+    Children: []*goradius.AttributeDefinition{
+        {ID: 1, Name: "f-version", DataType: goradius.DataTypeBits, Bits: 4},
+        {ID: 2, Name: "f-kind", DataType: goradius.DataTypeBits, Bits: 4},
+        {
+            ID:       3,
+            Name:     "f-body",
+            DataType: goradius.DataTypeUnion,
+            UnionKey: "f-kind",
+            Children: []*goradius.AttributeDefinition{
+                {
+                    ID:       1,
+                    Name:     "f-v4",
+                    DataType: goradius.DataTypeStruct,
+                    Children: []*goradius.AttributeDefinition{
+                        {ID: 1, Name: "f-addr", DataType: goradius.DataTypeIPAddr},
+                    },
+                },
+                {
+                    ID:       2,
+                    Name:     "f-named",
+                    DataType: goradius.DataTypeStruct,
+                    Children: []*goradius.AttributeDefinition{
+                        {ID: 1, Name: "f-label", DataType: goradius.DataTypeString, Size: 4},
+                    },
+                },
+            },
+        },
+    },
+}
+
+req.AddAttributeByName("cisco-example-flags", map[string]any{
+    "f-version": uint32(1),
+    "f-kind":    uint32(1),
+    "f-body":    map[string]any{"f-addr": "10.0.0.1"},
+})
+```
+
+The built-in 3GPP dictionary uses this layout for
+`3gpp-user-location-info`.
+
+#### Container Codecs
+
+`EncodeTLV`, `DecodeTLV`, `EncodeStruct`, and
+`DecodeStruct` expose the container encoders for use
+outside the packet API. Each takes the parent
+definition and works on a `map[string]any` keyed by
+child name:
+
+```go
+raw, err := goradius.EncodeTLV(def, map[string]any{
+    "tlv-name":  "svc",
+    "tlv-count": uint32(5),
+})
+values, err := goradius.DecodeTLV(def, raw)
+```
+
 ### Extended Attributes (RFC 6929)
 
 Extended attributes use standard types 241-246. Set
@@ -551,7 +700,7 @@ if err != nil {
 }
 
 // Ready to use!
-pkt := goradius.NewWithDictionary(
+pkt := goradius.NewPacketWithDictionary(
     goradius.CodeAccessRequest, 1, dict,
 )
 ```
@@ -598,7 +747,7 @@ func main() {
     }
 
     // Create packet with dictionary
-    req := goradius.NewWithDictionary(
+    req := goradius.NewPacketWithDictionary(
         goradius.CodeAccessRequest, 1, dict,
     )
 

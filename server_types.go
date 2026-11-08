@@ -83,21 +83,36 @@ type SecretRequest struct {
 	Attempt int
 }
 
-// MessageAuthPolicy controls per-secret Message-Authenticator enforcement.
+// MessageAuthPolicy controls when a Message-Authenticator (RFC 2869 Section
+// 5.14) must be present. It is set server-wide with WithMessageAuthPolicy and
+// overridden per device through SecretResponse.MessageAuthPolicy. Under every
+// policy a Message-Authenticator that is present is verified and the packet
+// dropped on mismatch (RFC 3579 Section 3.2), and Status-Server always
+// requires one (RFC 5997 Section 4.2).
 type MessageAuthPolicy uint8
 
 const (
-	// MessageAuthPolicyDefault defers to the server-level WithRequireMessageAuthenticator setting.
+	// MessageAuthPolicyDefault defers to the server-wide policy. Passing it to
+	// WithMessageAuthPolicy keeps the server default, MessageAuthPolicyAuto.
 	MessageAuthPolicyDefault MessageAuthPolicy = 0
-	// MessageAuthPolicyRequired enforces Message-Authenticator presence for
-	// this secret on every request type, regardless of the server setting.
+	// MessageAuthPolicyRequired is the strict mode: every request type,
+	// including Accounting, CoA, and Disconnect, must carry a verified
+	// Message-Authenticator.
 	MessageAuthPolicyRequired MessageAuthPolicy = 1
-	// MessageAuthPolicyOptional accepts Access-Requests without a
-	// Message-Authenticator for this secret, regardless of the server
-	// setting. A Message-Authenticator that is present is still verified
-	// (RFC 3579 Section 3.2), and Status-Server always requires one
-	// (RFC 5997).
+	// MessageAuthPolicyOptional never requires the attribute.
 	MessageAuthPolicyOptional MessageAuthPolicy = 2
+	// MessageAuthPolicyAuto accepts Access-Requests without the attribute from
+	// a device until that device has sent one that verified; from then on its
+	// Access-Requests must carry one, matching FreeRADIUS
+	// require_message_authenticator = auto. Devices are keyed by source IP and
+	// the memory is in-process, so it starts empty on every server start.
+	// Accounting, CoA, and Disconnect stay optional.
+	MessageAuthPolicyAuto MessageAuthPolicy = 3
+	// MessageAuthPolicyDisabled never requires the attribute and omits it from
+	// replies, for devices that do not understand it. RFC 3579 Section 3.2
+	// requires it in replies carrying EAP-Message, so reserve it for devices
+	// that need it.
+	MessageAuthPolicyDisabled MessageAuthPolicy = 4
 )
 
 type SecretResponse struct {
@@ -108,8 +123,8 @@ type SecretResponse struct {
 	// When greater than 1, the server will try each secret in order
 	// until one validates the packet.
 	Attempts int
-	// MessageAuthPolicy overrides the server-level WithRequireMessageAuthenticator
-	// option for this specific secret. Default defers to the server setting.
+	// MessageAuthPolicy overrides the server-wide WithMessageAuthPolicy for
+	// this device. Default defers to the server.
 	MessageAuthPolicy MessageAuthPolicy
 }
 

@@ -2764,3 +2764,121 @@ func TestGetAttributesIncludesBitsAndUnionChildren(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, uint64(1234), dl[0].Decoded())
 }
+
+func TestRemoveAttributeByNameTagged(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	t.Run("standard tagged attribute removes only the matching tag", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("tunnel-type:1", "pptp"))
+		require.NoError(t, pkt.AddAttributeByName("tunnel-type:2", "l2tp"))
+
+		assert.Equal(t, 1, pkt.RemoveAttributeByName("tunnel-type:1"))
+
+		vals := pkt.GetAttribute("tunnel-type")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(2), vals[0].Tag)
+		assert.Equal(t, "3", vals[0].String())
+	})
+
+	t.Run("vendor tagged attribute removes only the matching tag", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "svc-a"))
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:3", "svc-b"))
+
+		assert.Equal(t, 1, pkt.RemoveAttributeByName("erx-service-activate:3"))
+
+		vals := pkt.GetAttribute("erx-service-activate")
+		require.Len(t, vals, 1)
+		assert.Equal(t, uint8(1), vals[0].Tag)
+		assert.Equal(t, "svc-a", vals[0].String())
+	})
+
+	t.Run("untagged name removes every tag", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "svc-a"))
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:3", "svc-b"))
+
+		assert.Equal(t, 2, pkt.RemoveAttributeByName("erx-service-activate"))
+		assert.Empty(t, pkt.GetAttribute("erx-service-activate"))
+	})
+
+	t.Run("tag on an untagged attribute is ignored", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("reply-message", "hello"))
+
+		assert.Equal(t, 1, pkt.RemoveAttributeByName("reply-message:1"))
+		assert.Empty(t, pkt.GetAttribute("reply-message"))
+	})
+
+	t.Run("invalid tag removes nothing", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.AddAttributeByName("erx-service-activate:1", "svc-a"))
+
+		assert.Equal(t, 0, pkt.RemoveAttributeByName("erx-service-activate:99"))
+		assert.Len(t, pkt.GetAttribute("erx-service-activate"), 1)
+	})
+}
+
+// TestVSACacheInvalidatedOnEncryption guards the parsed-VSA cache against
+// holding plaintext slices after deferred encryption rewrote the VSA bytes.
+func TestVSACacheInvalidatedOnEncryption(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	reqPkt := NewPacketWithDictionary(CodeAccessRequest, 9, dict)
+	reqPkt.SetAuthenticator([16]byte{0x5A, 0x5B, 0x5C})
+	req := &Request{
+		packet: reqPkt,
+		Secret: SecretResponse{Secret: []byte("testing123")},
+	}
+
+	resp := NewResponse(req)
+	resp.SetCode(CodeAccessAccept)
+	// A 32-octet User-Password-style value: a stale plaintext copy would
+	// "decrypt" into garbage instead of failing length validation.
+	mppeKeys := bytes.Repeat([]byte{0x01, 0x02, 0x03, 0x04}, 8)
+	require.NoError(t, resp.AddAttribute("ms-chap-mppe-keys", mppeKeys))
+
+	// Reading before serialization caches the parsed (still plaintext) VSA.
+	before := resp.GetAttribute("ms-chap-mppe-keys")
+	require.Len(t, before, 1)
+	assert.Equal(t, mppeKeys, before[0].Value)
+
+	_, err = resp.packet.Encode()
+	require.NoError(t, err)
+
+	// After encryption rewrote the VSA bytes the read must still decrypt.
+	after := resp.GetAttribute("ms-chap-mppe-keys")
+	require.Len(t, after, 1)
+	assert.Equal(t, mppeKeys, after[0].Value)
+}
+
+func TestAttributeValueStringScalarTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataType DataType
+		value    []byte
+		want     string
+	}{
+		{"byte", DataTypeByte, []byte{7}, "7"},
+		{"short", DataTypeShort, EncodeShort(513), "513"},
+		{"integer64", DataTypeInteger64, EncodeInteger64(1 << 40), "1099511627776"},
+		{"signed", DataTypeSigned, EncodeSigned(-5), "-5"},
+		{"combo-ip v4", DataTypeComboIP, []byte{10, 0, 0, 1}, "10.0.0.1"},
+		{"combo-ip v6", DataTypeComboIP, net.ParseIP("2001:db8::7").To16(), "2001:db8::7"},
+		{"time_delta", DataTypeTimeDelta, EncodeTimeDelta(90 * time.Second), "1m30s"},
+		{"invalid short falls back to hex", DataTypeShort, []byte{1}, "0x01"},
+		{"container falls back to hex", DataTypeTLV, []byte{1, 3, 7}, "0x010307"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			av := AttributeValue{
+				DataType: tt.dataType,
+				Value:    tt.value,
+			}
+			assert.Equal(t, tt.want, av.String())
+		})
+	}
+}

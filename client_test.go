@@ -647,6 +647,78 @@ func TestClientAcceptsAccountingResponseWithoutMessageAuthenticator(t *testing.T
 	assert.Equal(t, CodeAccountingResponse, resp.Code)
 }
 
+func TestClientLegacyMessageAuthenticatorMode(t *testing.T) {
+	// Devices that predate RFC 2869 neither expect nor send
+	// Message-Authenticator. The default client must reject such an
+	// Access-Accept (BlastRADIUS hardening); with both switches off it must
+	// interoperate and must not put the attribute on the wire either.
+	dict, err := NewDefault()
+	require.NoError(t, err)
+	secret := []byte("testing123")
+
+	legacyServer := func(t *testing.T) (string, <-chan bool) {
+		t.Helper()
+		serverConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { serverConn.Close() })
+
+		requestHadMA := make(chan bool, 1)
+		go func() {
+			buffer := make([]byte, 4096)
+			n, clientAddr, err := serverConn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+			reqPkt, err := Decode(buffer[:n])
+			if err != nil {
+				return
+			}
+			requestHadMA <- reqPkt.hasMessageAuthenticator()
+
+			respPkt := NewPacket(CodeAccessAccept, reqPkt.Identifier)
+			respPkt.SetAuthenticator(respPkt.CalculateResponseAuthenticator(secret, reqPkt.Authenticator))
+			respData, _ := respPkt.Encode()
+			serverConn.WriteToUDP(respData, clientAddr)
+		}()
+		return serverConn.LocalAddr().String(), requestHadMA
+	}
+
+	t.Run("default client rejects access-accept without MA", func(t *testing.T) {
+		addr, requestHadMA := legacyServer(t)
+		client, err := NewClient(
+			WithAddr(addr),
+			WithSecret(secret),
+			WithClientDictionary(dict),
+			WithTimeout(300*time.Millisecond),
+		)
+		require.NoError(t, err)
+
+		_, err = client.AccessRequest(map[string]any{"user-name": "testuser"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read response")
+		assert.True(t, <-requestHadMA)
+	})
+
+	t.Run("legacy client accepts and sends without MA", func(t *testing.T) {
+		addr, requestHadMA := legacyServer(t)
+		client, err := NewClient(
+			WithAddr(addr),
+			WithSecret(secret),
+			WithClientDictionary(dict),
+			WithTimeout(2*time.Second),
+			WithClientUseMessageAuthenticator(false),
+			WithVerifyMessageAuthenticator(false),
+		)
+		require.NoError(t, err)
+
+		resp, err := client.AccessRequest(map[string]any{"user-name": "testuser"})
+		require.NoError(t, err)
+		assert.Equal(t, CodeAccessAccept, resp.Code)
+		assert.False(t, <-requestHadMA, "legacy mode must not send Message-Authenticator")
+		assert.False(t, resp.hasMessageAuthenticator())
+	})
+}
+
 func TestClientDiscardsForgedMessageAuthenticatorWhenVerificationDisabled(t *testing.T) {
 	// RFC 3579 Section 3.2: a present Message-Authenticator must verify even
 	// when the client is configured not to require one. RFC 2865 Section 4.2:

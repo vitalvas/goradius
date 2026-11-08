@@ -93,6 +93,20 @@ func main() {
 }
 ```
 
+## Server Options
+
+| Option | Default | Description |
+|---|---|---|
+| `WithHandler(h)` | none | Handler implementing `ServeSecret` and `ServeRADIUS` |
+| `WithDictionary(dict)` | `NewDefault()` | Dictionary attached to every decoded request |
+| `WithMessageAuthPolicy(p)` | `MessageAuthPolicyAuto` | Message-Authenticator policy, see Secret Management below |
+| `WithRequireRequestAuthenticator(b)` | `true` | Validate the computed Request Authenticator of Accounting, CoA, and Disconnect requests |
+| `WithRequestTimeout(d)` | none | Deadline on the context passed to `ServeSecret` and `ServeRADIUS` |
+
+The request timeout only sets the deadline on
+`req.Context`; handlers that do slow work must observe
+it themselves.
+
 ## Handler Interface
 
 The server requires a handler that implements two
@@ -202,17 +216,59 @@ resp.SetAttribute("session-timeout", 3600)
 
 ### SetAttributes
 
-Add multiple attributes at once:
+Replace multiple attributes at once. Every value is a
+slice, and each element becomes one attribute
+instance. Existing instances of each key are removed
+first:
 
 ```go
-attrs := map[string]interface{}{
-    "reply-message":          "Access granted",
-    "framed-ip-address":      "192.0.2.10",
-    "session-timeout":        3600,
-    "erx-primary-dns":        "8.8.8.8",
-    "erx-service-activate:1": "ipoe-parking",
-}
-resp.SetAttributes(attrs)
+err := resp.SetAttributes(map[string][]any{
+    "reply-message":          {"Access granted"},
+    "framed-ip-address":      {"192.0.2.10"},
+    "session-timeout":        {3600},
+    "erx-primary-dns":        {"8.8.8.8", "8.8.4.4"},
+    "erx-service-activate:1": {"ipoe-parking"},
+})
+```
+
+A `name:tag` key replaces only the instances carrying
+that tag. Container members (struct, TLV, and EVS
+children) are addressed by their own flat child name
+and are grouped into one container instance.
+
+### AddAttribute and AddAttributes
+
+Append without removing existing instances:
+
+```go
+resp.AddAttribute("reply-message", "Line one")
+resp.AddAttribute("reply-message", "Line two")
+
+resp.AddAttributes(map[string][]any{
+    "erx-service-activate:2": {"svc-video"},
+})
+```
+
+### DeleteAttribute
+
+Remove every instance of an attribute, or only the
+instances with a given tag. Returns the number of
+attributes removed:
+
+```go
+removed := resp.DeleteAttribute("reply-message")
+resp.DeleteAttribute("erx-service-activate:1")
+```
+
+### Inspecting a Response
+
+Middleware can read a response produced by the inner
+handler:
+
+```go
+code := resp.Code()
+names := resp.ListAttributes()
+values := resp.GetAttribute("framed-ip-address")
 ```
 
 ## Authentication Example
@@ -247,11 +303,10 @@ func (h *myHandler) ServeRADIUS(
             "reply-message", "Access granted",
         )
 
-        attrs := map[string]interface{}{
-            "framed-ip-address": "192.0.2.10",
-            "session-timeout":   3600,
-        }
-        resp.SetAttributes(attrs)
+        resp.SetAttributes(map[string][]any{
+            "framed-ip-address": {"192.0.2.10"},
+            "session-timeout":   {3600},
+        })
     } else {
         resp.SetCode(goradius.CodeAccessReject)
         resp.SetAttribute(
@@ -350,6 +405,48 @@ func handleAccountingStop(
     }
 }
 ```
+
+## Middleware
+
+A `Middleware` wraps a `Handler` and returns a new
+one. `HandlerFunc` adapts a plain function to the
+`Handler` interface; its `ServeSecret` returns an
+empty secret, so secrets always come from the handler
+at the core of the chain:
+
+```go
+func logging(next goradius.Handler) goradius.Handler {
+    return goradius.HandlerFunc(func(
+        req *goradius.Request,
+    ) (goradius.Response, error) {
+        start := time.Now()
+        resp, err := next.ServeRADIUS(req)
+        log.Printf(
+            "%s from %s -> %s in %s",
+            req.Code(), req.RemoteAddr,
+            resp.Code(), time.Since(start),
+        )
+        return resp, err
+    })
+}
+
+srv.Use(validation)
+srv.Use(logging) // outermost
+```
+
+The last middleware added is the outermost: it sees
+the request first and the response last. The chain is
+composed per request, so every `Use` call made so far
+applies to the next packet.
+
+Middleware runs after secret lookup and packet
+validation, so `req.Secret` is already resolved.
+Returning an error, or a zero `Response`, drops the
+request without a reply. Handlers run concurrently,
+one goroutine per packet, so shared state in a
+middleware must be synchronized. See
+`examples/advanced-server/main.go` for logging,
+validation, and statistics middleware.
 
 ## Transport Interface
 
@@ -495,6 +592,41 @@ func (s *SecretStore) ServeSecret(
 }
 ```
 
+### Secret Rotation
+
+Set `Attempts` on the `SecretResponse` returned for
+attempt 0 to the number of secrets a client may be
+using. When that secret fails to validate the packet,
+the server calls `ServeSecret` again with `Attempt`
+set to 1, 2, and so on up to `Attempts - 1`, and uses
+the first secret that validates. A value of 0 or 1
+disables rotation:
+
+```go
+func (s *SecretStore) ServeSecret(
+    req goradius.SecretRequest,
+) (goradius.SecretResponse, error) {
+    secrets := []string{"new-secret", "old-secret"}
+    if req.Attempt >= len(secrets) {
+        return goradius.SecretResponse{},
+            fmt.Errorf("no more secrets")
+    }
+
+    return goradius.SecretResponse{
+        Secret:   []byte(secrets[req.Attempt]),
+        Attempts: len(secrets),
+    }, nil
+}
+```
+
+The request handed to `ServeRADIUS` carries the
+secret that validated in `req.Secret`. Validation
+relies on the Request Authenticator and
+Message-Authenticator checks described below, so an
+Access-Request without a Message-Authenticator cannot
+be matched against any secret and the first one is
+used.
+
 ### Request Authenticator Validation
 
 The computed Request Authenticator of Accounting-Request, CoA-Request,
@@ -506,44 +638,72 @@ it from the shared secret, so this costs no interoperability; use
 it incorrectly. Access-Request and Status-Server carry a random
 authenticator and are never subject to this check.
 
-### Message-Authenticator Semantics
+### Message-Authenticator Policy
 
-A Message-Authenticator that is present in a received packet is always
-verified, and the packet is silently dropped on mismatch (RFC 3579
-Section 3.2). Configuration only controls whether the attribute must be
-present:
+`WithMessageAuthPolicy` selects how the server treats the
+Message-Authenticator attribute (RFC 2869 Section 5.14) for the whole
+fleet. The default is `MessageAuthPolicyAuto`:
 
-- Access-Request: presence is governed by
-  `WithRequireMessageAuthenticator` (default on, the BlastRADIUS
-  hardening) and the per-secret policy below.
-- Status-Server: presence is always required (RFC 5997).
-- Accounting-Request, CoA-Request, Disconnect-Request: presence is
-  optional (RFC 2866, RFC 5176), so devices that do not support
-  Message-Authenticator interoperate out of the box.
+| Policy | Access-Request | Accounting, CoA, Disconnect | Replies carry it |
+|---|---|---|---|
+| `MessageAuthPolicyAuto` (default) | Optional until the device has sent one valid attribute, required from that device afterwards | Optional | Yes |
+| `MessageAuthPolicyRequired` | Required | Required | Yes |
+| `MessageAuthPolicyOptional` | Optional | Optional | Yes |
+| `MessageAuthPolicyDisabled` | Optional | Optional | No |
 
-### Per-Secret Message-Authenticator Policy
+Two rules hold under every policy. A Message-Authenticator that is
+present is always verified and the packet silently dropped on mismatch
+(RFC 3579 Section 3.2). Status-Server always requires one (RFC 5997).
 
-`MessageAuthPolicy` on `SecretResponse` overrides the server-level
-`WithRequireMessageAuthenticator` for that specific secret:
+#### Auto Mode for Mixed Fleets
 
-| Value | Behaviour |
-|---|---|
-| `MessageAuthPolicyDefault` | Use the server setting (default) |
-| `MessageAuthPolicyRequired` | Require presence on every request type for this secret |
-| `MessageAuthPolicyOptional` | Accept Access-Requests without the attribute for this secret |
+Auto mode is the FreeRADIUS `require_message_authenticator = auto`
+behaviour. A device is identified by its source IP. Access-Requests
+from a device are accepted with or without the attribute until one of
+them carries a Message-Authenticator that verifies under the device's
+secret. From then on the device is recorded and its Access-Requests
+without the attribute are dropped. End-of-life devices that never send
+it keep working, and devices that do send it are protected from the
+second packet on.
+
+Only a verified attribute records a device, so a forged one can neither
+lock a legitimate device out nor fill the table. The table is
+in-process and starts empty on each server start.
+
+A device that sends the attribute for some Access-Requests only, for
+example EAP but not PAP, is locked out after its first one. Give such a
+device a per-device override.
+
+#### Strict Mode
+
+Every request type must carry a verified Message-Authenticator,
+including Accounting, CoA, and Disconnect:
+
+```go
+srv, err := goradius.NewServer(
+    goradius.WithHandler(handler),
+    goradius.WithMessageAuthPolicy(goradius.MessageAuthPolicyRequired),
+)
+```
+
+#### Per-Device Override
+
+`MessageAuthPolicy` on `SecretResponse` overrides the server-wide
+policy for that device. `MessageAuthPolicyDefault` defers to the
+server:
 
 ```go
 return goradius.SecretResponse{
     Secret:            []byte(secret),
-    MessageAuthPolicy: goradius.MessageAuthPolicyRequired,
+    MessageAuthPolicy: goradius.MessageAuthPolicyDisabled,
 }, nil
 ```
 
-This allows incremental adoption — legacy devices can use
-`MessageAuthPolicyOptional` while new devices use
-`MessageAuthPolicyRequired`, without changing the global server setting.
-A present-but-wrong Message-Authenticator is rejected under every
-policy.
+A strict fleet can keep one legacy device on `Optional` or `Disabled`,
+and a mixed fleet can pin a device to `Required`, without changing the
+server-wide policy. `Disabled` also omits the attribute from replies to
+that device. RFC 3579 requires it in replies carrying EAP-Message, so
+reserve `Disabled` for devices that need it.
 
 ## Server Control
 
@@ -581,6 +741,40 @@ signal.Notify(
 log.Println("Shutting down...")
 srv.Close()
 ```
+
+`Close` closes every transport passed to `Serve` and
+is safe to call more than once. A later `Serve` call
+returns `ErrServerClosed`.
+
+### Multiple Transports
+
+`Serve` may be called once per transport to listen on
+several sockets with one server, for example UDP on
+the authentication and accounting ports. Each request
+reports the socket it arrived on in `LocalAddr` of
+both `SecretRequest` and `Request`, so `ServeSecret`
+can key secrets per listener. `Addr` returns the
+first transport's address and blocks until `Serve`
+has been called.
+
+### Processing Packets Without a Transport
+
+`ProcessRawPacket` runs the full pipeline on raw
+bytes: secret lookup and rotation, validation,
+middleware, the handler, and the response
+authenticators. It returns the reply bytes, or nil
+when the packet was dropped or the handler chose not
+to respond, and works without ever calling `Serve`:
+
+```go
+reply, err := srv.ProcessRawPacket(data, remoteAddr)
+if err == nil && reply != nil {
+    conn.WriteTo(reply, remoteAddr)
+}
+```
+
+The server does not copy `data`, so the caller must
+not modify it during the call.
 
 ## Complete Example
 

@@ -894,7 +894,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			WithHandler(handler),
 			WithDictionary(dict),
 			WithRequireRequestAuthenticator(true),
-			WithRequireMessageAuthenticator(false), // Disable Message-Authenticator for this test
+			WithMessageAuthPolicy(MessageAuthPolicyOptional), // Disable Message-Authenticator for this test
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -945,7 +945,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			WithHandler(handler),
 			WithDictionary(dict),
 			WithRequireRequestAuthenticator(true),
-			WithRequireMessageAuthenticator(true),
+			WithMessageAuthPolicy(MessageAuthPolicyRequired),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -999,7 +999,7 @@ func TestServerRequestAuthenticatorValidation(t *testing.T) {
 			WithHandler(handler),
 			WithDictionary(dict),
 			WithRequireRequestAuthenticator(true),
-			WithRequireMessageAuthenticator(true),
+			WithMessageAuthPolicy(MessageAuthPolicyRequired),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -2146,7 +2146,7 @@ func TestServerPerSecretRequireMessageAuthenticator(t *testing.T) {
 
 		srv, err := NewServer(
 			WithHandler(handler),
-			WithRequireMessageAuthenticator(false),
+			WithMessageAuthPolicy(MessageAuthPolicyOptional),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -2172,7 +2172,7 @@ func TestServerPerSecretRequireMessageAuthenticator(t *testing.T) {
 
 		srv, err := NewServer(
 			WithHandler(handler),
-			WithRequireMessageAuthenticator(true),
+			WithMessageAuthPolicy(MessageAuthPolicyRequired),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -2196,7 +2196,7 @@ func TestServerPerSecretRequireMessageAuthenticator(t *testing.T) {
 
 		srv, err := NewServer(
 			WithHandler(handler),
-			WithRequireMessageAuthenticator(true),
+			WithMessageAuthPolicy(MessageAuthPolicyRequired),
 		)
 		require.NoError(t, err)
 		defer srv.Close()
@@ -2399,7 +2399,7 @@ func BenchmarkProcessRawPacket(b *testing.B) {
 	srv, err := NewServer(
 		WithHandler(handler),
 		WithDictionary(dict),
-		WithRequireMessageAuthenticator(false),
+		WithMessageAuthPolicy(MessageAuthPolicyOptional),
 	)
 	require.NoError(b, err)
 
@@ -2440,7 +2440,7 @@ func TestServerServeTwiceNoPanic(t *testing.T) {
 func TestServerUseConcurrentWithRequests(t *testing.T) {
 	srv, err := NewServer(
 		WithHandler(HandlerFunc(func(*Request) (Response, error) { return Response{}, nil })),
-		WithRequireMessageAuthenticator(false),
+		WithMessageAuthPolicy(MessageAuthPolicyOptional),
 	)
 	require.NoError(t, err)
 
@@ -2637,7 +2637,7 @@ func TestServerDropsNonRequestCodes(t *testing.T) {
 		secretResp: SecretResponse{Secret: []byte("testing123")},
 		radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
 	}
-	srv, err := NewServer(WithHandler(handler), WithRequireMessageAuthenticator(false))
+	srv, err := NewServer(WithHandler(handler), WithMessageAuthPolicy(MessageAuthPolicyOptional))
 	require.NoError(t, err)
 	clientAddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1812}
 
@@ -2735,7 +2735,7 @@ func TestMessageAuthenticatorVerifyWhenPresent(t *testing.T) {
 
 	t.Run("status-server requires MA even when the requirement is disabled", func(t *testing.T) {
 		// RFC 5997: all Status-Server packets MUST include Message-Authenticator.
-		srv, handler := newServer(t, MessageAuthPolicyOptional, WithRequireMessageAuthenticator(false))
+		srv, handler := newServer(t, MessageAuthPolicyOptional, WithMessageAuthPolicy(MessageAuthPolicyOptional))
 		pkt := NewPacketWithDictionary(CodeStatusServer, 4, dict)
 		pkt.SetAuthenticator([16]byte{0x66})
 		data, err := pkt.Encode()
@@ -2760,6 +2760,158 @@ func TestMessageAuthenticatorVerifyWhenPresent(t *testing.T) {
 		assert.NotNil(t, reply)
 		assert.True(t, handler.WasRADIUSCalled())
 	})
+}
+
+func TestMessageAuthPolicyModes(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+	secret := []byte("testing123")
+	deviceA := &net.UDPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 1812}
+	deviceB := &net.UDPAddr{IP: net.IPv4(192, 0, 2, 11), Port: 1812}
+
+	newServer := func(t *testing.T, devicePolicy MessageAuthPolicy, opts ...ServerOption) *Server {
+		t.Helper()
+		handler := &testHandler{
+			secretResp: SecretResponse{
+				Secret:            secret,
+				MessageAuthPolicy: devicePolicy,
+			},
+			radiusResp: Response{packet: NewPacket(CodeAccessAccept, 1)},
+		}
+		srv, err := NewServer(append([]ServerOption{WithHandler(handler), WithDictionary(dict)}, opts...)...)
+		require.NoError(t, err)
+		return srv
+	}
+
+	// encode builds a request whose Request Authenticator is valid. A nil
+	// maKey omits Message-Authenticator; secret makes a genuine one and any
+	// other key a forged one.
+	encode := func(t *testing.T, code Code, id uint8, maKey []byte) []byte {
+		t.Helper()
+		pkt := NewPacketWithDictionary(code, id, dict)
+		require.NoError(t, pkt.AddAttributeByName("user-name", "dev"))
+		if code == CodeAccessRequest || code == CodeStatusServer {
+			pkt.SetAuthenticator([16]byte{id})
+			if maKey != nil {
+				pkt.AddMessageAuthenticator(maKey, pkt.Authenticator)
+			}
+		} else {
+			if maKey != nil {
+				pkt.AddMessageAuthenticator(maKey, [16]byte{})
+			}
+			pkt.SetAuthenticator(pkt.CalculateRequestAuthenticator(secret))
+		}
+		data, err := pkt.Encode()
+		require.NoError(t, err)
+		return data
+	}
+
+	accepted := func(t *testing.T, srv *Server, from net.Addr, data []byte) bool {
+		t.Helper()
+		reply, err := srv.ProcessRawPacket(data, from)
+		require.NoError(t, err)
+		return reply != nil
+	}
+
+	replyHasMA := func(t *testing.T, srv *Server, data []byte) bool {
+		t.Helper()
+		reply, err := srv.ProcessRawPacket(data, deviceA)
+		require.NoError(t, err)
+		require.NotNil(t, reply)
+		pkt, err := Decode(reply)
+		require.NoError(t, err)
+		return pkt.hasMessageAuthenticator()
+	}
+
+	t.Run("auto is the default and learns per device", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyDefault)
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, nil)), "unknown device without MA")
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 2, secret)), "valid MA promotes the device")
+		assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 3, nil)), "promoted device without MA")
+		assert.True(t, accepted(t, srv, deviceB, encode(t, CodeAccessRequest, 4, nil)), "other device is unaffected")
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccountingRequest, 5, nil)), "accounting is unaffected by promotion")
+	})
+
+	t.Run("auto ignores a forged MA", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyDefault)
+		assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, []byte("wrong"))))
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 2, nil)), "forged MA must not promote")
+	})
+
+	t.Run("auto keys on source IP not port", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyDefault)
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, secret)))
+		otherPort := &net.UDPAddr{IP: deviceA.IP, Port: 40000}
+		assert.False(t, accepted(t, srv, otherPort, encode(t, CodeAccessRequest, 2, nil)))
+	})
+
+	t.Run("auto promotes after the winning rotation secret", func(t *testing.T) {
+		srv, err := NewServer(
+			WithHandler(&rotationHandler{secrets: []string{"oldsecret", string(secret)}}),
+			WithDictionary(dict),
+		)
+		require.NoError(t, err)
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, secret)))
+		assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 2, nil)))
+	})
+
+	t.Run("required covers every request type", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyDefault, WithMessageAuthPolicy(MessageAuthPolicyRequired))
+		for i, code := range []Code{CodeAccessRequest, CodeAccountingRequest, CodeCoARequest, CodeDisconnectRequest} {
+			id := uint8(i*2 + 1)
+			assert.False(t, accepted(t, srv, deviceA, encode(t, code, id, nil)), "%s without MA", code)
+			assert.True(t, accepted(t, srv, deviceA, encode(t, code, id+1, secret)), "%s with MA", code)
+		}
+	})
+
+	t.Run("optional and disabled never require and keep no memory", func(t *testing.T) {
+		for _, policy := range []MessageAuthPolicy{MessageAuthPolicyOptional, MessageAuthPolicyDisabled} {
+			srv := newServer(t, MessageAuthPolicyDefault, WithMessageAuthPolicy(policy))
+			assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, secret)), "policy %d", policy)
+			assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 2, nil)), "policy %d: no auto memory", policy)
+			assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 3, []byte("wrong"))), "policy %d: forged MA is still verified", policy)
+			assert.False(t, accepted(t, srv, deviceA, encode(t, CodeStatusServer, 4, nil)), "policy %d: status-server still requires MA", policy)
+		}
+	})
+
+	t.Run("disabled omits MA from replies", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyDefault, WithMessageAuthPolicy(MessageAuthPolicyOptional))
+		assert.True(t, replyHasMA(t, srv, encode(t, CodeAccessRequest, 1, nil)), "optional keeps emitting")
+
+		srv = newServer(t, MessageAuthPolicyDefault, WithMessageAuthPolicy(MessageAuthPolicyDisabled))
+		assert.False(t, replyHasMA(t, srv, encode(t, CodeAccessRequest, 1, nil)), "server-wide disabled")
+
+		srv = newServer(t, MessageAuthPolicyDisabled)
+		assert.False(t, replyHasMA(t, srv, encode(t, CodeAccessRequest, 1, nil)), "per-device disabled under auto server")
+	})
+
+	t.Run("per-device policy overrides the server mode", func(t *testing.T) {
+		srv := newServer(t, MessageAuthPolicyAuto, WithMessageAuthPolicy(MessageAuthPolicyRequired))
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, nil)), "device auto under strict server")
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 2, secret)))
+		assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 3, nil)))
+
+		srv = newServer(t, MessageAuthPolicyRequired, WithMessageAuthPolicy(MessageAuthPolicyOptional))
+		assert.False(t, accepted(t, srv, deviceA, encode(t, CodeAccountingRequest, 1, nil)), "device required under optional server")
+
+		srv = newServer(t, MessageAuthPolicyDefault, WithMessageAuthPolicy(MessageAuthPolicyDefault))
+		assert.True(t, accepted(t, srv, deviceA, encode(t, CodeAccessRequest, 1, nil)), "default server option keeps auto")
+	})
+}
+
+func TestDeviceKey(t *testing.T) {
+	assert.Equal(t, "192.0.2.10", deviceKey(&net.UDPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 1812}))
+	assert.Equal(t, "2001:db8::1", deviceKey(&net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 2083}))
+	assert.Equal(t, "legacy-nas", deviceKey(&net.UnixAddr{Name: "legacy-nas", Net: "unix"}))
+	assert.Equal(t, "", deviceKey(nil))
+}
+
+func BenchmarkDeviceKey(b *testing.B) {
+	addr := &net.UDPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 1812}
+	b.ReportAllocs()
+	for b.Loop() {
+		deviceKey(addr)
+	}
 }
 
 func TestServerTransparentPasswordDecryption(t *testing.T) {

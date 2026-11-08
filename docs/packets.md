@@ -37,12 +37,12 @@ graph LR
 import "go.vitalvas.com/goradius"
 
 // Create a new Access-Request packet
-req := goradius.New(
+req := goradius.NewPacket(
     goradius.CodeAccessRequest, 1,
 )
 
 // Create a response packet
-resp := goradius.New(
+resp := goradius.NewPacket(
     goradius.CodeAccessAccept, req.Identifier,
 )
 ```
@@ -88,7 +88,7 @@ dict, err := goradius.NewDefault()
 if err != nil {
     log.Fatal(err)
 }
-req := goradius.NewWithDictionary(
+req := goradius.NewPacketWithDictionary(
     goradius.CodeAccessRequest, 1, dict,
 )
 
@@ -190,43 +190,110 @@ if len(attrs) > 0 {
 }
 ```
 
-## Standard Attributes
-
-Common RADIUS attribute types (use with dictionary
-for names or reference):
+`Decoded` returns the value as its native Go type
+(`string`, `uint32`, `net.IP`, `*net.IPNet`,
+`time.Time`, `time.Duration`, `[]byte`) according to
+the data type. `Children` decodes a TLV, struct, or
+EVS container into a map keyed by child name:
 
 ```go
-// Common attribute types
-const (
-    AttributeUserName           = 1
-    AttributeUserPassword       = 2
-    AttributeCHAPPassword       = 3
-    AttributeNASIPAddress       = 4
-    AttributeNASPort            = 5
-    AttributeServiceType        = 6
-    AttributeFramedProtocol     = 7
-    AttributeFramedIPAddress    = 8
-    AttributeFramedIPNetmask    = 9
-    AttributeFramedRouting      = 10
-    AttributeReplyMessage       = 18
-    AttributeState              = 24
-    AttributeVendorSpecific     = 26
-    AttributeSessionTimeout     = 27
-    AttributeIdleTimeout        = 28
-    AttributeCallingStationID   = 31
-    AttributeCalledStationID    = 30
-    AttributeNASIdentifier      = 32
-    AttributeAcctStatusType     = 40
-    AttributeAcctInputOctets    = 42
-    AttributeAcctOutputOctets   = 43
-    AttributeAcctSessionID      = 44
-    AttributeAcctSessionTime    = 46
-    AttributeAcctInputPackets   = 47
-    AttributeAcctOutputPackets  = 48
-    AttributeAcctTerminateCause = 49
-    AttributeEventTimestamp     = 55
-    AttributeNASPortType        = 61
-)
+for _, v := range req.GetAttribute("framed-ip-address") {
+    ip := v.Decoded().(net.IP)
+    fmt.Println(ip)
+}
+
+for _, v := range req.GetAttribute("cisco-example-tlv") {
+    children, err := v.Children()
+    if err == nil {
+        fmt.Println(children["tlv-name"])
+    }
+}
+```
+
+### Flat Attribute Maps
+
+`GetAttributes` returns the whole packet as a flat
+map from attribute name to values. Tagged attributes
+are keyed `name:tag`, and container attributes are
+expanded so each child appears under its own name.
+`SetAttributes` is the mirror image and accepts the
+same shape:
+
+```go
+flat := req.GetAttributes()
+for name, values := range flat {
+    for _, v := range values {
+        fmt.Printf("%s = %s\n", name, v.String())
+    }
+}
+
+err := resp.SetAttributes(map[string][]any{
+    "reply-message":          {"line one", "line two"},
+    "erx-service-activate:1": {"ipoe-parking"},
+    "tlv-name":               {"svc"}, // child of a TLV
+})
+```
+
+`SetAttributesFromStrings` takes the same map with
+string values, for input read from configuration or
+a policy engine. Enumerated names, decimal integers,
+hex octets (with or without `0x`), and the canonical
+`ifid` form are converted according to the
+dictionary data type:
+
+```go
+err := resp.SetAttributesFromStrings(map[string][]string{
+    "acct-status-type":  {"start"},
+    "session-timeout":   {"3600"},
+    "class":             {"0xdeadbeef"},
+    "framed-ip-address": {"192.0.2.10"},
+})
+```
+
+### Removing Attributes
+
+```go
+// All instances by name
+removed := pkt.RemoveAttributeByName("reply-message")
+
+// Only the instances carrying tag 1
+pkt.RemoveAttributeByName("erx-service-activate:1")
+```
+
+## Standard Attributes
+
+Standard attributes are addressed by their lowercase
+dictionary name (`user-name`, `framed-ip-address`,
+`acct-status-type`). The library does not export a
+constant per attribute type; look the numeric type up
+in the dictionary when needed:
+
+```go
+def, ok := dict.LookupStandardByName("user-name")
+// def.ID == 1
+```
+
+Only the two types the packet layer handles itself
+are exported as constants:
+
+```go
+goradius.AttributeTypeVendorSpecific       // 26
+goradius.AttributeTypeMessageAuthenticator // 80
+```
+
+### Length Constants
+
+```go
+goradius.PacketHeaderLength         // 20
+goradius.MinPacketLength            // 20
+goradius.MaxPacketLength            // 4096
+goradius.AuthenticatorLength        // 16
+goradius.AttributeHeaderLength      // 2
+goradius.VendorSpecificHeaderLength // 6
+goradius.MaxAttributeValueLength    // 253
+goradius.MaxVSAValueLength          // 247
+goradius.MaxUserPasswordLength      // 128
+goradius.MaxAttributeTag            // 0x1F
 ```
 
 ### Example Usage with Dictionary
@@ -237,7 +304,7 @@ dict, err := goradius.NewDefault()
 if err != nil {
     log.Fatal(err)
 }
-req := goradius.NewWithDictionary(
+req := goradius.NewPacketWithDictionary(
     goradius.CodeAccessRequest, 1, dict,
 )
 
@@ -360,6 +427,100 @@ for _, name := range attrNames {
 }
 ```
 
+## Low-Level Attribute API
+
+The raw API works on wire bytes and needs no
+dictionary. Prefer the dictionary API above; use these
+when a definition is missing or when building test
+fixtures.
+
+### Raw Attributes
+
+```go
+// Standard attribute: type 18 (Reply-Message)
+attr := goradius.NewAttribute(18, []byte("hello"))
+req.AddAttribute(attr)
+
+// Tagged attribute (RFC 2868): the tag becomes the
+// first value octet
+tagged := goradius.NewTaggedAttribute(
+    64, 1, []byte{0, 0, 0, 13},
+)
+req.AddAttribute(tagged)
+
+value := tagged.GetValue() // without the tag octet
+```
+
+### Raw Vendor Attributes
+
+```go
+va := goradius.NewVendorAttribute(
+    4874, 4, net.ParseIP("8.8.8.8").To4(),
+)
+taggedVA := goradius.NewTaggedVendorAttribute(
+    4874, 1, 1, []byte("ipoe-parking"),
+)
+
+// Append as a Vendor-Specific attribute (type 26).
+// The packet dictionary supplies the vendor header
+// widths when it knows the vendor.
+attr := req.AddVendorAttribute(va)
+
+// Or build the type 26 attribute yourself
+attr = va.ToVSA()           // 1-octet type and length
+attr = va.ToVSAFormat(2, 1) // 2-octet vendor type
+
+// Read back by vendor ID and vendor type
+first, ok := req.GetVendorAttribute(4874, 4)
+all := req.GetVendorAttributes(4874, 4)
+
+// Parse a type 26 attribute
+va, err := goradius.ParseVSA(attr)
+va, err = goradius.ParseVSAFormat(attr, 2, 1)
+```
+
+`ParseVSA` and `ParseVSAFormat` return the first
+sub-attribute when a VSA carries several; the packet
+accessors return all of them. Tag detection needs the
+dictionary, so the parsed `Tag` is always zero.
+
+### Raw Extended Attributes (RFC 6929)
+
+```go
+// Short extended attribute: base type 241,
+// extended type 1
+attr, err := goradius.NewExtendedAttribute(
+    241, 1, []byte("hello"),
+)
+extType, value, err := goradius.ParseExtendedAttribute(attr)
+
+// Long extended attribute: fragmented over base
+// type 245 with the More bit set on all but the last
+attrs, err := goradius.NewLongExtendedAttributes(
+    245, 1, longValue,
+)
+for _, a := range attrs {
+    req.AddAttribute(a)
+}
+
+// Extended-Vendor-Specific: vendor 9, vendor type 1
+evs, err := goradius.NewEVSAttribute(
+    241, 9, 1, []byte("svc"),
+)
+vendorID, vendorType, value, err := goradius.ParseEVS(evs)
+```
+
+`IsExtendedBaseType` and `IsLongExtendedBaseType`
+classify a standard type. The wire-format constants
+are `ExtendedTypeMin` and `ExtendedTypeMax` (241 to
+246), `LongExtendedTypeMin` and `LongExtendedTypeMax`
+(245 to 246), `ExtendedIDShift` (256),
+`EVSExtendedType` (26), `ExtendedHeaderLength`,
+`LongExtendedHeaderLength`,
+`MaxShortExtendedValueLength`,
+`MaxLongExtendedValueLength`, and
+`LongExtendedMoreBit`.
+
 ## Packet Encoding and Decoding
 
 ### Encoding Packets
@@ -374,7 +535,7 @@ dict, err := goradius.NewDefault()
 if err != nil {
     log.Fatal(err)
 }
-req := goradius.NewWithDictionary(
+req := goradius.NewPacketWithDictionary(
     goradius.CodeAccessRequest, 1, dict,
 )
 
@@ -428,6 +589,33 @@ if len(usernames) > 0 {
 }
 ```
 
+### Value Codecs
+
+`EncodeValue` and `DecodeValue` convert between Go
+values and wire bytes for any scalar data type. The
+dictionary API calls them for you; they are exposed
+for raw attributes:
+
+```go
+raw, err := goradius.EncodeValue(3600, goradius.DataTypeInteger)
+v, err := goradius.DecodeValue(raw, goradius.DataTypeInteger)
+timeout := v.(uint32)
+```
+
+Per-type functions are available as well:
+`EncodeString`/`DecodeString`,
+`EncodeInteger`/`DecodeInteger`,
+`EncodeByte`/`DecodeByte`, `EncodeShort`/`DecodeShort`,
+`EncodeInteger64`/`DecodeInteger64`,
+`EncodeSigned`/`DecodeSigned`,
+`EncodeIPAddr`/`DecodeIPAddr`,
+`EncodeIPv6Addr`/`DecodeIPv6Addr`,
+`EncodeIPv6Prefix`/`DecodeIPv6Prefix`,
+`EncodeComboIP`/`DecodeComboIP`, `EncodeIfID`/`DecodeIfID`,
+`EncodeDate`/`DecodeDate`,
+`EncodeTimeDelta`/`DecodeTimeDelta`, and
+`EncodeOctets`/`DecodeOctets`.
+
 ### Packet Validation
 
 ```go
@@ -440,6 +628,10 @@ if err := req.IsValid(); err != nil {
 if !req.Code.IsValid() {
     log.Printf("Invalid packet code")
 }
+
+// Classify the code
+req.Code.IsRequest() // Access-Request, Accounting-Request, ...
+req.Code.IsReply()   // Access-Accept, CoA-ACK, ...
 
 // Validate packet length
 if req.Length < goradius.MinPacketLength ||
@@ -572,3 +764,55 @@ passwords cannot leak onto the wire.
 low-level escape hatches for raw values handled
 outside the packet API; application code does not
 need them.
+
+### Message-Authenticator
+
+The server and client add and verify the
+Message-Authenticator attribute (RFC 2869 Section
+5.14) automatically. For packets built outside them:
+
+```go
+// Request: keyed by the packet's own authenticator
+pkt.AddMessageAuthenticator(secret, pkt.Authenticator)
+ok := pkt.VerifyMessageAuthenticator(secret, pkt.Authenticator)
+
+// Response: keyed by the request authenticator
+resp.AddMessageAuthenticator(secret, req.Authenticator)
+ok = resp.VerifyMessageAuthenticator(secret, req.Authenticator)
+```
+
+`AddMessageAuthenticator` replaces any existing
+instance, so the packet never carries a stale
+duplicate. `VerifyMessageAuthenticator` returns false
+when the attribute is absent.
+
+### CHAP
+
+Helpers for CHAP authentication (RFC 2865 Section
+2.2). The CHAP-Password value is one identifier octet
+followed by the 16-octet MD5 response:
+
+```go
+// Client side: build the CHAP-Password
+challenge, err := goradius.GenerateCHAPChallenge(
+    goradius.CHAPChallengeLength,
+)
+chapPassword := goradius.GenerateCHAPResponse(
+    identifier, []byte("secret123"), challenge,
+)
+req.AddAttributeByName("chap-password", chapPassword)
+req.AddAttributeByName("chap-challenge", challenge)
+
+// Server side: verify against the stored password
+chap := req.GetAttribute("chap-password")
+chal := req.GetAttribute("chap-challenge")
+if len(chap) > 0 && len(chal) > 0 {
+    ok := goradius.CheckCHAPPassword(
+        chap[0].Value, storedPassword, chal[0].Value,
+    )
+}
+```
+
+When the request carries no CHAP-Challenge attribute,
+the Request Authenticator is the challenge (RFC 2865
+Section 5.3).

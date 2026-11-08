@@ -192,7 +192,7 @@ func validateBatch(attrs []*AttributeDefinition, existingByName, existingChildre
 	return nil
 }
 
-// AddStandardAttributes adds standard RFC attributes to the
+// AddStandardAttributes adds standard RFC attributes to the dictionary.
 // Returns an error if any attribute name conflicts with existing standard or vendor attributes.
 // Attribute names and value keys must be lowercase only.
 func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
@@ -244,7 +244,7 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	return nil
 }
 
-// AddVendor adds a vendor and its attributes to the
+// AddVendor adds a vendor and its attributes to the dictionary.
 // Returns an error if any vendor attribute name conflicts with existing standard or vendor attributes,
 // or if a (vendor-id, attr-id) pair is already registered.
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {

@@ -24,11 +24,26 @@ RFC 5176, RFC 6613, RFC 6614, RFC 6929).
   attributes
 - Password encryption (User-Password, Tunnel-Password,
   Ascend-Secret)
-- Message-Authenticator (HMAC-MD5, RFC 2869)
+- Message-Authenticator (HMAC-MD5, RFC 2869) with
+  automatic per-device detection as in FreeRADIUS,
+  plus strict, optional, and disabled modes
+  server-wide or per device
+- CHAP challenge and response helpers (RFC 2865)
 - Middleware support and per-client secret management
   with secret rotation
 - Dynamic Authorization (CoA/Disconnect, RFC 5176)
 - Graceful shutdown
+
+## Documentation
+
+- [docs/server.md](docs/server.md) - server setup,
+  handlers, middleware, transports, secrets
+- [docs/client.md](docs/client.md) - sending
+  Access, Accounting, CoA, and Disconnect requests
+- [docs/packets.md](docs/packets.md) - packets,
+  attributes, encoding, encryption
+- [docs/dictionary.md](docs/dictionary.md) -
+  dictionaries, data types, vendors, containers
 
 ## Examples
 

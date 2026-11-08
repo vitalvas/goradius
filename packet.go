@@ -153,7 +153,9 @@ func (av AttributeValue) Children() (map[string]any, error) {
 	}
 }
 
-// String returns the attribute value as a string, decoded based on DataType
+// String returns the attribute value as a string, decoded based on DataType.
+// Values that cannot be decoded for their type, raw octets, and container
+// types are rendered as hex.
 func (av AttributeValue) String() string {
 	switch av.DataType {
 	case DataTypeString:
@@ -180,13 +182,6 @@ func (av AttributeValue) String() string {
 		}
 		return ip.String()
 
-	case DataTypeIPv6Prefix:
-		prefix, err := DecodeIPv6Prefix(av.Value)
-		if err != nil {
-			return formatHex(av.Value)
-		}
-		return prefix.String()
-
 	case DataTypeIfID:
 		ifid, err := DecodeIfID(av.Value)
 		if err != nil {
@@ -201,13 +196,19 @@ func (av AttributeValue) String() string {
 			return formatHex(av.Value)
 		}
 		return t.Format(time.RFC3339)
+	}
 
-	case DataTypeOctets:
+	switch v := av.Decoded().(type) {
+	case []byte:
+		return formatHex(v)
+	case fmt.Stringer:
+		// net.IP, *net.IPNet, time.Duration
+		return v.String()
+	case map[string]any:
+		// A decoded union variant has no single textual form
 		return formatHex(av.Value)
-
 	default:
-		// For unknown types, return hex representation
-		return formatHex(av.Value)
+		return fmt.Sprint(v)
 	}
 }
 
@@ -413,68 +414,95 @@ func (p *Packet) RemoveAttributes(attrType uint8) int {
 	return removed
 }
 
-// RemoveAttributeByName removes all attributes with the specified name using dictionary lookup
+// RemoveAttributeByName removes all attributes with the specified name using
+// dictionary lookup. A "name:tag" key removes only the instances carrying that
+// RFC 2868 tag (the tag is ignored for attributes that are not tagged, as in
+// AddAttributeByName); a bare name removes every instance.
 func (p *Packet) RemoveAttributeByName(name string) int {
 	if p.Dict == nil {
 		return 0
 	}
 
-	removed := 0
+	base, tagStr := splitAttributeTag(name)
+	attrDef, exists := p.Dict.LookupByAttributeName(base)
+	if !exists {
+		return 0
+	}
 
-	// Try standard attribute first
-	if attrDef, exists := p.Dict.LookupStandardByName(name); exists {
-		// Remove all standard attributes of this type
-		for i, v := range slices.Backward(p.Attributes) {
-			if v.Type == uint8(attrDef.ID) {
-				p.Length -= uint16(v.Length)
-				p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
-				removed++
+	// The tag octet leads the value; without a requested tag every instance matches
+	matchTag := func([]byte) bool { return true }
+	if tagStr != "" && attrDef.HasTag {
+		tag, err := parseAttributeTag(tagStr)
+		if err != nil {
+			return 0
+		}
+		matchTag = func(value []byte) bool { return len(value) > 0 && value[0] == tag }
+	}
+
+	vendorID, isVendor := p.Dict.LookupVendorIDByAttributeName(base)
+	matches := func(i int, v *Attribute) bool {
+		switch {
+		case isVendor:
+			if v.Type != AttributeTypeVendorSpecific {
+				return false
 			}
-		}
-		// Invalidate VSA cache: removals shift the indices of subsequent VSAs
-		if removed > 0 {
-			p.vsaCache = nil
-		}
-		return removed
-	}
-
-	// Try vendor attribute using unified lookup
-	attrDef, exists := p.Dict.LookupByAttributeName(name)
-	if !exists {
-		return 0
-	}
-
-	// Find the vendor ID for this attribute using O(1) lookup
-	vendorID, exists := p.Dict.LookupVendorIDByAttributeName(name)
-	if !exists {
-		return 0
-	}
-
-	// Remove all VSAs carrying this vendor and attribute ID. A multi-sub-attribute
-	// VSA is removed as a whole when any of its sub-attributes matches.
-	for i, v := range slices.Backward(p.Attributes) {
-		if v.Type == AttributeTypeVendorSpecific {
+			// A multi-sub-attribute VSA is removed as a whole when any of its
+			// sub-attributes matches
 			vas, err := p.getParsedVSAs(i, v)
 			if err != nil {
-				continue
+				return false
 			}
 			for _, va := range vas {
-				if va.VendorID == vendorID && va.VendorType == attrDef.ID {
-					p.Length -= uint16(v.Length)
-					p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
-					removed++
-					break
+				if va.VendorID == vendorID && va.VendorType == attrDef.ID && matchTag(va.Value) {
+					return true
 				}
 			}
+			return false
+		case attrDef.Extended:
+			// RFC 6929 extended attributes are identified by base type plus
+			// extended type on the wire, not by the packed dictionary ID
+			return p.extendedDefFor(v) == attrDef
+		default:
+			return v.Type == uint8(attrDef.ID) && matchTag(v.Value)
 		}
 	}
 
-	// Invalidate VSA cache after removals (rebuild on next access)
+	removed := 0
+	for i, v := range slices.Backward(p.Attributes) {
+		if matches(i, v) {
+			p.Length -= uint16(v.Length)
+			p.Attributes = append(p.Attributes[:i], p.Attributes[i+1:]...)
+			removed++
+		}
+	}
+
+	// Invalidate VSA cache: removals shift the indices of subsequent VSAs
 	if removed > 0 {
 		p.vsaCache = nil
 	}
 
 	return removed
+}
+
+// extendedDefFor resolves the dictionary definition of an RFC 6929 extended
+// attribute from its wire form (base type plus the extended-type octet), or
+// nil when the dictionary defines none. An EVS definition must also match the
+// Vendor-Id and Vendor-Type carried by the attribute.
+func (p *Packet) extendedDefFor(attr *Attribute) *AttributeDefinition {
+	if !IsExtendedBaseType(attr.Type) || len(attr.Value) == 0 {
+		return nil
+	}
+	def, ok := p.Dict.LookupStandardByID(uint32(attr.Type)*ExtendedIDShift + uint32(attr.Value[0]))
+	if !ok {
+		return nil
+	}
+	if def.DataType == DataTypeEVS {
+		vendorID, vendorType, _, err := ParseEVS(attr)
+		if err != nil || vendorID != def.VendorID || vendorType != def.VendorType {
+			return nil
+		}
+	}
+	return def
 }
 
 // SetAuthenticator sets the packet authenticator.
@@ -562,6 +590,9 @@ func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
 
 		attr.encryption = EncryptionNone
 		attr.encryptOffset = 0
+
+		// Cached parsed VSAs alias the replaced plaintext bytes
+		p.vsaCache = nil
 	}
 }
 
@@ -1723,9 +1754,9 @@ func (p *Packet) addVendorArrayAttribute(params vendorAttrParams) error {
 	return nil
 }
 
-// ListAttributes returns a list of unique attribute names found in the
-// Requires a dictionary to be set on the  Returns empty slice if dictionary is nil.
-// Attributes not found in dictionary are skipped.
+// ListAttributes returns a list of unique attribute names found in the packet.
+// Requires a dictionary to be set on the packet; returns an empty slice if the
+// dictionary is nil. Attributes not found in the dictionary are skipped.
 // VSA attributes return their attribute name (e.g., "erx-dhcp-mac-addr").
 func (p *Packet) ListAttributes() []string {
 	if p.Dict == nil {
@@ -1753,6 +1784,13 @@ func (p *Packet) ListAttributes() []string {
 					addName(attrDef.Name)
 				}
 			}
+			continue
+		}
+
+		// RFC 6929 extended attributes are listed under their extended-type
+		// definition when the dictionary has one, else under the base type
+		if def := p.extendedDefFor(attr); def != nil {
+			addName(def.Name)
 			continue
 		}
 
@@ -1899,8 +1937,11 @@ func (p *Packet) GetAttributes() map[string][]AttributeValue {
 	for _, name := range p.ListAttributes() {
 		for _, av := range p.GetAttribute(name) {
 			// Expand container attributes into their flat child keys. Each child
-			// is surfaced as its own AttributeValue so metadata is preserved.
-			if av.DataType == DataTypeTLV || av.DataType == DataTypeStruct || av.DataType == DataTypeEVS {
+			// is surfaced as its own AttributeValue so metadata is preserved. A
+			// container with no declared children (for example a raw EVS) is a
+			// scalar in the flat view.
+			isContainer := av.DataType == DataTypeTLV || av.DataType == DataTypeStruct || av.DataType == DataTypeEVS
+			if isContainer && av.def != nil && len(av.def.Children) > 0 {
 				for _, child := range p.containerChildValues(av) {
 					key := child.Name
 					if av.Tag != 0 {

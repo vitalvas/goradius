@@ -1,5 +1,7 @@
 package goradius
 
+import "fmt"
+
 // NewResponse creates a new Response with the request identifier and appropriate default response code.
 // A nil request (or one without a packet) yields a Response whose methods are all no-ops.
 func NewResponse(req *Request) Response {
@@ -76,17 +78,19 @@ func (r *Response) SetAttributes(attrs map[string][]any) error {
 	}
 
 	for name := range attrs {
-		base, _ := splitAttributeTag(name)
+		base, tag := splitAttributeTag(name)
 		// Container children (struct/tlv/evs members addressed by their flat
 		// child name) are carried by their parent attribute, so replacement
-		// removes the parent container instance.
+		// removes the parent container instance carrying the same tag.
 		if r.packet.Dict != nil {
 			if parent, ok := r.packet.Dict.childParent(base); ok {
-				r.packet.RemoveAttributeByName(parent.Name)
-				continue
+				name = parent.Name
+				if tag != "" {
+					name = fmt.Sprintf("%s:%s", parent.Name, tag)
+				}
 			}
 		}
-		r.packet.RemoveAttributeByName(base)
+		r.packet.RemoveAttributeByName(name)
 	}
 	return r.packet.SetAttributes(attrs)
 }

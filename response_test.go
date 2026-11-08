@@ -1354,3 +1354,46 @@ func TestResponseSetAttributesReplacesContainerChildren(t *testing.T) {
 
 	assert.Len(t, resp.packet.Attributes, 1)
 }
+
+// TestResponseSetTaggedAttributeReplacesSameTag confirms a "name:tag" key
+// replaces only the instance carrying that tag, leaving other tags intact.
+func TestResponseSetTaggedAttributeReplacesSameTag(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	tagsOf := func(resp *Response) map[uint8]string {
+		vals := resp.GetAttribute("erx-service-activate")
+		require.Len(t, vals, 2, "exactly one instance per tag expected")
+		out := make(map[uint8]string)
+		for _, v := range vals {
+			out[v.Tag] = v.String()
+		}
+		return out
+	}
+
+	t.Run("SetAttribute", func(t *testing.T) {
+		resp := NewResponse(&Request{packet: NewPacketWithDictionary(CodeAccessRequest, 1, dict)})
+		resp.SetCode(CodeAccessAccept)
+
+		require.NoError(t, resp.SetAttribute("erx-service-activate:1", "svc-a"))
+		require.NoError(t, resp.SetAttribute("erx-service-activate:2", "svc-b"))
+		require.NoError(t, resp.SetAttribute("erx-service-activate:1", "svc-c"))
+
+		assert.Equal(t, map[uint8]string{1: "svc-c", 2: "svc-b"}, tagsOf(&resp))
+	})
+
+	t.Run("SetAttributes", func(t *testing.T) {
+		resp := NewResponse(&Request{packet: NewPacketWithDictionary(CodeAccessRequest, 1, dict)})
+		resp.SetCode(CodeAccessAccept)
+
+		require.NoError(t, resp.SetAttributes(map[string][]any{
+			"erx-service-activate:1": {"svc-a"},
+			"erx-service-activate:2": {"svc-b"},
+		}))
+		require.NoError(t, resp.SetAttributes(map[string][]any{
+			"erx-service-activate:2": {"svc-d"},
+		}))
+
+		assert.Equal(t, map[uint8]string{1: "svc-a", 2: "svc-d"}, tagsOf(&resp))
+	})
+}

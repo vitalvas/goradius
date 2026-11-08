@@ -371,3 +371,56 @@ func FuzzLongExtendedRoundTrip(f *testing.F) {
 		assert.Equal(t, payload, reassembled)
 	})
 }
+
+// TestExtendedAttributesInFlatViews confirms RFC 6929 extended attributes are
+// surfaced by ListAttributes and GetAttributes under their dictionary names.
+func TestExtendedAttributesInFlatViews(t *testing.T) {
+	dict := extendedDict(t)
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("user-name", "bob"))
+	require.NoError(t, pkt.AddAttributeByName("ext-short-string", "hello"))
+	require.NoError(t, pkt.AddAttributeByName("ext-short-integer", uint32(99)))
+	require.NoError(t, pkt.AddAttributeByName("ext-long-octets", bytes.Repeat([]byte{0xAB}, 600)))
+
+	raw, err := pkt.Encode()
+	require.NoError(t, err)
+	decoded, err := Decode(raw)
+	require.NoError(t, err)
+	decoded.Dict = dict
+
+	names := decoded.ListAttributes()
+	assert.ElementsMatch(t, []string{"user-name", "ext-short-string", "ext-short-integer", "ext-long-octets"}, names)
+
+	attrs := decoded.GetAttributes()
+	require.Len(t, attrs["ext-short-string"], 1)
+	assert.Equal(t, "hello", attrs["ext-short-string"][0].Decoded())
+	require.Len(t, attrs["ext-short-integer"], 1)
+	assert.Equal(t, uint32(99), attrs["ext-short-integer"][0].Decoded())
+	// The fragmented long attribute is reassembled into a single value.
+	require.Len(t, attrs["ext-long-octets"], 1)
+	assert.Equal(t, bytes.Repeat([]byte{0xAB}, 600), attrs["ext-long-octets"][0].Value)
+}
+
+// TestRemoveExtendedAttributeByName guards against matching an extended
+// attribute by its packed dictionary ID truncated to one octet: ext-short-string
+// (241*256+1) must not be confused with user-name (type 1).
+func TestRemoveExtendedAttributeByName(t *testing.T) {
+	dict := extendedDict(t)
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("user-name", "bob"))
+	require.NoError(t, pkt.AddAttributeByName("ext-short-string", "hello"))
+	require.NoError(t, pkt.AddAttributeByName("ext-short-integer", uint32(99)))
+	require.NoError(t, pkt.AddAttributeByName("ext-long-octets", bytes.Repeat([]byte{0xAB}, 600)))
+
+	assert.Equal(t, 1, pkt.RemoveAttributeByName("ext-short-string"))
+	assert.Empty(t, pkt.GetAttribute("ext-short-string"))
+	assert.Len(t, pkt.GetAttribute("user-name"), 1)
+	assert.Len(t, pkt.GetAttribute("ext-short-integer"), 1)
+
+	// Every fragment of a long extended attribute is removed.
+	assert.Equal(t, 3, pkt.RemoveAttributeByName("ext-long-octets"))
+	assert.Empty(t, pkt.GetAttribute("ext-long-octets"))
+	assert.Len(t, pkt.GetAttribute("user-name"), 1)
+}

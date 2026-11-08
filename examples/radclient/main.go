@@ -27,7 +27,8 @@ func parseAttributes(scanner *bufio.Scanner) (map[string]any, error) {
 			return nil, fmt.Errorf("invalid attribute format: %q (expected 'Name = value')", line)
 		}
 
-		name := strings.TrimSpace(parts[0])
+		// Dictionary names are lowercase; accept the conventional "User-Name" spelling
+		name := strings.ToLower(strings.TrimSpace(parts[0]))
 		valueStr := strings.TrimSpace(parts[1])
 
 		var value any

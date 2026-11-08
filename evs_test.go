@@ -228,3 +228,33 @@ func FuzzParseEVSRaw(f *testing.F) {
 		_, _, _, _ = ParseEVS(attr) // must not panic
 	})
 }
+
+// TestEVSAttributesInFlatViews confirms EVS attributes appear in ListAttributes
+// and GetAttributes: a scalar EVS as its own key, a TLV EVS as its children.
+func TestEVSAttributesInFlatViews(t *testing.T) {
+	dict := evsDict(t)
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("evs-raw", []byte{0xDE, 0xAD}))
+	require.NoError(t, pkt.AddAttributeByName("evs-tlv", map[string]any{
+		"evs-tlv-name":  "svc",
+		"evs-tlv-count": uint32(3),
+	}))
+
+	raw, err := pkt.Encode()
+	require.NoError(t, err)
+	decoded, err := Decode(raw)
+	require.NoError(t, err)
+	decoded.Dict = dict
+
+	assert.ElementsMatch(t, []string{"evs-raw", "evs-tlv"}, decoded.ListAttributes())
+
+	attrs := decoded.GetAttributes()
+	require.Len(t, attrs["evs-raw"], 1)
+	assert.Equal(t, []byte{0xDE, 0xAD}, attrs["evs-raw"][0].Value)
+	assert.True(t, attrs["evs-raw"][0].IsVSA)
+	require.Len(t, attrs["evs-tlv-name"], 1)
+	assert.Equal(t, "svc", attrs["evs-tlv-name"][0].Decoded())
+	require.Len(t, attrs["evs-tlv-count"], 1)
+	assert.Equal(t, uint32(3), attrs["evs-tlv-count"][0].Decoded())
+}

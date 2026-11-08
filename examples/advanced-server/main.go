@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"go.vitalvas.com/goradius"
@@ -137,31 +138,33 @@ func validationMiddleware(next goradius.Handler) goradius.Handler {
 
 // Statistics middleware
 func statisticsMiddleware(next goradius.Handler) goradius.Handler {
+	// Handlers run concurrently (one goroutine per packet), so the counters
+	// must be atomic.
 	var (
-		totalRequests   int
-		acceptedCount   int
-		rejectedCount   int
-		accountingCount int
+		totalRequests   atomic.Int64
+		acceptedCount   atomic.Int64
+		rejectedCount   atomic.Int64
+		accountingCount atomic.Int64
 	)
 
 	return goradius.HandlerFunc(func(req *goradius.Request) (goradius.Response, error) {
-		totalRequests++
+		totalRequests.Add(1)
 
 		resp, err := next.ServeRADIUS(req)
 
 		if err == nil {
 			switch resp.Code() {
 			case goradius.CodeAccessAccept:
-				acceptedCount++
+				acceptedCount.Add(1)
 			case goradius.CodeAccessReject:
-				rejectedCount++
+				rejectedCount.Add(1)
 			case goradius.CodeAccountingResponse:
-				accountingCount++
+				accountingCount.Add(1)
 			}
 		}
 
 		fmt.Printf("[Middleware:Stats] Total: %d | Accepted: %d | Rejected: %d | Accounting: %d\n",
-			totalRequests, acceptedCount, rejectedCount, accountingCount)
+			totalRequests.Load(), acceptedCount.Load(), rejectedCount.Load(), accountingCount.Load())
 
 		return resp, err
 	})
