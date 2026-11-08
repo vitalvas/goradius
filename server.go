@@ -2,11 +2,15 @@ package goradius
 
 import (
 	"context"
+	"errors"
 	"net"
 	"slices"
 	"sync"
 	"time"
 )
+
+// ErrServerClosed is returned when Serve is called after the server has been closed.
+var ErrServerClosed = errors.New("server is closed")
 
 // Server is a RADIUS server supporting UDP, TCP, and TLS transports
 type Server struct {
@@ -17,6 +21,9 @@ type Server struct {
 	mu                 sync.RWMutex
 	ready              chan struct{}
 	readyClosed        bool
+	closed             bool
+	closeDone          chan struct{}
+	closeErr           error
 	requireMessageAuth bool
 	useMessageAuth     bool
 	requireRequestAuth bool
@@ -26,6 +33,7 @@ type Server struct {
 func NewServer(opts ...ServerOption) (*Server, error) {
 	s := &Server{
 		ready:              make(chan struct{}),
+		closeDone:          make(chan struct{}),
 		requireMessageAuth: true,
 		useMessageAuth:     true,
 		// RFC 5080 Section 2.3.3: servers MUST validate the computed Request
@@ -55,6 +63,17 @@ func NewServer(opts ...ServerOption) (*Server, error) {
 // transport to listen on several sockets with one server.
 func (s *Server) Serve(transport Transport) error {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		if transport != nil {
+			_ = transport.Close()
+		}
+		return ErrServerClosed
+	}
+	if transport == nil {
+		s.mu.Unlock()
+		return errors.New("nil transport")
+	}
 	s.transports = append(s.transports, transport)
 	// Guard against closing twice when Serve is called for multiple transports
 	if !s.readyClosed {
@@ -112,7 +131,21 @@ func (s *Server) ProcessRawPacket(data []byte, remoteAddr net.Addr) ([]byte, err
 // Every transport passed to Serve is closed.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	transports := s.transports
+	if s.closed {
+		done := s.closeDone
+		s.mu.Unlock()
+		<-done
+		s.mu.RLock()
+		err := s.closeErr
+		s.mu.RUnlock()
+		return err
+	}
+	s.closed = true
+	if !s.readyClosed {
+		close(s.ready)
+		s.readyClosed = true
+	}
+	transports := slices.Clone(s.transports)
 	s.mu.Unlock()
 
 	var firstErr error
@@ -121,6 +154,11 @@ func (s *Server) Close() error {
 			firstErr = err
 		}
 	}
+
+	s.mu.Lock()
+	s.closeErr = firstErr
+	close(s.closeDone)
+	s.mu.Unlock()
 
 	return firstErr
 }

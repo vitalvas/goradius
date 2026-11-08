@@ -68,6 +68,11 @@ func EncodeStruct(parent *AttributeDefinition, values map[string]any) ([]byte, e
 	if parent == nil {
 		return nil, fmt.Errorf("nil parent attribute")
 	}
+	for name := range values {
+		if _, ok := parent.LookupChildByName(name); !ok {
+			return nil, fmt.Errorf("unknown struct member %q for attribute %q", name, parent.Name)
+		}
+	}
 
 	out := make([]byte, 0, 16)
 	var bits bitWriter

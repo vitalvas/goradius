@@ -55,6 +55,93 @@ func TestAddStandardAttributes(t *testing.T) {
 	assert.Equal(t, EncryptionUserPassword, attr.Encryption)
 }
 
+func TestDictionaryRejectsUnencodableDefinitions(t *testing.T) {
+	t.Run("nil definitions", func(t *testing.T) {
+		dict := NewDictionary()
+		assert.Error(t, dict.AddStandardAttributes([]*AttributeDefinition{nil}))
+		assert.Error(t, dict.AddVendor(nil))
+		assert.Error(t, dict.AddStandardAttributes([]*AttributeDefinition{{
+			ID:       1,
+			Name:     "container",
+			DataType: DataTypeTLV,
+			Children: []*AttributeDefinition{nil},
+		}}))
+	})
+
+	t.Run("standard ID wider than one octet", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddStandardAttributes([]*AttributeDefinition{{
+			ID:       256,
+			Name:     "wrapped-standard",
+			DataType: DataTypeString,
+		}})
+		assert.Error(t, err)
+	})
+
+	t.Run("malformed extended ID", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddStandardAttributes([]*AttributeDefinition{{
+			ID:       extID(240, 1),
+			Name:     "bad-extended",
+			DataType: DataTypeString,
+			Extended: true,
+		}})
+		assert.Error(t, err)
+	})
+
+	t.Run("EVS requires extended type 26", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddStandardAttributes([]*AttributeDefinition{{
+			ID:       extID(241, 1),
+			Name:     "bad-evs",
+			DataType: DataTypeEVS,
+			Extended: true,
+		}})
+		assert.Error(t, err)
+	})
+
+	t.Run("EVS requires a short extended base type", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddStandardAttributes([]*AttributeDefinition{{
+			ID:       extID(245, EVSExtendedType),
+			Name:     "long-evs",
+			DataType: DataTypeEVS,
+			Extended: true,
+		}})
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid vendor format", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddVendor(&VendorDefinition{
+			ID:           1,
+			Name:         "bad",
+			TypeOctets:   3,
+			LengthOctets: 1,
+			Attributes: []*AttributeDefinition{{
+				ID:       1,
+				Name:     "bad-value",
+				DataType: DataTypeString,
+			}},
+		})
+		assert.Error(t, err)
+	})
+
+	t.Run("vendor ID does not fit type field", func(t *testing.T) {
+		dict := NewDictionary()
+		err := dict.AddVendor(&VendorDefinition{
+			ID:   1,
+			Name: "bad",
+			Attributes: []*AttributeDefinition{{
+				ID:       256,
+				Name:     "bad-value",
+				DataType: DataTypeString,
+			}},
+		})
+		assert.Error(t, err)
+	})
+}
+
 func TestLookupStandardByID(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{

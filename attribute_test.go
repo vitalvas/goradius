@@ -18,6 +18,18 @@ func TestNewAttribute(t *testing.T) {
 	assert.Equal(t, uint8(0), attr.Tag)
 }
 
+func TestParseVSARejectsNilAttribute(t *testing.T) {
+	_, err := ParseVSA(nil)
+	require.Error(t, err)
+}
+
+func TestToVSAFormatRejectsInvalidWidths(t *testing.T) {
+	va := NewVendorAttribute(9, 1, []byte("value"))
+	assert.Nil(t, va.ToVSAFormat(0, 1))
+	assert.Nil(t, va.ToVSAFormat(1, -1))
+	assert.Nil(t, va.ToVSAFormat(3, 1))
+}
+
 func TestNewTaggedAttribute(t *testing.T) {
 	value := []byte("testvalue")
 	tag := uint8(5)
@@ -463,8 +475,10 @@ func BenchmarkVSARoundTrip(b *testing.B) {
 	}
 }
 
-// FuzzParseVSA ensures VSA parsing never panics on arbitrary payloads and that a
-// successfully parsed VSA re-encodes to the identical attribute value.
+// FuzzParseVSA ensures VSA parsing never panics on arbitrary payloads and that
+// every successfully parsed vendor sub-attribute reconstructs the original
+// payload. A VSA may contain multiple sub-attributes after one Vendor-Id, so
+// testing only ParseVSA's documented first result would discard valid siblings.
 func FuzzParseVSA(f *testing.F) {
 	valid := NewVendorAttribute(4874, 13, []byte("8.8.8.8")).ToVSA()
 	f.Add(valid.Value)
@@ -479,14 +493,18 @@ func FuzzParseVSA(f *testing.F) {
 			Value:  payload,
 		}
 
-		va, err := ParseVSA(attr)
+		vas, err := parseVSAList(attr, 1, 1)
 		if err != nil {
 			return
 		}
 
-		reencoded := va.ToVSA()
-		if !bytes.Equal(reencoded.Value, payload) {
-			t.Fatalf("VSA round trip mismatch: in=%x out=%x", payload, reencoded.Value)
+		reencoded := append([]byte(nil), payload[:4]...)
+		for _, va := range vas {
+			encoded := va.ToVSA()
+			reencoded = append(reencoded, encoded.Value[4:]...)
+		}
+		if !bytes.Equal(reencoded, payload) {
+			t.Fatalf("VSA round trip mismatch: in=%x out=%x", payload, reencoded)
 		}
 	})
 }

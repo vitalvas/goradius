@@ -2302,6 +2302,27 @@ func TestSetAttributesFromStrings(t *testing.T) {
 		err := pkt.SetAttributesFromStrings(map[string][]string{"session-timeout": {"notnum"}})
 		require.Error(t, err)
 	})
+
+	t.Run("numeric overflow errors instead of wrapping", func(t *testing.T) {
+		for name, value := range map[string]string{
+			"session-timeout":      "4294967296",
+			"3gpp-negotiated-dscp": "256",
+		} {
+			pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+			err := pkt.SetAttributesFromStrings(map[string][]string{name: {value}})
+			assert.Error(t, err, name)
+		}
+	})
+
+	t.Run("interface ID text round trips", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+		require.NoError(t, pkt.SetAttributesFromStrings(map[string][]string{
+			"framed-interface-id": {"0011:2233:4455:6677"},
+		}))
+		values := pkt.GetAttribute("framed-interface-id")
+		require.Len(t, values, 1)
+		assert.Equal(t, "0011:2233:4455:6677", values[0].String())
+	})
 }
 
 func TestPacketLengthOverflow(t *testing.T) {

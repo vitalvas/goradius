@@ -245,6 +245,9 @@ func NewPacketWithDictionary(code Code, identifier uint8, dict *Dictionary) *Pac
 
 // AddAttribute adds an attribute to the packet
 func (p *Packet) AddAttribute(attr *Attribute) {
+	if attr == nil {
+		return
+	}
 	p.Attributes = append(p.Attributes, attr)
 	p.Length += uint16(attr.Length)
 }
@@ -253,6 +256,9 @@ func (p *Packet) AddAttribute(attr *Attribute) {
 // it with the vendor's VSA header format when the dictionary defines one, and
 // returns the resulting wire attribute.
 func (p *Packet) AddVendorAttribute(va *VendorAttribute) *Attribute {
+	if va == nil {
+		return nil
+	}
 	typeOctets, lengthOctets := p.vsaFormat(va.VendorID)
 	attr := va.ToVSAFormat(typeOctets, lengthOctets)
 	p.AddAttribute(attr)
@@ -287,6 +293,9 @@ func (p *Packet) vsaFormat(vendorID uint32) (typeOctets, lengthOctets int) {
 func (p *Packet) getAttributesByType(attrType uint8) []*Attribute {
 	var attrs []*Attribute
 	for _, attr := range p.Attributes {
+		if attr == nil {
+			continue
+		}
 		if attr.Type == attrType {
 			attrs = append(attrs, attr)
 		}
@@ -506,6 +515,9 @@ func (p *Packet) finalizeEncryption(auth [AuthenticatorLength]byte) {
 		return
 	}
 	for _, attr := range p.Attributes {
+		if attr == nil {
+			continue
+		}
 		if attr.encryption == EncryptionNone {
 			continue
 		}
@@ -741,6 +753,9 @@ func (p *Packet) IsValid() error {
 	// packet cannot wrap the uint16 arithmetic back into the valid range
 	expectedLength := PacketHeaderLength
 	for _, attr := range p.Attributes {
+		if attr == nil {
+			return fmt.Errorf("packet contains a nil attribute")
+		}
 		// Catches uint8 overflow from constructors given oversized values
 		if int(attr.Length) != len(attr.Value)+AttributeHeaderLength {
 			return fmt.Errorf("attribute type %d length %d does not match value length %d", attr.Type, attr.Length, len(attr.Value))
@@ -803,6 +818,8 @@ func (p *Packet) AddAttributeByName(name string, value any) error {
 //   - integer, byte, short, integer64, signed, and time_delta accept a decimal
 //     string;
 //   - octets accept a hex string (with or without a "0x" prefix);
+//   - ifid accepts the canonical hexadecimal form (for example
+//     "0011:2233:4455:6677");
 //   - string, ipaddr, ipv6addr, and ipv6prefix pass through unchanged (their
 //     encoders already parse text).
 //
@@ -861,8 +878,15 @@ func convertStringValue(s string, def *AttributeDefinition) (any, error) {
 	}
 
 	switch def.DataType {
-	case DataTypeInteger, DataTypeByte, DataTypeShort, DataTypeTimeDelta:
-		n, err := strconv.ParseUint(s, 10, 64)
+	case DataTypeInteger, DataTypeByte, DataTypeShort, DataTypeTimeDelta, DataTypeBits:
+		bits := 32
+		switch def.DataType {
+		case DataTypeByte:
+			bits = 8
+		case DataTypeShort:
+			bits = 16
+		}
+		n, err := strconv.ParseUint(s, 10, bits)
 		if err != nil {
 			return nil, fmt.Errorf("invalid %s: %w", def.DataType, err)
 		}
@@ -871,6 +895,8 @@ func convertStringValue(s string, def *AttributeDefinition) (any, error) {
 			return uint8(n), nil
 		case DataTypeShort:
 			return uint16(n), nil
+		case DataTypeBits:
+			return uint32(n), nil
 		default:
 			return uint32(n), nil
 		}
@@ -892,8 +918,14 @@ func convertStringValue(s string, def *AttributeDefinition) (any, error) {
 			return nil, fmt.Errorf("invalid hex octets: %w", err)
 		}
 		return raw, nil
+	case DataTypeIfID:
+		raw, err := hex.DecodeString(strings.ReplaceAll(s, ":", ""))
+		if err != nil || len(raw) != 8 {
+			return nil, fmt.Errorf("invalid ifid %q", s)
+		}
+		return raw, nil
 	default:
-		// string, ipaddr, ipv6addr, ipv6prefix, ifid, combo-ip: the encoders
+		// string, ipaddr, ipv6addr, ipv6prefix, combo-ip: the encoders
 		// already accept a text value.
 		return s, nil
 	}

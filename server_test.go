@@ -3,12 +3,58 @@ package goradius
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type lifecycleTransport struct {
+	closed atomic.Int32
+}
+
+func (*lifecycleTransport) Serve(TransportHandler) error { return nil }
+func (*lifecycleTransport) LocalAddr() net.Addr          { return nil }
+func (t *lifecycleTransport) Close() error {
+	t.closed.Add(1)
+	return nil
+}
+
+func TestServerCloseBeforeServeUnblocksAddrAndRejectsLateTransport(t *testing.T) {
+	srv, err := NewServer()
+	require.NoError(t, err)
+	require.NoError(t, srv.Close())
+
+	addrReturned := make(chan net.Addr, 1)
+	go func() { addrReturned <- srv.Addr() }()
+	select {
+	case addr := <-addrReturned:
+		assert.Nil(t, addr)
+	case <-time.After(time.Second):
+		t.Fatal("Addr remained blocked after server close")
+	}
+
+	transport := &lifecycleTransport{}
+	err = srv.Serve(transport)
+	assert.ErrorIs(t, err, ErrServerClosed)
+	assert.Equal(t, int32(1), transport.closed.Load())
+}
+
+func TestServerConcurrentCloseClosesTransportOnce(t *testing.T) {
+	srv, err := NewServer()
+	require.NoError(t, err)
+	transport := &lifecycleTransport{}
+	require.NoError(t, srv.Serve(transport))
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() { assert.NoError(t, srv.Close()) })
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), transport.closed.Load())
+}
 
 type testHandler struct {
 	mu           sync.Mutex

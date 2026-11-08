@@ -22,6 +22,14 @@ func TestNewEVSAttribute(t *testing.T) {
 	})
 }
 
+func TestParseEVSRejectsNilAttribute(t *testing.T) {
+	vendorID, vendorType, value, err := ParseEVS(nil)
+	require.Error(t, err)
+	assert.Zero(t, vendorID)
+	assert.Zero(t, vendorType)
+	assert.Nil(t, value)
+}
+
 func TestEVSEmptyValue(t *testing.T) {
 	// RFC 6929 Section 2.4: the EVS-Value field is one or more octets.
 	_, err := NewEVSAttribute(241, 9, 1, nil)

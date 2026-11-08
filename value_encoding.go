@@ -141,6 +141,12 @@ func DecodeIPAddr(data []byte) (net.IP, error) {
 
 // EncodeIPv6Addr encodes an IPv6 address for RADIUS attributes per RFC 6929
 func EncodeIPv6Addr(ip net.IP) ([]byte, error) {
+	// net.IP.To16 also succeeds for IPv4 addresses by returning an
+	// IPv4-mapped address. An ipv6addr attribute must carry a native IPv6
+	// address, not silently change the address family.
+	if ip.To4() != nil {
+		return nil, fmt.Errorf("not an IPv6 address")
+	}
 	ipv6 := ip.To16()
 	if ipv6 == nil {
 		return nil, fmt.Errorf("not an IPv6 address")
@@ -285,16 +291,11 @@ func EncodeValue(value any, dataType DataType) ([]byte, error) {
 		return nil, fmt.Errorf("expected string for string data type")
 
 	case DataTypeInteger:
-		switch v := value.(type) {
-		case uint32:
-			return EncodeInteger(v), nil
-		case int:
-			return EncodeInteger(uint32(v)), nil
-		case int32:
-			return EncodeInteger(uint32(v)), nil
-		default:
-			return nil, fmt.Errorf("expected integer for integer data type")
+		v, err := boundedUint(value, uint64(^uint32(0)))
+		if err != nil {
+			return nil, fmt.Errorf("integer data type: %w", err)
 		}
+		return EncodeInteger(uint32(v)), nil
 
 	case DataTypeIPAddr:
 		if ip, ok := value.(net.IP); ok {
@@ -343,6 +344,10 @@ func EncodeValue(value any, dataType DataType) ([]byte, error) {
 
 	case DataTypeDate:
 		if t, ok := value.(time.Time); ok {
+			unix := t.Unix()
+			if unix < 0 || unix > int64(^uint32(0)) {
+				return nil, fmt.Errorf("date data type: Unix timestamp %d is outside the uint32 range", unix)
+			}
 			return EncodeDate(t), nil
 		}
 		return nil, fmt.Errorf("expected time.Time for date data type")
@@ -400,6 +405,14 @@ func encodeExtendedValue(value any, dataType DataType) ([]byte, error) {
 		case int32:
 			return EncodeSigned(v), nil
 		case int:
+			if int64(v) < int64(-1<<31) || int64(v) > int64(1<<31-1) {
+				return nil, fmt.Errorf("signed data type: value %d is outside the int32 range", v)
+			}
+			return EncodeSigned(int32(v)), nil
+		case int64:
+			if v < int64(-1<<31) || v > int64(1<<31-1) {
+				return nil, fmt.Errorf("signed data type: value %d is outside the int32 range", v)
+			}
 			return EncodeSigned(int32(v)), nil
 		default:
 			return nil, fmt.Errorf("expected int32 for signed data type")
@@ -419,19 +432,21 @@ func encodeExtendedValue(value any, dataType DataType) ([]byte, error) {
 		return nil, fmt.Errorf("expected net.IP or string for combo-ip data type")
 
 	case DataTypeTimeDelta:
-		switch v := value.(type) {
-		case time.Duration:
-			return EncodeTimeDelta(v), nil
-		case uint32:
-			return EncodeInteger(v), nil
-		case int:
+		if v, ok := value.(time.Duration); ok {
 			if v < 0 {
-				return nil, fmt.Errorf("time_delta data type: negative value %d", v)
+				return nil, fmt.Errorf("time_delta data type: negative duration %s", v)
 			}
-			return EncodeInteger(uint32(v)), nil
-		default:
-			return nil, fmt.Errorf("expected time.Duration or integer seconds for time_delta data type")
+			seconds := uint64(v / time.Second)
+			if seconds > uint64(^uint32(0)) {
+				return nil, fmt.Errorf("time_delta data type: duration %s exceeds maximum", v)
+			}
+			return EncodeInteger(uint32(seconds)), nil
 		}
+		seconds, err := boundedUint(value, uint64(^uint32(0)))
+		if err != nil {
+			return nil, fmt.Errorf("time_delta data type: %w", err)
+		}
+		return EncodeInteger(uint32(seconds)), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported data type: %s", dataType)
@@ -452,6 +467,26 @@ func boundedUint(value any, limit uint64) (uint64, error) {
 		v = uint64(n)
 	case uint64:
 		v = n
+	case int8:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %d", n)
+		}
+		v = uint64(n)
+	case int16:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %d", n)
+		}
+		v = uint64(n)
+	case int32:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %d", n)
+		}
+		v = uint64(n)
+	case int64:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %d", n)
+		}
+		v = uint64(n)
 	case int:
 		if n < 0 {
 			return 0, fmt.Errorf("negative value %d", n)

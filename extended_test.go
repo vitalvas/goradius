@@ -42,6 +42,11 @@ func TestNewExtendedAttribute(t *testing.T) {
 }
 
 func TestParseExtendedAttribute(t *testing.T) {
+	t.Run("rejects nil attribute", func(t *testing.T) {
+		_, _, err := ParseExtendedAttribute(nil)
+		require.Error(t, err)
+	})
+
 	t.Run("round trip", func(t *testing.T) {
 		attr, err := NewExtendedAttribute(243, 9, []byte("payload"))
 		require.NoError(t, err)

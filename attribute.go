@@ -204,7 +204,12 @@ func (va *VendorAttribute) ToVSA() *Attribute {
 // lengthOctets wide Vendor-Length field (0 means the vendor carries no length
 // field). The fields are big-endian. This supports vendors whose VSA layout
 // differs from RFC 2865, matching the FreeRADIUS "format=t,l" flag.
+// It returns nil for unsupported field widths.
 func (va *VendorAttribute) ToVSAFormat(typeOctets, lengthOctets int) *Attribute {
+	if va == nil || (typeOctets != 1 && typeOctets != 2 && typeOctets != 4) ||
+		(lengthOctets != 0 && lengthOctets != 1 && lengthOctets != 2) {
+		return nil
+	}
 	header := typeOctets + lengthOctets
 	vsaValue := make([]byte, 4+header+len(va.Value))
 
@@ -255,6 +260,9 @@ func ParseVSA(attr *Attribute) (*VendorAttribute, error) {
 // Tag detection requires the attribute definition and is left to the
 // dictionary-aware Packet accessors; the returned Tag is always zero.
 func ParseVSAFormat(attr *Attribute, typeOctets, lengthOctets int) (*VendorAttribute, error) {
+	if attr == nil {
+		return nil, fmt.Errorf("nil vendor-specific attribute")
+	}
 	vas, err := parseVSAList(attr, typeOctets, lengthOctets)
 	if err != nil {
 		return nil, err
@@ -268,6 +276,15 @@ func ParseVSAFormat(attr *Attribute, typeOctets, lengthOctets int) (*VendorAttri
 // Vendor-Id. With no Vendor-Length field (lengthOctets 0) the single
 // sub-attribute consumes the remaining octets.
 func parseVSAList(attr *Attribute, typeOctets, lengthOctets int) ([]*VendorAttribute, error) {
+	if attr == nil {
+		return nil, fmt.Errorf("nil vendor-specific attribute")
+	}
+	if typeOctets != 1 && typeOctets != 2 && typeOctets != 4 {
+		return nil, fmt.Errorf("invalid vendor type width: %d", typeOctets)
+	}
+	if lengthOctets != 0 && lengthOctets != 1 && lengthOctets != 2 {
+		return nil, fmt.Errorf("invalid vendor length width: %d", lengthOctets)
+	}
 	if attr.Type != AttributeTypeVendorSpecific {
 		return nil, fmt.Errorf("not a vendor-specific attribute (type %d)", attr.Type)
 	}

@@ -76,6 +76,12 @@ func (d *Dictionary) indexChildren(top *AttributeDefinition) {
 // attributes, rejecting duplicate child IDs within a parent. allowZeroID is true
 // only for children of a union member, whose ID is a key value (0 is valid).
 func validateAttributeDefinition(attr *AttributeDefinition, allowZeroID bool) error {
+	if attr == nil {
+		return fmt.Errorf("nil attribute definition")
+	}
+	if attr.Name == "" {
+		return fmt.Errorf("attribute name must not be empty")
+	}
 	if attr.Name != strings.ToLower(attr.Name) {
 		return fmt.Errorf("attribute name %q must be lowercase", attr.Name)
 	}
@@ -104,6 +110,9 @@ func validateAttributeDefinition(attr *AttributeDefinition, allowZeroID bool) er
 	seenChildIDs := make(map[uint32]string, len(attr.Children))
 	seenChildNames := make(map[string]struct{}, len(attr.Children))
 	for _, child := range attr.Children {
+		if child == nil {
+			return fmt.Errorf("attribute %q has a nil child definition", attr.Name)
+		}
 		if existing, exists := seenChildIDs[child.ID]; exists {
 			return fmt.Errorf("attribute %q has duplicate child ID %d: %q and %q", attr.Name, child.ID, existing, child.Name)
 		}
@@ -193,6 +202,28 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 	if err := validateBatch(attrs, d.allAttrByName, d.childParentByName); err != nil {
 		return err
 	}
+	for _, attr := range attrs {
+		if attr.Extended {
+			baseType := attr.ExtendedBaseType()
+			extendedType := attr.ExtendedType()
+			if !IsExtendedBaseType(baseType) || extendedType == 0 {
+				return fmt.Errorf("extended attribute %q has invalid packed ID %d", attr.Name, attr.ID)
+			}
+			if attr.DataType == DataTypeEVS && extendedType != EVSExtendedType {
+				return fmt.Errorf("EVS attribute %q must use extended type %d", attr.Name, EVSExtendedType)
+			}
+			if attr.DataType == DataTypeEVS && IsLongExtendedBaseType(baseType) {
+				return fmt.Errorf("EVS attribute %q must use a short extended base type", attr.Name)
+			}
+		} else {
+			if attr.ID > 255 {
+				return fmt.Errorf("standard attribute %q ID %d exceeds the one-octet type field", attr.Name, attr.ID)
+			}
+			if attr.DataType == DataTypeEVS {
+				return fmt.Errorf("EVS attribute %q must be marked extended", attr.Name)
+			}
+		}
+	}
 
 	// Enforce global ID uniqueness across standard attributes so a second call
 	// cannot silently overwrite an already-registered attribute ID.
@@ -219,9 +250,23 @@ func (d *Dictionary) AddStandardAttributes(attrs []*AttributeDefinition) error {
 func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if vendor == nil {
+		return fmt.Errorf("nil vendor definition")
+	}
+
+	typeOctets, err := validateVendorFormat(vendor)
+	if err != nil {
+		return err
+	}
 
 	if err := validateBatch(vendor.Attributes, d.allAttrByName, d.childParentByName); err != nil {
 		return err
+	}
+	maxType := uint64(1)<<(8*typeOctets) - 1
+	for _, attr := range vendor.Attributes {
+		if uint64(attr.ID) > maxType {
+			return fmt.Errorf("vendor attribute %q ID %d does not fit in %d type octets", attr.Name, attr.ID, typeOctets)
+		}
 	}
 
 	// Enforce global uniqueness of the (vendor-id, attr-id) pair across every
@@ -269,6 +314,30 @@ func (d *Dictionary) AddVendor(vendor *VendorDefinition) error {
 	}
 
 	return nil
+}
+
+// validateVendorFormat verifies the FreeRADIUS-compatible Vendor-Type and
+// Vendor-Length widths before they reach the wire encoder. The supported type
+// widths are 1, 2, and 4 octets; lengths are absent, 1 octet, or 2 octets.
+func validateVendorFormat(vendor *VendorDefinition) (int, error) {
+	if vendor.TypeOctets == 0 {
+		if vendor.LengthOctets != 0 {
+			return 0, fmt.Errorf("vendor %q sets length_octets without type_octets", vendor.Name)
+		}
+		return 1, nil // the zero-value format is RFC 2865 format=1,1
+	}
+
+	switch vendor.TypeOctets {
+	case 1, 2, 4:
+	default:
+		return 0, fmt.Errorf("vendor %q has unsupported type_octets %d", vendor.Name, vendor.TypeOctets)
+	}
+	switch vendor.LengthOctets {
+	case 0, 1, 2:
+	default:
+		return 0, fmt.Errorf("vendor %q has unsupported length_octets %d", vendor.Name, vendor.LengthOctets)
+	}
+	return int(vendor.TypeOctets), nil
 }
 
 // LookupStandardByID finds a standard attribute by ID

@@ -1,6 +1,7 @@
 package goradius
 
 import (
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -210,6 +211,20 @@ func TestDecodeValue(t *testing.T) {
 }
 
 func TestEncodeValue_ErrorPaths(t *testing.T) {
+	t.Run("date rejects values outside uint32 Unix time", func(t *testing.T) {
+		for _, value := range []time.Time{time.Unix(-1, 0), time.Unix(int64(math.MaxUint32)+1, 0)} {
+			_, err := EncodeValue(value, DataTypeDate)
+			assert.Error(t, err)
+		}
+	})
+
+	t.Run("integer rejects negative and overflowing values", func(t *testing.T) {
+		for _, value := range []any{-1, int32(-1), int64(math.MaxUint32) + 1} {
+			_, err := EncodeValue(value, DataTypeInteger)
+			assert.Error(t, err)
+		}
+	})
+
 	t.Run("ipaddr - invalid string", func(t *testing.T) {
 		_, err := EncodeValue("not-an-ip", DataTypeIPAddr)
 		assert.Error(t, err)
@@ -226,6 +241,13 @@ func TestEncodeValue_ErrorPaths(t *testing.T) {
 		_, err := EncodeValue("not-an-ipv6", DataTypeIPv6Addr)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid IPv6 address")
+	})
+
+	t.Run("ipv6addr - IPv4 is not silently mapped", func(t *testing.T) {
+		for _, value := range []any{"192.0.2.1", net.ParseIP("192.0.2.1")} {
+			_, err := EncodeValue(value, DataTypeIPv6Addr)
+			assert.Error(t, err)
+		}
 	})
 
 	t.Run("ipv6addr - wrong type", func(t *testing.T) {
@@ -752,6 +774,13 @@ func TestByteShortInteger64Types(t *testing.T) {
 		assert.Equal(t, int32(-5), dec)
 	})
 
+	t.Run("signed overflow rejected", func(t *testing.T) {
+		for _, value := range []any{int64(math.MaxInt32) + 1, int64(math.MinInt32) - 1} {
+			_, err := EncodeValue(value, DataTypeSigned)
+			assert.Error(t, err)
+		}
+	})
+
 	t.Run("time_delta round trip", func(t *testing.T) {
 		enc, err := EncodeValue(90*time.Second, DataTypeTimeDelta)
 		require.NoError(t, err)
@@ -759,6 +788,13 @@ func TestByteShortInteger64Types(t *testing.T) {
 		dec, err := DecodeValue(enc, DataTypeTimeDelta)
 		require.NoError(t, err)
 		assert.Equal(t, 90*time.Second, dec)
+	})
+
+	t.Run("time_delta rejects negative and overflowing values", func(t *testing.T) {
+		for _, value := range []any{-time.Second, -1, int64(math.MaxUint32) + 1} {
+			_, err := EncodeValue(value, DataTypeTimeDelta)
+			assert.Error(t, err)
+		}
 	})
 }
 

@@ -53,6 +53,9 @@ func NewExtendedAttribute(baseType, extType uint8, value []byte) (*Attribute, er
 // ParseExtendedAttribute extracts the extended type and value from a short extended
 // attribute. The attribute's Type must be a short extended base type (241-244).
 func ParseExtendedAttribute(attr *Attribute) (extType uint8, value []byte, err error) {
+	if attr == nil {
+		return 0, nil, fmt.Errorf("nil extended attribute")
+	}
 	if !IsExtendedBaseType(attr.Type) || IsLongExtendedBaseType(attr.Type) {
 		return 0, nil, fmt.Errorf("attribute type %d is not a short extended type (241-244)", attr.Type)
 	}
@@ -116,6 +119,9 @@ func NewLongExtendedAttributes(baseType, extType uint8, value []byte) ([]*Attrib
 // parseLongExtendedFragment extracts the extended type, More bit, and value fragment
 // from a single long extended attribute.
 func parseLongExtendedFragment(attr *Attribute) (extType uint8, more bool, value []byte, err error) {
+	if attr == nil {
+		return 0, false, nil, fmt.Errorf("nil long extended attribute")
+	}
 	if !IsLongExtendedBaseType(attr.Type) {
 		return 0, false, nil, fmt.Errorf("attribute type %d is not a long extended type (245-246)", attr.Type)
 	}

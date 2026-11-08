@@ -46,6 +46,17 @@ func TestEncodeStruct(t *testing.T) {
 		assert.Contains(t, err.Error(), "missing member")
 	})
 
+	t.Run("unknown member", func(t *testing.T) {
+		_, err := EncodeStruct(parent, map[string]any{
+			"s-count": uint32(1),
+			"s-addr":  "10.0.0.1",
+			"s-label": "ab",
+			"typo":    "ignored",
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown struct member")
+	})
+
 	t.Run("non-trailing variable member without size", func(t *testing.T) {
 		// A variable-width member with no Size is only valid as the final
 		// member; here it is followed by another member, so it must error.
