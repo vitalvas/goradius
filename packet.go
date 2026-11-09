@@ -1900,6 +1900,25 @@ func (p *Packet) GetAttribute(name string) []AttributeValue {
 	return []AttributeValue{}
 }
 
+// GetAttributeStrings maps each attribute name from ListAttributes to the
+// String() form of its values, for example for JSON logging. Unlike
+// GetAttributes, names carry no ":tag" suffix and containers are not expanded.
+func (p *Packet) GetAttributeStrings() map[string][]string {
+	names := p.ListAttributes()
+	out := make(map[string][]string, len(names))
+
+	for _, name := range names {
+		values := p.GetAttribute(name)
+		strs := make([]string, len(values))
+		for i, v := range values {
+			strs[i] = v.String()
+		}
+		out[name] = strs
+	}
+
+	return out
+}
+
 // decryptedAttributeValue decrypts an encrypted attribute value when the
 // dictionary declares an Encryption type and the packet state permits: the
 // Secret is set, the attribute is not still awaiting deferred encryption (its

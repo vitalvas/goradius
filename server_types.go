@@ -37,6 +37,15 @@ func (r *Request) ListAttributes() []string {
 	return r.packet.ListAttributes()
 }
 
+// GetAttributeStrings returns every request attribute name mapped to the
+// string form of its values
+func (r *Request) GetAttributeStrings() map[string][]string {
+	if r.packet == nil {
+		return map[string][]string{}
+	}
+	return r.packet.GetAttributeStrings()
+}
+
 // Code returns the packet code
 func (r *Request) Code() Code {
 	if r.packet == nil {
@@ -71,6 +80,15 @@ func (r *Response) ListAttributes() []string {
 		return []string{}
 	}
 	return r.packet.ListAttributes()
+}
+
+// GetAttributeStrings returns every response attribute name mapped to the
+// string form of its values
+func (r *Response) GetAttributeStrings() map[string][]string {
+	if r.packet == nil {
+		return map[string][]string{}
+	}
+	return r.packet.GetAttributeStrings()
 }
 
 type SecretRequest struct {

@@ -162,6 +162,10 @@ attrNames := req.ListAttributes()
 for _, name := range attrNames {
     fmt.Printf("Attribute: %s\n", name)
 }
+
+// Every attribute name mapped to its String() values,
+// ready for JSON logging
+logged := req.GetAttributeStrings()
 ```
 
 ### Working with Attribute Values

@@ -1474,6 +1474,48 @@ func TestRequestListAttributes(t *testing.T) {
 	})
 }
 
+func TestRequestGetAttributeStrings(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("user-name", "testuser"))
+	require.NoError(t, pkt.AddAttributeByName("nas-ip-address", "192.168.1.1"))
+
+	t.Run("attributes", func(t *testing.T) {
+		req := &Request{packet: pkt}
+		assert.Equal(t, map[string][]string{
+			"user-name":      {"testuser"},
+			"nas-ip-address": {"192.168.1.1"},
+		}, req.GetAttributeStrings())
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilReq := &Request{}
+		assert.Empty(t, nilReq.GetAttributeStrings())
+	})
+}
+
+func TestResponseGetAttributeStrings(t *testing.T) {
+	dict, err := NewDefault()
+	require.NoError(t, err)
+
+	pkt := NewPacketWithDictionary(CodeAccessAccept, 1, dict)
+	require.NoError(t, pkt.AddAttributeByName("session-timeout", uint32(3600)))
+
+	t.Run("attributes", func(t *testing.T) {
+		resp := Response{packet: pkt}
+		assert.Equal(t, map[string][]string{
+			"session-timeout": {"3600"},
+		}, resp.GetAttributeStrings())
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		nilResp := Response{}
+		assert.Empty(t, nilResp.GetAttributeStrings())
+	})
+}
+
 func TestRequestCode(t *testing.T) {
 	pkt := NewPacket(CodeAccessRequest, 1)
 	req := &Request{packet: pkt}

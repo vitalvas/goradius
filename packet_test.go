@@ -368,6 +368,86 @@ func TestPacketListAttributes(t *testing.T) {
 	})
 }
 
+func TestPacketGetAttributeStrings(t *testing.T) {
+	dict := NewDictionary()
+	dict.AddStandardAttributes([]*AttributeDefinition{
+		{ID: 1, Name: "user-name", DataType: DataTypeString},
+		{ID: 4, Name: "nas-ip-address", DataType: DataTypeIPAddr},
+	})
+	dict.AddVendor(&VendorDefinition{
+		ID:   4874,
+		Name: "erx",
+		Attributes: []*AttributeDefinition{
+			{ID: 4, Name: "erx-primary-dns", DataType: DataTypeIPAddr},
+		},
+	})
+
+	t.Run("no dictionary", func(t *testing.T) {
+		pkt := NewPacket(CodeAccessRequest, 1)
+		pkt.AddAttribute(NewAttribute(1, []byte("testuser")))
+
+		assert.Empty(t, pkt.GetAttributeStrings())
+	})
+
+	t.Run("standard, repeated and vendor attributes", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(1, []byte("user1")))
+		pkt.AddAttribute(NewAttribute(1, []byte("user2")))
+		pkt.AddAttribute(NewAttribute(4, []byte{192, 168, 1, 1}))
+		pkt.AddAttribute(NewAttribute(99, []byte("unknown")))
+		pkt.AddVendorAttribute(NewVendorAttribute(4874, 4, []byte{192, 0, 2, 1}))
+
+		assert.Equal(t, map[string][]string{
+			"user-name":       {"user1", "user2"},
+			"nas-ip-address":  {"192.168.1.1"},
+			"erx-primary-dns": {"192.0.2.1"},
+		}, pkt.GetAttributeStrings())
+	})
+
+	t.Run("empty packet", func(t *testing.T) {
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+
+		assert.Empty(t, pkt.GetAttributeStrings())
+	})
+}
+
+func BenchmarkPacketGetAttributeStrings(b *testing.B) {
+	dict, err := NewDefault()
+	require.NoError(b, err)
+
+	pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+	require.NoError(b, pkt.AddAttributeByName("user-name", "testuser"))
+	require.NoError(b, pkt.AddAttributeByName("nas-ip-address", "192.168.1.1"))
+	require.NoError(b, pkt.AddAttributeByName("nas-port", uint32(1)))
+	require.NoError(b, pkt.AddAttributeByName("class", "a"))
+	require.NoError(b, pkt.AddAttributeByName("class", "b"))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = pkt.GetAttributeStrings()
+	}
+}
+
+func FuzzPacketGetAttributeStrings(f *testing.F) {
+	dict, err := NewDefault()
+	require.NoError(f, err)
+
+	f.Add([]byte{1, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 6, 't', 'e', 's', 't'})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		pkt, err := Decode(data)
+		if err != nil {
+			return
+		}
+		pkt.Dict = dict
+
+		for name, values := range pkt.GetAttributeStrings() {
+			assert.Len(t, values, len(pkt.GetAttribute(name)))
+		}
+	})
+}
+
 func TestPacketGetAttributeByName(t *testing.T) {
 	dict := NewDictionary()
 	dict.AddStandardAttributes([]*AttributeDefinition{

@@ -269,6 +269,7 @@ handler:
 code := resp.Code()
 names := resp.ListAttributes()
 values := resp.GetAttribute("framed-ip-address")
+strs := resp.GetAttributeStrings() // name -> String() values
 ```
 
 ## Authentication Example

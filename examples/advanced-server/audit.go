@@ -33,11 +33,11 @@ func auditMiddleware(writer io.Writer) goradius.Middleware {
 				Local:     req.LocalAddr.String(),
 				Request: AuditPacket{
 					Code:       req.Code().String(),
-					Attributes: collectAttributes(req),
+					Attributes: req.GetAttributeStrings(),
 				},
 				Response: AuditPacket{
 					Code:       resp.Code().String(),
-					Attributes: collectAttributesFromResponse(&resp),
+					Attributes: resp.GetAttributeStrings(),
 				},
 			}
 
@@ -49,34 +49,4 @@ func auditMiddleware(writer io.Writer) goradius.Middleware {
 			return resp, err
 		})
 	}
-}
-
-func collectAttributes(req *goradius.Request) map[string][]string {
-	attrs := make(map[string][]string)
-
-	for _, name := range req.ListAttributes() {
-		values := req.GetAttribute(name)
-		strValues := make([]string, len(values))
-		for i, v := range values {
-			strValues[i] = v.String()
-		}
-		attrs[name] = strValues
-	}
-
-	return attrs
-}
-
-func collectAttributesFromResponse(resp *goradius.Response) map[string][]string {
-	attrs := make(map[string][]string)
-
-	for _, name := range resp.ListAttributes() {
-		values := resp.GetAttribute(name)
-		strValues := make([]string, len(values))
-		for i, v := range values {
-			strValues[i] = v.String()
-		}
-		attrs[name] = strValues
-	}
-
-	return attrs
 }
