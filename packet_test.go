@@ -640,6 +640,49 @@ func TestAttributeValueString(t *testing.T) {
 		}
 		assert.Equal(t, "0x0102", av.String())
 	})
+
+	t.Run("named values", func(t *testing.T) {
+		values := map[string]uint32{"login-user": 1, "framed-user": 2, "alias-b": 3, "alias-a": 3}
+
+		tests := []struct {
+			name     string
+			dataType DataType
+			value    []byte
+			want     string
+		}{
+			{"integer named", DataTypeInteger, EncodeInteger(2), "framed-user"},
+			{"integer not named", DataTypeInteger, EncodeInteger(99), "99"},
+			{"byte named", DataTypeByte, []byte{1}, "login-user"},
+			{"short named", DataTypeShort, []byte{0, 2}, "framed-user"},
+			{"alias picks lowest name", DataTypeInteger, EncodeInteger(3), "alias-a"},
+			{"invalid length", DataTypeInteger, []byte{0x01}, "0x01"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				av := AttributeValue{
+					DataType: tt.dataType,
+					Value:    tt.value,
+					def:      &AttributeDefinition{DataType: tt.dataType, Values: values},
+				}
+				assert.Equal(t, tt.want, av.String())
+			})
+		}
+	})
+
+	t.Run("named values from default dictionary", func(t *testing.T) {
+		dict, err := NewDefault()
+		require.NoError(t, err)
+
+		pkt := NewPacketWithDictionary(CodeAccessRequest, 1, dict)
+		pkt.AddAttribute(NewAttribute(6, EncodeInteger(2)))
+		pkt.AddAttribute(NewAttribute(61, EncodeInteger(15)))
+		pkt.AddAttribute(NewAttribute(64, []byte{1, 0, 0, 3}))
+
+		got := pkt.GetAttributeStrings()
+		assert.Equal(t, []string{"framed-user"}, got["service-type"])
+		assert.Equal(t, []string{"ethernet"}, got["nas-port-type"])
+		assert.Equal(t, []string{"l2tp"}, got["tunnel-type"])
+	})
 }
 
 func TestArrayAttributeHandling(t *testing.T) {
@@ -1586,6 +1629,23 @@ func BenchmarkAttributeValueString(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
+			_ = av.String()
+		}
+	})
+
+	b.Run("named integer", func(b *testing.B) {
+		dict, err := NewDefault()
+		require.NoError(b, err)
+		def, ok := dict.LookupStandardByName("service-type")
+		require.True(b, ok)
+
+		av := AttributeValue{
+			DataType: DataTypeInteger,
+			Value:    EncodeInteger(2),
+			def:      def,
+		}
+		b.ReportAllocs()
+		for b.Loop() {
 			_ = av.String()
 		}
 	})
@@ -2859,7 +2919,7 @@ func TestRemoveAttributeByNameTagged(t *testing.T) {
 		vals := pkt.GetAttribute("tunnel-type")
 		require.Len(t, vals, 1)
 		assert.Equal(t, uint8(2), vals[0].Tag)
-		assert.Equal(t, "3", vals[0].String())
+		assert.Equal(t, "l2tp", vals[0].String())
 	})
 
 	t.Run("vendor tagged attribute removes only the matching tag", func(t *testing.T) {

@@ -298,26 +298,33 @@ req.AddAttributeByNameWithSecret(
 ```go
 // If an attribute has enumerated values in
 // the dictionary, you can use the string name
-// instead of numeric value
+// instead of numeric value. Value names must
+// be lowercase, like attribute names.
 attr := &goradius.AttributeDefinition{
     ID:       6,
     Name:     "service-type",
     DataType: goradius.DataTypeInteger,
     Values: map[string]uint32{
-        "Login":  1,
-        "Framed": 2,
+        "login-user":  1,
+        "framed-user": 2,
     },
 }
 
-// Add to dictionary
-dict.AddStandardAttributes(
+// Add to dictionary; uppercase names are rejected
+err := dict.AddStandardAttributes(
     []*goradius.AttributeDefinition{attr},
 )
+if err != nil {
+    return err
+}
 
 // Use enumerated value by name
 req.AddAttributeByName(
-    "service-type", "Login",
+    "service-type", "login-user",
 ) // Converts to 1
+
+// Decoding maps the number back to its name
+req.GetAttribute("service-type")[0].String() // "login-user"
 ```
 
 ## Vendor-Specific Attributes

@@ -154,9 +154,14 @@ func (av AttributeValue) Children() (map[string]any, error) {
 }
 
 // String returns the attribute value as a string, decoded based on DataType.
-// Values that cannot be decoded for their type, raw octets, and container
-// types are rendered as hex.
+// Enumerated values defined in the dictionary render as their name (for
+// example service-type 2 as "framed-user"). Values that cannot be decoded for
+// their type, raw octets, and container types are rendered as hex.
 func (av AttributeValue) String() string {
+	if name, ok := av.valueName(); ok {
+		return name
+	}
+
 	switch av.DataType {
 	case DataTypeString:
 		return DecodeString(av.Value)
@@ -210,6 +215,39 @@ func (av AttributeValue) String() string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+// valueName reverse-maps a numeric value to its dictionary Values name. When
+// several names share one number, the lexically lowest wins so output is
+// stable across calls despite random map iteration order.
+func (av AttributeValue) valueName() (string, bool) {
+	if av.def == nil || len(av.def.Values) == 0 {
+		return "", false
+	}
+
+	var n uint64
+	switch v := av.Decoded().(type) {
+	case uint8:
+		n = uint64(v)
+	case uint16:
+		n = uint64(v)
+	case uint32:
+		n = uint64(v)
+	case uint64:
+		n = v
+	default:
+		return "", false
+	}
+
+	found := false
+	result := ""
+	for name, code := range av.def.Values {
+		if uint64(code) == n && (!found || name < result) {
+			result = name
+			found = true
+		}
+	}
+	return result, found
 }
 
 // formatHex formats bytes as "0x" followed by hex digits
