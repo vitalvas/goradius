@@ -637,6 +637,10 @@ if !req.Code.IsValid() {
 req.Code.IsRequest() // Access-Request, Accounting-Request, ...
 req.Code.IsReply()   // Access-Accept, CoA-ACK, ...
 
+// Convert between a code and its lowercase name
+req.Code.String()                                  // "access-request"
+code, ok := goradius.CodeByName["access-request"] // CodeAccessRequest, true
+
 // Validate packet length
 if req.Length < goradius.MinPacketLength ||
     req.Length > goradius.MaxPacketLength {
@@ -705,7 +709,7 @@ fmt.Printf(
 
 // Print packet info
 fmt.Println(req.String())
-// Output: Code=Access-Request(1), ID=1,
+// Output: Code=access-request(1), ID=1,
 // Length=40, Attributes=2
 ```
 

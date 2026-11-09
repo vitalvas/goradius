@@ -35,39 +35,57 @@ const (
 	CodeCoANAK Code = 45
 )
 
-// String returns the string representation of the packet code
+var CodeByName = map[string]Code{
+	"access-request":      CodeAccessRequest,
+	"access-accept":       CodeAccessAccept,
+	"access-reject":       CodeAccessReject,
+	"accounting-request":  CodeAccountingRequest,
+	"accounting-response": CodeAccountingResponse,
+	"access-challenge":    CodeAccessChallenge,
+	"status-server":       CodeStatusServer,
+	"status-client":       CodeStatusClient,
+	"disconnect-request":  CodeDisconnectRequest,
+	"disconnect-ack":      CodeDisconnectACK,
+	"disconnect-nak":      CodeDisconnectNAK,
+	"coa-request":         CodeCoARequest,
+	"coa-ack":             CodeCoAACK,
+	"coa-nak":             CodeCoANAK,
+}
+
+// String returns the lowercase packet code name, matching the lowercase
+// convention of dictionary attribute and value names
 func (c Code) String() string {
 	switch c {
 	case CodeAccessRequest:
-		return "Access-Request"
+		return "access-request"
 	case CodeAccessAccept:
-		return "Access-Accept"
+		return "access-accept"
 	case CodeAccessReject:
-		return "Access-Reject"
+		return "access-reject"
 	case CodeAccountingRequest:
-		return "Accounting-Request"
+		return "accounting-request"
 	case CodeAccountingResponse:
-		return "Accounting-Response"
+		return "accounting-response"
 	case CodeAccessChallenge:
-		return "Access-Challenge"
+		return "access-challenge"
 	case CodeStatusServer:
-		return "Status-Server"
+		return "status-server"
 	case CodeStatusClient:
-		return "Status-Client"
+		return "status-client"
 	case CodeDisconnectRequest:
-		return "Disconnect-Request"
+		return "disconnect-request"
 	case CodeDisconnectACK:
-		return "Disconnect-ACK"
+		return "disconnect-ack"
 	case CodeDisconnectNAK:
-		return "Disconnect-NAK"
+		return "disconnect-nak"
 	case CodeCoARequest:
-		return "CoA-Request"
+		return "coa-request"
 	case CodeCoAACK:
-		return "CoA-ACK"
+		return "coa-ack"
 	case CodeCoANAK:
-		return "CoA-NAK"
+		return "coa-nak"
 	default:
-		return "Unknown"
+		return "unknown"
 	}
 }
 

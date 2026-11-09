@@ -270,7 +270,7 @@ func TestPacketString(t *testing.T) {
 	pkt.AddAttribute(NewAttribute(1, []byte("test")))
 
 	str := pkt.String()
-	assert.Contains(t, str, "Access-Request")
+	assert.Contains(t, str, "access-request")
 	assert.Contains(t, str, "ID=42")
 	assert.Contains(t, str, "Attributes=1")
 }

@@ -2,6 +2,7 @@ package goradius
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -312,6 +313,103 @@ func TestAttributeUsageValidation_AllPacketTypes(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestCodeString(t *testing.T) {
+	tests := []struct {
+		code Code
+		want string
+	}{
+		{CodeAccessRequest, "access-request"},
+		{CodeAccessAccept, "access-accept"},
+		{CodeAccessReject, "access-reject"},
+		{CodeAccountingRequest, "accounting-request"},
+		{CodeAccountingResponse, "accounting-response"},
+		{CodeAccessChallenge, "access-challenge"},
+		{CodeStatusServer, "status-server"},
+		{CodeStatusClient, "status-client"},
+		{CodeDisconnectRequest, "disconnect-request"},
+		{CodeDisconnectACK, "disconnect-ack"},
+		{CodeDisconnectNAK, "disconnect-nak"},
+		{CodeCoARequest, "coa-request"},
+		{CodeCoAACK, "coa-ack"},
+		{CodeCoANAK, "coa-nak"},
+		{Code(0), "unknown"},
+		{Code(255), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.code.String())
+		})
+	}
+}
+
+func TestCodeByName(t *testing.T) {
+	t.Run("round trips every valid code", func(t *testing.T) {
+		valid := 0
+		for i := range 256 {
+			c := Code(i)
+			if !c.IsValid() {
+				continue
+			}
+			valid++
+			got, ok := CodeByName[c.String()]
+			assert.True(t, ok, c.String())
+			assert.Equal(t, c, got)
+		}
+		assert.Len(t, CodeByName, valid)
+	})
+
+	t.Run("lookups", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			want   Code
+			wantOK bool
+		}{
+			{"access-request", CodeAccessRequest, true},
+			{"coa-nak", CodeCoANAK, true},
+			{"unknown", 0, false},
+			{"Access-Request", 0, false},
+			{"", 0, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got, ok := CodeByName[tt.name]
+				assert.Equal(t, tt.wantOK, ok)
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+}
+
+func FuzzCodeByName(f *testing.F) {
+	f.Add("access-request")
+	f.Add("Access-Request")
+
+	f.Fuzz(func(t *testing.T, name string) {
+		if c, ok := CodeByName[name]; ok {
+			assert.Equal(t, name, c.String())
+		}
+	})
+}
+
+func BenchmarkCodeByName(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = CodeByName["accounting-request"]
+	}
+}
+
+func FuzzCodeString(f *testing.F) {
+	f.Add(uint8(CodeAccessRequest))
+	f.Add(uint8(0))
+
+	f.Fuzz(func(t *testing.T, c uint8) {
+		s := Code(c).String()
+		assert.Equal(t, strings.ToLower(s), s)
+		assert.Equal(t, Code(c).IsValid(), s != "unknown")
+	})
 }
 
 func BenchmarkCodeString(b *testing.B) {
