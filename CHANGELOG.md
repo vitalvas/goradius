@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/vitalvas/goradius/compare/v0.4.0...v0.5.0) (2026-11-09)
+
+
+### Features
+
+* add Message-Authenticator policy modes, API docs, packet fixes ([2aae6c9](https://github.com/vitalvas/goradius/commit/2aae6c9072399031d084a7ae35d1e1c4dd7e24a8))
+
+
+### Bug Fixes
+
+* **ci:** fix branch ([7552970](https://github.com/vitalvas/goradius/commit/7552970bc76cd7523da9064ecca2796dcb27c85f))
+* harden validation and server lifecycle ([42c19a0](https://github.com/vitalvas/goradius/commit/42c19a03431dc32dddaa278eb920dd9eed5d971e))
+
 ## [0.4.0](https://github.com/vitalvas/goradius/compare/v0.3.0...v0.4.0) (2026-10-21)
 
 
