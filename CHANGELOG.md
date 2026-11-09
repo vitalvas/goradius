@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vitalvas/goradius/compare/v0.6.1...v0.7.0) (2026-11-09)
+
+
+### Features
+
+* lowercase packet code names and add CodeByName lookup ([665398f](https://github.com/vitalvas/goradius/commit/665398f2bf6fc421ce092dff2582156c2c8e4d08))
+
 ## [0.6.1](https://github.com/vitalvas/goradius/compare/v0.6.0...v0.6.1) (2026-11-09)
 
 
