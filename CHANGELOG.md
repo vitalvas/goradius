@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/vitalvas/goradius/compare/v0.5.0...v0.6.0) (2026-11-09)
+
+
+### Features
+
+* add GetAttributeStrings to Packet, Request and Response ([a2a907d](https://github.com/vitalvas/goradius/commit/a2a907d4df62729dee1fd69343ea6f03d6e47bc5))
+
 ## [0.5.0](https://github.com/vitalvas/goradius/compare/v0.4.0...v0.5.0) (2026-11-09)
 
 
